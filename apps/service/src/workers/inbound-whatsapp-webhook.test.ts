@@ -786,9 +786,10 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
       outcomes.push(await runInboundWhatsAppWebhook({ eventId }, RUN_AT, noEnqueue, ack.resolve))
     }
 
-    expect(outcomes.map((o) => o.outcome)).toEqual(['created', 'threaded', 'threaded'])
-    const enquiryId = outcomes[0]!.enquiryId!
-    expect(outcomes[1]!.enquiryId).toBe(enquiryId)
+    // "Hi" alone opens nothing; the lane does, and takes the greeting with it.
+    expect(outcomes.map((o) => o.outcome)).toEqual(['held', 'created', 'threaded'])
+    const enquiryId = outcomes[1]!.enquiryId!
+    expect(outcomes[0]!.enquiryId).toBeNull()
     expect(outcomes[2]!.enquiryId).toBe(enquiryId)
     expect(ack.sent).toHaveLength(1)
 
@@ -799,6 +800,191 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
     expect(outbound).toHaveLength(1)
     expect(outbound[0]!.externalRef).toBe(ack.sent[0]!.wamid)
     expect(outbound[0]!.toAddresses).toEqual([sender])
+  })
+
+  /*
+    A greeting is not an enquiry. On the live site a customer's "Hello", a day
+    after their last message, opened DXB-ENQ-2026-00467 and was sent "we've
+    received your enquiry" for nothing.
+  */
+  describe('a greeting with nothing open', () => {
+    const receiptNote = async (eventId: string) => {
+      const [row] = await withActor(sys, (tx) =>
+        tx
+          .select({
+            error: inboundWebhookEvents.error,
+            processedAt: inboundWebhookEvents.processedAt,
+          })
+          .from(inboundWebhookEvents)
+          .where(eq(inboundWebhookEvents.id, eventId)),
+      )
+      return row!
+    }
+    const bySender = (sender: string) =>
+      withActor(sys, (tx) =>
+        tx
+          .select()
+          .from(messages)
+          .where(and(eq(messages.fromAddress, sender), eq(messages.direction, 'inbound'))),
+      )
+
+    it('opens no enquiry and sends nothing, but files the message', async () => {
+      const sender = senderNo(30)
+      const ack = capturingChannel()
+      const eventId = await fileReceipt(from(sender, `wamid.${RUN}-K0`, 'Hello', 1300))
+      const result = await runInboundWhatsAppWebhook({ eventId }, RUN_AT, noEnqueue, ack.resolve)
+
+      expect(result.outcome).toBe('held')
+      expect(result.enquiryId).toBeNull()
+      expect(ack.sent).toHaveLength(0)
+
+      const filed = await bySender(sender)
+      expect(filed).toHaveLength(1)
+      expect(filed[0]!.body).toBe('Hello')
+      expect(filed[0]!.enquiryId).toBeNull()
+      expect(filed[0]!.customerVisible).toBe(false)
+      // Settled, with the reason where "why is there no enquiry" is looked for.
+      const note = await receiptNote(eventId)
+      expect(note.processedAt).not.toBeNull()
+      expect(note.error).toMatch(/^held: a greeting/)
+    })
+
+    it('opens one enquiry from the request a minute later, with the greeting first', async () => {
+      const sender = senderNo(31)
+      const ack = capturingChannel()
+      const hello = await runInboundWhatsAppWebhook(
+        { eventId: await fileReceipt(from(sender, `wamid.${RUN}-L0`, 'Hello', 1400)) },
+        RUN_AT,
+        noEnqueue,
+        ack.resolve,
+      )
+      const request = await runInboundWhatsAppWebhook(
+        {
+          eventId: await fileReceipt(
+            from(
+              sender,
+              `wamid.${RUN}-L1`,
+              'ارجو تسعير حاويتين 40 قدم من جبل علي الى ميناء الشويخ، بضائع عامة، جاهزة 15 اكتوبر',
+              1401,
+            ),
+          ),
+        },
+        RUN_AT,
+        noEnqueue,
+        ack.resolve,
+      )
+
+      expect(hello.outcome).toBe('held')
+      expect(request.outcome).toBe('created')
+      expect(ack.sent).toHaveLength(1)
+
+      const inbound = (await thread(request.enquiryId!))
+        .filter((m) => m.direction === 'inbound')
+        .sort((a, b) => a.sentAt!.getTime() - b.sentAt!.getTime())
+      expect(inbound.map((m) => m.externalRef)).toEqual([`wamid.${RUN}-L0`, `wamid.${RUN}-L1`])
+      // Nothing of theirs left behind on no record.
+      expect((await bySender(sender)).every((m) => m.enquiryId === request.enquiryId)).toBe(true)
+    })
+
+    it('leaves a greeting older than the hold window where it was', async () => {
+      const sender = senderNo(32)
+      const ack = capturingChannel()
+      await runInboundWhatsAppWebhook(
+        { eventId: await fileReceipt(from(sender, `wamid.${RUN}-M0`, 'مرحبا', 1500)) },
+        RUN_AT,
+        noEnqueue,
+        ack.resolve,
+      )
+      const request = await runInboundWhatsAppWebhook(
+        {
+          eventId: await fileReceipt(
+            from(sender, `wamid.${RUN}-M1`, '1x20GP Ningbo to Shuwaikh', 1500 + 49 * 60),
+          ),
+        },
+        RUN_AT,
+        noEnqueue,
+        ack.resolve,
+      )
+      expect(request.outcome).toBe('created')
+      const inbound = (await thread(request.enquiryId!)).filter((m) => m.direction === 'inbound')
+      expect(inbound.map((m) => m.externalRef)).toEqual([`wamid.${RUN}-M1`])
+    })
+
+    it('threads a greeting onto an open enquiry silently', async () => {
+      const sender = senderNo(33)
+      const ack = capturingChannel()
+      const first = await runInboundWhatsAppWebhook(
+        { eventId: await fileReceipt(from(sender, `wamid.${RUN}-N0`, '2x40HC Jebel Ali', 1600)) },
+        RUN_AT,
+        noEnqueue,
+        ack.resolve,
+      )
+      const thanks = await runInboundWhatsAppWebhook(
+        { eventId: await fileReceipt(from(sender, `wamid.${RUN}-N1`, 'thanks 👍', 1610)) },
+        RUN_AT,
+        noEnqueue,
+        ack.resolve,
+      )
+      expect(first.outcome).toBe('created')
+      expect(thanks.outcome).toBe('threaded')
+      expect(thanks.enquiryId).toBe(first.enquiryId)
+      expect(ack.sent).toHaveLength(1)
+    })
+  })
+
+  /*
+    DXB-ENQ-2026-00463 and 00464: two enquiries a minute apart for one sender,
+    each acknowledged. Two requests in order thread and greet once.
+  */
+  it('opens one enquiry and greets once for two requests a minute apart', async () => {
+    const sender = senderNo(34)
+    const ack = capturingChannel()
+    const outcomes = []
+    for (const [i, text] of [
+      'Need a rate please, general cargo',
+      'please price two 40ft containers from Jebel Ali to Shuwaikh port, general cargo, ready 15 October',
+    ].entries()) {
+      outcomes.push(
+        await runInboundWhatsAppWebhook(
+          { eventId: await fileReceipt(from(sender, `wamid.${RUN}-O${i}`, text, 1700 + i)) },
+          RUN_AT,
+          noEnqueue,
+          ack.resolve,
+        ),
+      )
+    }
+    expect(outcomes.map((o) => o.outcome)).toEqual(['created', 'threaded'])
+    expect(outcomes[1]!.enquiryId).toBe(outcomes[0]!.enquiryId)
+    expect(ack.sent).toHaveLength(1)
+  })
+
+  /*
+    And when they are filed out of order: a receipt whose job failed is re-driven
+    ten minutes later, after the sender's next message opened the enquiry. The
+    late one used to find nothing "before" it and open a second enquiry.
+  */
+  it('threads a message filed after the sender’s later one', async () => {
+    const sender = senderNo(35)
+    const ack = capturingChannel()
+    const firstId = await fileReceipt(from(sender, `wamid.${RUN}-Q0`, 'Rate for 3 pallets', 1800))
+    const later = await runInboundWhatsAppWebhook(
+      {
+        eventId: await fileReceipt(from(sender, `wamid.${RUN}-Q1`, 'Dubai to Kuwait by air', 1801)),
+      },
+      RUN_AT,
+      noEnqueue,
+      ack.resolve,
+    )
+    const late = await runInboundWhatsAppWebhook(
+      { eventId: firstId },
+      RUN_AT,
+      noEnqueue,
+      ack.resolve,
+    )
+    expect(later.outcome).toBe('created')
+    expect(late.outcome).toBe('threaded')
+    expect(late.enquiryId).toBe(later.enquiryId)
+    expect(ack.sent).toHaveLength(1)
   })
 
   it('threads a reply that quotes the acknowledgement, even a day later', async () => {
