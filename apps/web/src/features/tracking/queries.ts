@@ -228,7 +228,19 @@ async function project(tx: Tx, row: JobRow): Promise<TrackingResult> {
         })
         .from(documents)
         .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
-        .innerJoin(assets, eq(assets.id, documents.assetId))
+        /*
+          A left join, and the size is optional, on purpose. `assets_scope`
+          shows a customer contact no asset rows at all, so the inner join this
+          used to be returned nothing under the portal's actor and the shipment
+          page said "No documents released yet." beside a released packing list
+          the download route would happily serve. The document row is what the
+          customer is entitled to (released, current, customer-visible, checked
+          below and in `documents_scope`); the file size is a nicety. Public
+          tracking reads as the system and still gets it. Widening `assets`
+          for one number would expose storage keys and file names of every
+          asset the policy arm matched, which is a worse trade.
+        */
+        .leftJoin(assets, eq(assets.id, documents.assetId))
         .where(
           and(
             eq(documents.jobId, row.id),
@@ -296,7 +308,7 @@ async function project(tx: Tx, row: JobRow): Promise<TrackingResult> {
       nameAr: d.nameAr,
       version: d.version,
       releasedAt: d.releasedAt,
-      sizeKb: Math.round(d.byteSize / 1024),
+      sizeKb: d.byteSize === null ? null : Math.round(d.byteSize / 1024),
     })),
     notices: noticeRows,
   }

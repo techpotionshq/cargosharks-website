@@ -148,7 +148,11 @@ export interface DocumentView {
   readonly nameAr: string
   readonly version: number
   readonly releasedAt: Date | null
-  readonly sizeKb: number
+  /**
+   * Null where the reader may see the document but not its asset row: a
+   * customer contact, under whose actor `assets_scope` hides every file.
+   */
+  readonly sizeKb: number | null
 }
 
 export interface JobSummary {
