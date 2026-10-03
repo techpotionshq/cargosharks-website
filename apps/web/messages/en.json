@@ -2279,7 +2279,7 @@
     "previewAr": "Preview in Arabic",
     "needsCargo": "Add cargo lines first — every document below reads from them.",
     "dutyPrompt": "Landed cost, before it ships",
-    "surrenderHint": "Telex release: the shipper has handed the originals back and the agent releases without them.",
+    "surrenderHint": "Telex release: the shipper has handed the originals back and the agent releases without them. The issued bill is released to the customer's portal at the same time.",
     "surrender": "Surrender bill",
     "surrenderedOn": "Surrendered {date} — telex release. Copies print stamped; no originals.",
     "issueNote": "Preview renders and stores nothing. Issue keeps the copy that was handed over and supersedes the previous version — regenerating never replaces.",

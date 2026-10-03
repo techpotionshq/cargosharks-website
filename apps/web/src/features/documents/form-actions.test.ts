@@ -25,7 +25,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -45,7 +45,17 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { branches, jobCargo, jobParties, jobs, withActor } = await import('@qabandi/db')
+const {
+  assets,
+  branches,
+  documentTypes,
+  documents,
+  jobCargo,
+  jobParties,
+  jobs,
+  notificationOutbox,
+  withActor,
+} = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
@@ -736,6 +746,86 @@ describe.skipIf(!enabled)('shipment documents', () => {
 
       expect(state.message).toBeUndefined()
       expect(state.ok).toBeDefined()
+    })
+
+    /*
+      Surrender lived on the job alone, so an issued and telex-released bill
+      was still a draft document, and the portal said "No documents released
+      yet" beside the shipment it releases.
+    */
+    it('releases the current copy of the bill to the customer, once', async () => {
+      const jobId = await freshJob()
+      const copies = await withActor(systemActor, async (tx) => {
+        await tx
+          .update(jobs)
+          .set({ houseBillNumber: `HBL-119-${RUN}` })
+          .where(eq(jobs.id, jobId))
+        const [type] = await tx
+          .select({ id: documentTypes.id })
+          .from(documentTypes)
+          .where(eq(documentTypes.code, 'hbl'))
+        const issue = async (locale: 'en' | 'ar', version: number) => {
+          const [asset] = await tx
+            .insert(assets)
+            .values({
+              branchId: HOME_BRANCH,
+              storageKey: `memory:test/${jobId}/hbl-${locale}-${version}`,
+              fileName: `hbl-${locale}-${version}.pdf`,
+              contentType: 'application/pdf',
+              byteSize: 2048,
+            })
+            .returning({ id: assets.id })
+          const [row] = await tx
+            .insert(documents)
+            .values({
+              jobId,
+              documentTypeId: type!.id,
+              assetId: asset!.id,
+              version,
+              locale,
+              generatedFrom: 'house_bill',
+            })
+            .returning({ id: documents.id })
+          return row!.id
+        }
+        const recalled = await issue('en', 1)
+        const english = await issue('en', 2)
+        await tx
+          .update(documents)
+          .set({ supersededById: english })
+          .where(eq(documents.id, recalled))
+        const arabic = await issue('ar', 1)
+        return { recalled, english, arabic }
+      })
+
+      expect((await surrenderHouseBill({}, form({ jobId }))).ok).toBeDefined()
+      // A second click is a no-op, and must not tell the customer twice.
+      await surrenderHouseBill({}, form({ jobId }))
+
+      const rows = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: documents.id, releasedAt: documents.releasedAt })
+          .from(documents)
+          .where(eq(documents.jobId, jobId)),
+      )
+      const releasedOf = (id: string) => rows.find((row) => row.id === id)?.releasedAt
+      expect(releasedOf(copies.english)).toBeInstanceOf(Date)
+      expect(releasedOf(copies.arabic)).toBeInstanceOf(Date)
+      // The recalled version stays recalled.
+      expect(releasedOf(copies.recalled)).toBeNull()
+
+      const notices = await withActor(systemActor, (tx) =>
+        tx
+          .select({ id: notificationOutbox.id })
+          .from(notificationOutbox)
+          .where(
+            and(
+              eq(notificationOutbox.jobId, jobId),
+              eq(notificationOutbox.eventKey, 'document.released'),
+            ),
+          ),
+      )
+      expect(notices).toHaveLength(1)
     })
   })
 })

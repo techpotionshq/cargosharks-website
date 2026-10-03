@@ -24,9 +24,18 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { countries, jobCargo, jobParties, jobs, withActor } from '@qabandi/db'
+import {
+  countries,
+  documentTypes,
+  documents,
+  jobCargo,
+  jobParties,
+  jobs,
+  notificationOutbox,
+  withActor,
+} from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import {
@@ -538,7 +547,7 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
     if (!job.houseBillNumber) return 'not_issued' as const
     if (job.mode === 'air') return 'air' as const
 
-    await tx
+    const [surrendered] = await tx
       .update(jobs)
       .set({
         houseBillSurrenderedAt: new Date(),
@@ -546,6 +555,63 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
         updatedAt: new Date(),
       })
       .where(and(eq(jobs.id, jobId), sql`${jobs.houseBillSurrenderedAt} is null`))
+      .returning({
+        reference: jobs.reference,
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+      })
+    // Already surrendered: the first click released the bill, and a second
+    // must not raise the customer's notice again.
+    if (!surrendered) return null
+
+    /*
+      A surrendered bill is released to the customer with it.
+
+      Surrender was recorded on the job alone, so a bill that had been issued
+      and telex-released was still a draft in `documents`, and the portal,
+      which shows released documents only, said "No documents released yet"
+      about the one paper the consignee now collects the cargo against. The
+      act and the permission are the same as the vault's Release button
+      (`releaseDocument`), so it is written the same way: the current copy in
+      each language, only where not yet released, and one notice for the bill.
+    */
+    const [houseBill] = await tx
+      .select({ id: documentTypes.id, nameEn: documentTypes.nameEn, nameAr: documentTypes.nameAr })
+      .from(documentTypes)
+      .where(eq(documentTypes.code, 'hbl'))
+      .limit(1)
+    if (!houseBill) return null
+
+    const released = await tx
+      .update(documents)
+      .set({
+        releasedAt: new Date(),
+        releasedById: session.actor.principalId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(documents.jobId, jobId),
+          eq(documents.documentTypeId, houseBill.id),
+          isNull(documents.supersededById),
+          isNull(documents.releasedAt),
+        ),
+      )
+      .returning({ id: documents.id })
+
+    if (released.length > 0) {
+      await tx.insert(notificationOutbox).values({
+        branchId: surrendered.branchId,
+        eventKey: 'document.released',
+        jobId,
+        customerId: surrendered.customerId,
+        payload: {
+          reference: surrendered.reference,
+          documentType: houseBill.nameEn,
+          documentTypeAr: houseBill.nameAr ?? houseBill.nameEn,
+        },
+      })
+    }
     return null
   })
 
@@ -565,5 +631,6 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
   }
 
   revalidatePath(`/jobs/${jobId}`)
+  revalidatePath('/documents')
   return succeed(jobId)
 })
