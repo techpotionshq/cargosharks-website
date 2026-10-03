@@ -311,7 +311,8 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
   /**
    * Render an invoice, bilingually, on demand.
    *
-   * Streamed rather than stored — see `renderInvoicePdf`. `Content-Disposition`
+   * A draft renders live; an issued invoice is stored on first download and
+   * served from storage after that — see `renderInvoicePdf`. `Content-Disposition`
    * carries the series number, because that is what finance files it under.
    */
   app.post<{ Params: { id: string }; Body: DocumentRequest }>(
