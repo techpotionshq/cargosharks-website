@@ -43,7 +43,7 @@ import {
 } from '@qabandi/db'
 import { requireSession, type Session } from '@/lib/session'
 import { assertCan, assertCanIn, branchesWhere } from '@/lib/permissions'
-import { sendSignInLink, type SignInLinkOutcome } from './sign-in-link'
+import { invitedNotice, sendSignInLink, type SignInLinkResult } from './sign-in-link'
 import {
   echo,
   fail,
@@ -295,10 +295,10 @@ export const saveUser = refuseForbidden(async function saveUser(
     became of the mail is shown on the people list, where the administrator
     can send it again.
   */
-  if (invitedEmail) await sendSignInLink(invitedEmail, 'invitation')
+  const mailed = invitedEmail ? await sendSignInLink(invitedEmail, 'invitation') : null
 
   revalidatePath('/settings/users')
-  return succeed(data.email)
+  return invitedNotice(tv, data.email, mailed)
 })
 
 /**
@@ -539,9 +539,23 @@ export const sendUserSignInLink = refuseForbidden(async function sendUserSignInL
 })
 
 /** The sentence for what became of a link, as an `ActionState`. */
-function signInLinkState(tv: Translate, outcome: SignInLinkOutcome, email: string): ActionState {
-  if (outcome === 'sent') return { ...succeed(email), message: tv('signInLinkSent', { email }) }
-  return failWith(tv(`signInLink.${outcome}` as 'signInLink.refused'))
+function signInLinkState(tv: Translate, result: SignInLinkResult, email: string): ActionState {
+  if (result.outcome === 'sent') {
+    return { ...succeed(email), message: tv('signInLinkSent', { email }) }
+  }
+  /*
+    Mail is set to log only, so nothing was delivered and the link exists only
+    here. Handed to the administrator who asked, to pass on themselves; when
+    `sendSignInLink` may show it is decided there.
+  */
+  if (result.handOver) {
+    return {
+      ...succeed(email),
+      message: tv('signInLinkLogged', { email }),
+      link: { href: result.handOver, label: tv('signInLinkHandOver') },
+    }
+  }
+  return failWith(tv(`signInLink.${result.outcome}` as 'signInLink.refused'))
 }
 
 // --- branches --------------------------------------------------------------

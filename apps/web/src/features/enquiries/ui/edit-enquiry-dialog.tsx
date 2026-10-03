@@ -74,6 +74,8 @@ export async function EditEnquiryDialog({ enquiryId }: { readonly enquiryId: str
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'enquiryId', value: enquiry.id },
+    // What the form was filled from; `updateEnquiry` refuses an older one.
+    { kind: 'hidden', name: 'version', value: enquiry.version },
     {
       kind: 'section',
       title: t('who'),
@@ -254,6 +256,13 @@ export async function EditEnquiryDialog({ enquiryId }: { readonly enquiryId: str
   return (
     <RecordDialog
       action={updateEnquiry}
+      /*
+        The dialog stays mounted in the menu, and its fields are uncontrolled,
+        so new defaults from a revalidation never reached them: after "Accept
+        all" the form still held the empty values, and saving it cleared what
+        had just been accepted. A new version remounts the fields.
+      */
+      version={enquiry.version}
       icon="edit"
       size="lg"
       variant="secondary"

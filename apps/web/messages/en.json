@@ -2224,7 +2224,7 @@
     "addressHint": "Line breaks are preserved",
     "city": "City",
     "country": "Country",
-    "countryHint": "Two-letter code",
+    "countryHint": "Printed on the documents as its two-letter code.",
     "contact": "Contact",
     "phone": "Phone",
     "email": "Email",
@@ -2279,7 +2279,7 @@
     "previewAr": "Preview in Arabic",
     "needsCargo": "Add cargo lines first — every document below reads from them.",
     "dutyPrompt": "Landed cost, before it ships",
-    "surrenderHint": "Telex release: the shipper has handed the originals back and the agent releases without them.",
+    "surrenderHint": "Telex release: the shipper has handed the originals back and the agent releases without them. The issued bill is released to the customer's portal at the same time.",
     "surrender": "Surrender bill",
     "surrenderedOn": "Surrendered {date} — telex release. Copies print stamped; no originals.",
     "issueNote": "Preview renders and stores nothing. Issue keeps the copy that was handed over and supersedes the previous version — regenerating never replaces.",
@@ -3855,7 +3855,8 @@
       "refused": "No email was sent: the mail service refused it. The account exists; check the outbound mail settings and try again.",
       "unreachable": "No email was sent: the mail service could not be reached. The account exists; try again in a few minutes.",
       "throttled": "Several links have already gone to this address in the last hour. Ask them to use the newest one, or try again later.",
-      "no_login": "No email was sent: this person has no login to set a password for."
+      "no_login": "No email was sent: this person has no login to set a password for.",
+      "logged": "No email was sent: mail on this deployment is set to log only. This person already has a password, so their link is not shown here; they can sign in with it, or reset it once mail is switched on."
     },
     "webhookEveryBranch": "Choose a branch. Sending every branch's events needs administrator rights in every branch.",
     "apiAccessNotAdministered": "You do not administer API access in that branch.",
@@ -3863,7 +3864,10 @@
     "keyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so mailbox passwords and integration credentials can be neither stored nor read.",
     "keyWrongLength": "MAILBOX_ENCRYPTION_KEY must be {expected} bytes, base64-encoded; this one decodes to {bytes}.",
     "fxRateExample": "A rate above zero, with up to eight decimals — for example 0.30700000.",
-    "fxSameCurrency": "Choose two different currencies."
+    "fxSameCurrency": "Choose two different currencies.",
+    "invitedNoMail": "Login created for {email}, but no invitation email went. Use Send sign-in link beside them for what to do next.",
+    "signInLinkLogged": "No email was sent: mail on this deployment is set to log only. Give {email} the link below yourself. It sets their password once and works for one hour.",
+    "signInLinkHandOver": "Set-password link, to pass on"
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -4070,7 +4074,8 @@
     "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
     "notPermitted": "Your role does not allow this in this enquiry's branch.",
     "editClosed": "This enquiry is closed, so its details can no longer be changed.",
-    "containerTypeUnknown": "Choose a container type from the list."
+    "containerTypeUnknown": "Choose a container type from the list.",
+    "editStale": "This enquiry changed after you opened the form. The form now shows its latest details, so make your change again."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",
@@ -4111,7 +4116,9 @@
     "issueShipmentNotFound": "That shipment is not there, or is outside your branches.",
     "issueTypeNotSetUp": "The {kind, select, house_bill {house bill of lading} delivery_order {delivery order} packing_list {packing list} customs_pack {customs declaration pack} air_waybill {house air waybill} other {document}} is not set up as a document type in this deployment. An administrator adds it under Reference data → Document types; on a fresh install, run pnpm db:seed.",
     "issueNotStored": "The document was rendered, but its copy could not be stored, so nothing was issued. Try again; if it keeps failing, check the storage settings under Settings › Integrations.",
-    "issueUnknownKind": "That document cannot be issued from here."
+    "issueUnknownKind": "That document cannot be issued from here.",
+    "countryCode": "Choose the country from the list. Typed by hand, it is the two-letter ISO code, such as CN for China.",
+    "countryUnknown": "We do not hold that country code. Choose the country from the list."
   },
   "jobsValidation": {
     "numbersOnly": "Numbers only",

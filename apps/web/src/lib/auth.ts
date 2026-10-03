@@ -37,8 +37,13 @@ import { authHooks } from '@/lib/auth-guard'
 import { BETTER_AUTH_IP_ADDRESS } from '@/lib/client-address'
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-/** What became of one reset email. */
-export type ResetMailOutcome = 'sent' | 'not_configured' | 'refused' | 'unreachable'
+/**
+ * What became of one reset email.
+ *
+ * `logged` is the deployment's own choice, not a failure: mail is set to log
+ * only, so the service wrote it down and sent nothing.
+ */
+export type ResetMailOutcome = 'sent' | 'logged' | 'not_configured' | 'refused' | 'unreachable'
 
 /**
  * Hand a reset email to the service — the only process holding SMTP
@@ -78,7 +83,9 @@ export async function deliverResetMail(
       console.error(`password reset mail refused: ${response.status} ${response.statusText}`)
       return 'refused'
     }
-    return 'sent'
+    // 202 either way; only the body says whether it went or was only logged.
+    const body = (await response.json().catch(() => null)) as { status?: string } | null
+    return body?.status === 'logged' ? 'logged' : 'sent'
   } catch (error) {
     console.error({ error }, 'password reset mail could not be sent')
     return 'unreachable'
@@ -94,7 +101,20 @@ export async function deliverResetMail(
  * public form, and no way for an administrator to learn the mail never went.
  * The store is per call, so nothing leaks between requests.
  */
-export const resetMailOutcome = new AsyncLocalStorage<ResetMailOutcome[]>()
+export const resetMailOutcome = new AsyncLocalStorage<ResetMailReport[]>()
+
+/**
+ * One reset mail as its caller hears of it: what happened, and the link.
+ *
+ * The link rides along for one caller only, an administrator's sign-in link
+ * on a deployment that does not send mail (`sign-in-link.ts` decides when it
+ * may be shown). The public reset form never opens this store, so the link
+ * cannot reach it by this path.
+ */
+export interface ResetMailReport {
+  readonly outcome: ResetMailOutcome
+  readonly url: string
+}
 
 /** Why a set-password link is being mailed; it changes the wording only. */
 export type ResetMailIntent = 'reset' | 'invitation'
@@ -201,7 +221,7 @@ export const auth = betterAuth({
       const outcome = await deliverResetMail(user.email, url, resetMailIntent.getStore() ?? 'reset')
       // Told to whoever asked to hear it — an administrator sending a sign-in
       // link (A7). The public form never asks, for the reason above.
-      resetMailOutcome.getStore()?.push(outcome)
+      resetMailOutcome.getStore()?.push({ outcome, url })
     },
 
     /*

@@ -9745,6 +9745,8 @@ export function pilotEnquiryForEdit(id: string): EnquiryEditLike | undefined {
     containerType: count ? '40HC' : null,
     isDangerous: false,
     notes: null,
+    // Fixtures never change under the reader, so one fixed version is honest.
+    version: '2026-01-01T00:00:00.000Z',
   }
 }
 

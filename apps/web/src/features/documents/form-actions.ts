@@ -24,9 +24,18 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { jobCargo, jobParties, jobs, withActor } from '@qabandi/db'
+import {
+  countries,
+  documentTypes,
+  documents,
+  jobCargo,
+  jobParties,
+  jobs,
+  notificationOutbox,
+  withActor,
+} from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import {
@@ -82,7 +91,17 @@ const partySchema = (tv: Translate) =>
     /** Newlines preserved: an address is laid out, not written. */
     address: optionalText(500),
     city: optionalText(120),
-    country: optionalText(2),
+    /*
+      Two letters, said in the catalogue's words. The dialog offers a list, but
+      the action is the only validator, and a name typed into a form posted by
+      anything else must come back as a field error rather than a 500.
+    */
+    country: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{2}$/, tv('countryCode'))
+      .optional()
+      .transform((v) => v || null),
     contactName: optionalText(120),
     phone: optionalText(60),
     email: z
@@ -130,8 +149,24 @@ export const saveJobParty = refuseForbidden(async function saveJobParty(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
   const data = parsed.data
 
+  const country = data.country ? data.country.toUpperCase() : null
+
   try {
-    await withActor(session.actor, async (tx) => {
+    const refused = await withActor(session.actor, async (tx) => {
+      /*
+        Two letters is not yet a country. The column's foreign key would refuse
+        "XX" as a database error, so the code is looked up first and an unknown
+        one is a field error, the same answer the format check gives.
+      */
+      if (country) {
+        const [known] = await tx
+          .select({ code: countries.code })
+          .from(countries)
+          .where(eq(countries.code, country))
+          .limit(1)
+        if (!known) return 'country' as const
+      }
+
       const values = {
         jobId: data.jobId,
         role: data.role,
@@ -139,7 +174,7 @@ export const saveJobParty = refuseForbidden(async function saveJobParty(
         nameAr: data.nameAr,
         address: data.address,
         city: data.city,
-        country: data.country ? data.country.toUpperCase() : null,
+        country,
         contactName: data.contactName,
         phone: data.phone,
         email: data.email ?? null,
@@ -153,11 +188,13 @@ export const saveJobParty = refuseForbidden(async function saveJobParty(
           .update(jobParties)
           .set({ ...values, updatedAt: new Date() })
           .where(eq(jobParties.id, partyId))
-        return
+        return null
       }
 
       await tx.insert(jobParties).values(values)
+      return null
     })
+    if (refused === 'country') return fail({ country: tv('countryUnknown') }, echo(form))
   } catch (error) {
     /*
       One shipper and one consignee — enforced by a partial unique index, so
@@ -510,7 +547,7 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
     if (!job.houseBillNumber) return 'not_issued' as const
     if (job.mode === 'air') return 'air' as const
 
-    await tx
+    const [surrendered] = await tx
       .update(jobs)
       .set({
         houseBillSurrenderedAt: new Date(),
@@ -518,6 +555,63 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
         updatedAt: new Date(),
       })
       .where(and(eq(jobs.id, jobId), sql`${jobs.houseBillSurrenderedAt} is null`))
+      .returning({
+        reference: jobs.reference,
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+      })
+    // Already surrendered: the first click released the bill, and a second
+    // must not raise the customer's notice again.
+    if (!surrendered) return null
+
+    /*
+      A surrendered bill is released to the customer with it.
+
+      Surrender was recorded on the job alone, so a bill that had been issued
+      and telex-released was still a draft in `documents`, and the portal,
+      which shows released documents only, said "No documents released yet"
+      about the one paper the consignee now collects the cargo against. The
+      act and the permission are the same as the vault's Release button
+      (`releaseDocument`), so it is written the same way: the current copy in
+      each language, only where not yet released, and one notice for the bill.
+    */
+    const [houseBill] = await tx
+      .select({ id: documentTypes.id, nameEn: documentTypes.nameEn, nameAr: documentTypes.nameAr })
+      .from(documentTypes)
+      .where(eq(documentTypes.code, 'hbl'))
+      .limit(1)
+    if (!houseBill) return null
+
+    const released = await tx
+      .update(documents)
+      .set({
+        releasedAt: new Date(),
+        releasedById: session.actor.principalId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(documents.jobId, jobId),
+          eq(documents.documentTypeId, houseBill.id),
+          isNull(documents.supersededById),
+          isNull(documents.releasedAt),
+        ),
+      )
+      .returning({ id: documents.id })
+
+    if (released.length > 0) {
+      await tx.insert(notificationOutbox).values({
+        branchId: surrendered.branchId,
+        eventKey: 'document.released',
+        jobId,
+        customerId: surrendered.customerId,
+        payload: {
+          reference: surrendered.reference,
+          documentType: houseBill.nameEn,
+          documentTypeAr: houseBill.nameAr ?? houseBill.nameEn,
+        },
+      })
+    }
     return null
   })
 
@@ -537,5 +631,6 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
   }
 
   revalidatePath(`/jobs/${jobId}`)
+  revalidatePath('/documents')
   return succeed(jobId)
 })

@@ -32,12 +32,11 @@ import {
   failWith,
   fieldErrors,
   isUniqueViolation,
-  succeed,
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
-import { sendSignInLink } from './sign-in-link'
+import { invitedNotice, sendSignInLink } from './sign-in-link'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
 import { demoReadOnly } from '@/lib/pilot/read-only'
 
@@ -151,8 +150,8 @@ export const inviteCustomerContact = refuseForbidden(async function inviteCustom
 
   // After the commit — see `saveUser`. The card lists the login with its
   // state and a button that reports what became of the mail.
-  await sendSignInLink(data.email, 'invitation')
+  const mailed = await sendSignInLink(data.email, 'invitation')
 
   revalidatePath(`/customers/${data.customerId}`)
-  return succeed(data.email)
+  return invitedNotice(tv, data.email, mailed)
 })

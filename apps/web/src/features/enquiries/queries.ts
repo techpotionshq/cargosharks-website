@@ -251,6 +251,7 @@ export async function enquiryForEdit(
         containerType: enquiries.containerType,
         isDangerous: enquiries.isDangerous,
         notes: enquiries.notes,
+        updatedAt: enquiries.updatedAt,
       })
       .from(enquiries)
       .leftJoin(customers, eq(customers.id, enquiries.customerId))
@@ -259,6 +260,8 @@ export async function enquiryForEdit(
       .leftJoin(commodities, eq(commodities.id, enquiries.commodityId))
       .where(eq(enquiries.id, id))
       .limit(1)
-    return row ?? undefined
+    if (!row) return undefined
+    const { updatedAt, ...facts } = row
+    return { ...facts, version: updatedAt.toISOString() }
   })
 }

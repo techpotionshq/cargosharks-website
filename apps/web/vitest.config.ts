@@ -35,6 +35,15 @@ export default defineConfig({
       'server-only': fileURLToPath(new URL('./src/lib/testing/server-only.ts', import.meta.url)),
     },
   },
+  /*
+    JSX compiled here, not preserved.
+
+    `tsconfig.json` says `jsx: preserve` because Next compiles it, and Vite
+    takes that setting too: a `.test.tsx` failed to parse rather than to pass,
+    and so did any component it imported. The automatic runtime is what Next
+    uses, so a component renders here as it does in the app.
+  */
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],

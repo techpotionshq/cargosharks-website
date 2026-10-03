@@ -32,10 +32,27 @@ import {
   resetMailOutcome,
   type ResetMailIntent,
   type ResetMailOutcome,
+  type ResetMailReport,
 } from '@/lib/auth'
 import { AUTH_REFUSAL, refusalOf } from '@/lib/auth-guard'
+import { succeed, type ActionState, type Translate } from '@/lib/form-state'
 
 export type SignInLinkOutcome = ResetMailOutcome | 'throttled' | 'no_login'
+
+export interface SignInLinkResult {
+  readonly outcome: SignInLinkOutcome
+  /**
+   * The set-password link itself, for the administrator to pass on by hand.
+   *
+   * Only when mail is set to log only, so nothing was delivered and the link
+   * would otherwise exist nowhere a person can reach, and only for an
+   * invitation. A reset goes to somebody who already has a password, and
+   * handing their link to an administrator would let the administrator sign
+   * in as them; an invitation is to an account the administrator has just
+   * made and nobody has used. Every caller is behind `admin.users.write`.
+   */
+  readonly handOver: string | null
+}
 
 /**
  * `intent` words the mail: an invitation for somebody who has never had a
@@ -44,22 +61,46 @@ export type SignInLinkOutcome = ResetMailOutcome | 'throttled' | 'no_login'
 export async function sendSignInLink(
   email: string,
   intent: ResetMailIntent = 'invitation',
-): Promise<SignInLinkOutcome> {
-  const outcomes: ResetMailOutcome[] = []
+): Promise<SignInLinkResult> {
+  const reports: ResetMailReport[] = []
   try {
     await resetMailIntent.run(intent, () =>
-      resetMailOutcome.run(outcomes, () =>
+      resetMailOutcome.run(reports, () =>
         auth.api.requestPasswordReset({ body: { email, redirectTo: '/reset-password' } }),
       ),
     )
   } catch (error) {
     // The per-address reset budget applies to administrators too: three links
     // an hour to one mailbox is generous for a person and a ceiling for a bug.
-    if (refusalOf(error)?.code === AUTH_REFUSAL.resetThrottled) return 'throttled'
+    if (refusalOf(error)?.code === AUTH_REFUSAL.resetThrottled) {
+      return { outcome: 'throttled', handOver: null }
+    }
     console.error({ error }, 'sign-in link could not be issued')
-    return 'unreachable'
+    return { outcome: 'unreachable', handOver: null }
   }
+  const report = reports[0]
   // Better Auth found no `auth_user` for the address and, by design, says
   // nothing about it; no outcome was reported because no mail was attempted.
-  return outcomes[0] ?? 'no_login'
+  if (!report) return { outcome: 'no_login', handOver: null }
+  return {
+    outcome: report.outcome,
+    handOver: report.outcome === 'logged' && intent === 'invitation' ? report.url : null,
+  }
+}
+
+/**
+ * Saved, and said so honestly when the invitation did not go.
+ *
+ * The person exists either way, so this is a success that closes the dialog.
+ * Its confirmation says no email went and where the next step is, the "send
+ * sign-in link" beside them, which reports why and, on a deployment set to log
+ * mail only, hands the administrator the link to pass on.
+ */
+export function invitedNotice(
+  tv: Translate,
+  email: string,
+  mailed: SignInLinkResult | null,
+): ActionState {
+  if (!mailed || mailed.outcome === 'sent') return succeed(email)
+  return { ...succeed(email), message: tv('invitedNoMail', { email }) }
 }

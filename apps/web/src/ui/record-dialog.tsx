@@ -47,7 +47,7 @@ import {
   type Span,
 } from './form'
 import { Icon, type IconName } from './icon'
-import { Modal, ModalCancel, type ModalSize } from './modal'
+import { Modal, ModalCancel, type ModalSize, type ModalTriggerProps } from './modal'
 import { MENU_ITEM, MENU_ITEM_DANGER, buttonClass } from './control'
 import { useInMenu } from './menu'
 import { toast } from './toast'
@@ -177,7 +177,18 @@ export interface RecordDialogProps {
   /** Renders the trigger as an icon-only button — for a row's action column. */
   readonly iconOnly?: boolean
   /** Replaces the built-in trigger entirely. */
-  readonly trigger?: (props: { onClick: () => void }) => ReactNode
+  readonly trigger?: (props: ModalTriggerProps) => ReactNode
+  /**
+   * The record's version (its `updated_at`), for an edit dialog.
+   *
+   * The dialog is mounted with the page and only shown and hidden, and every
+   * field is uncontrolled, so a `defaultValue` that changes after mount is
+   * ignored. Without this, a record changed elsewhere on the page (a
+   * suggestion accepted, a count set) kept its old values in the form, and
+   * saving the form wrote them back. Part of the form's key, so a new version
+   * remounts the fields with the new defaults.
+   */
+  readonly version?: string
 }
 
 /*
@@ -208,6 +219,7 @@ export function RecordDialog({
   variant = 'primary',
   iconOnly = false,
   trigger,
+  version,
 }: RecordDialogProps) {
   /*
     Say so when it worked.
@@ -223,7 +235,9 @@ export function RecordDialog({
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (previous, form) => {
       const result = await action(previous, form)
-      if (result.ok) toast(labels.success)
+      // An action that succeeded with something to add (a login made but its
+      // invitation not mailed) says that instead of the plain "done".
+      if (result.ok) toast(result.message ?? labels.success)
       return result
     },
     {},
@@ -270,10 +284,11 @@ export function RecordDialog({
       }
       trigger={
         trigger ??
-        (({ onClick }) => (
+        (({ onClick, invoker }) => (
           <button
             type="button"
             onClick={onClick}
+            {...invoker}
             title={iconOnly ? labels.open : undefined}
             aria-label={iconOnly ? labels.open : undefined}
             className={
@@ -297,7 +312,7 @@ export function RecordDialog({
         ))
       }
     >
-      <form key={attempt} id={formId} action={formAction}>
+      <form key={`${version ?? ''}:${attempt}`} id={formId} action={formAction}>
         <FormGrid>
           <FormError message={state.message} link={state.link} />
           {unplaced(fields, state).map((message) => (

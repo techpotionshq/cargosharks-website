@@ -53,13 +53,40 @@ const SIZE: Record<ModalSize, string> = {
   xl: 'max-w-5xl',
 }
 
+/**
+ * The attributes that let a `<button>` open the dialog with no script at all.
+ *
+ * The invoker commands of HTML (`commandfor`, `command="show-modal"`). Typed by
+ * hand because React's typings do not know them yet; React passes lowercase
+ * attributes through to the DOM as they are.
+ */
+export interface InvokerAttributes {
+  readonly commandfor: string
+  readonly command: 'show-modal'
+}
+
+export interface ModalTriggerProps {
+  readonly onClick: () => void
+  /**
+   * Spread onto the trigger `<button>`.
+   *
+   * A click before the page has hydrated reached a button with no handler on
+   * it yet, so the first press of "Match" on a long supplier bill sometimes
+   * opened nothing and the second one worked. With these the browser opens the
+   * dialog itself from the server-rendered HTML, and `Modal` adopts the open
+   * dialog once it hydrates. After hydration `onClick` opens it first and the
+   * command finds it already open, which the platform treats as a no-op.
+   */
+  readonly invoker: InvokerAttributes
+}
+
 export interface ModalProps {
   /**
    * What opens it. Given a render prop rather than a fixed button because the
    * same dialog is opened from a toolbar button on one screen and a row's
    * overflow menu on another, and those should not look alike.
    */
-  readonly trigger: (props: { onClick: () => void }) => ReactNode
+  readonly trigger: (props: ModalTriggerProps) => ReactNode
   readonly title: ReactNode
   readonly description?: ReactNode
   readonly icon?: IconName
@@ -91,6 +118,7 @@ export function Modal({
   const ref = useRef<HTMLDialogElement>(null)
   const [open, setOpen] = useState(false)
   const titleId = useId()
+  const dialogId = useId()
   const lastSignal = useRef(closeOn)
   /*
     Whether anything inside has been typed into since it opened.
@@ -111,7 +139,9 @@ export function Modal({
   const show = useCallback(() => {
     lastSignal.current = closeOn
     dirty.current = false
-    ref.current?.showModal()
+    // Already open when the invoker command got there first; `showModal()` on
+    // an open dialog throws in browsers that predate the spec's no-op.
+    if (ref.current && !ref.current.open) ref.current.showModal()
     setOpen(true)
   }, [closeOn])
 
@@ -123,6 +153,11 @@ export function Modal({
     if (!element) return
     const onClose = () => setOpen(false)
     element.addEventListener('close', onClose)
+    /*
+      Opened by its invoker before hydration: adopt it, so the scroll lock and
+      the `closeOn` signal apply to it exactly as to one opened by a click.
+    */
+    if (element.open) setOpen(true)
     return () => element.removeEventListener('close', onClose)
   }, [])
 
@@ -161,10 +196,11 @@ export function Modal({
 
   return (
     <>
-      {trigger({ onClick: show })}
+      {trigger({ onClick: show, invoker: { commandfor: dialogId, command: 'show-modal' } })}
 
       <dialog
         ref={ref}
+        id={dialogId}
         aria-labelledby={titleId}
         // The element itself is the backdrop hit target: a click whose target
         // is the dialog rather than any of its children landed outside the
