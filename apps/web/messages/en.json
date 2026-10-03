@@ -2988,6 +2988,12 @@
       },
       "partner": {
         "mail_filed": "A known supplier wrote in with nothing to read as a bill."
+      },
+      "credit_note": {
+        "issued": "A credit note has been issued against one of the customer’s invoices."
+      },
+      "payment": {
+        "received": "A customer’s payment has been received and set against an invoice."
       }
     }
   },

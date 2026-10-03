@@ -231,6 +231,74 @@ charge is ours until the container moves.
   ),
 
   /*
+    credit_note.issued and payment.received (customer).
+
+    Both close with what is still owed, because that is the number a customer
+    acts on: a reduction or a receipt that does not say where the account now
+    stands sends them to the statement to work it out.
+  */
+  t(
+    'credit_note.issued',
+    'en',
+    'Credit note {{seriesNo}} against invoice {{invoiceSeriesNo}}',
+    `
+Hello {{recipientName}}
+
+We have issued credit note {{seriesNo}} for {{total}} {{currency}} against invoice
+{{invoiceSeriesNo}}.
+
+The amount still due on invoice {{invoiceSeriesNo}} is now {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'credit_note.issued',
+    'ar',
+    'إشعار دائن {{seriesNo}} على الفاتورة {{invoiceSeriesNo}}',
+    `
+مرحباً {{recipientName}}
+
+أصدرنا لكم إشعاراً دائناً رقم {{seriesNo}} بمبلغ {{total}} {{currency}} على الفاتورة
+{{invoiceSeriesNo}}.
+
+وأصبح المبلغ المستحق على الفاتورة {{invoiceSeriesNo}} الآن {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'payment.received',
+    'en',
+    'Payment received for invoice {{seriesNo}}',
+    `
+Hello {{recipientName}}
+
+Thank you. We have received {{amount}} {{currency}} on {{receivedOn}} and set it
+against invoice {{seriesNo}}.
+
+The amount still due on invoice {{seriesNo}} is now {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'payment.received',
+    'ar',
+    'استلام دفعة للفاتورة {{seriesNo}}',
+    `
+مرحباً {{recipientName}}
+
+شكراً لكم. استلمنا مبلغ {{amount}} {{currency}} بتاريخ {{receivedOn}} وخصمناه من
+الفاتورة {{seriesNo}}.
+
+وأصبح المبلغ المستحق على الفاتورة {{seriesNo}} الآن {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+
+  /*
     supplier_invoice.variance_flagged (internal) — FR-FN-09.
 
     The subject carries the partner and the total, because this lands in

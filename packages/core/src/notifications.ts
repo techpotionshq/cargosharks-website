@@ -314,6 +314,29 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: ['seriesNo', 'total', 'currency', 'dueOn', 'daysOverdue'],
   }),
 
+  /*
+    The two letters a customer was never sent: their bill reduced, and their
+    money received. A credit note is a statutory document in their name and a
+    receipt is the answer to "did you get it"; both were silent, so the first a
+    customer heard of either was the statement. `outstanding` is what is still
+    owed on the invoice afterwards, at the currency's precision, because that
+    is the number the customer acts on.
+  */
+  event({
+    key: 'credit_note.issued',
+    audience: 'customer',
+    requirement: 'FR-NT-01',
+    summary: 'A credit note has been issued against one of the customer’s invoices.',
+    fields: ['seriesNo', 'invoiceSeriesNo', 'total', 'currency', 'outstanding'],
+  }),
+  event({
+    key: 'payment.received',
+    audience: 'customer',
+    requirement: 'FR-NT-01',
+    summary: 'A customer’s payment has been received and set against an invoice.',
+    fields: ['seriesNo', 'amount', 'currency', 'receivedOn', 'outstanding'],
+  }),
+
   // --- supplier invoice ----------------------------------------------------
   /*
     A supplier billed over what the job accrued, caught the moment the bill was
