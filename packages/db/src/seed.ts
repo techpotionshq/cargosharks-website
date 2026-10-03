@@ -11,7 +11,7 @@
  * there is no administrator yet.
  */
 
-import { isNull, sql } from 'drizzle-orm'
+import { isNull } from 'drizzle-orm'
 import { loadEnv } from './env'
 import {
   ADMIN_PERMISSIONS,

@@ -21,6 +21,17 @@ import { CHROME_ROUTE, LOCALE_COOKIE, collectPageErrors } from './support/harnes
 
 const ARABIC = /[؀-ۿ]/
 
+/*
+  The dock's Ctrl+K listener is attached on hydration. A key pressed after
+  `goto` resolves but before hydration lands on a page with no listener, so
+  under load the first press could open nothing. Next injects its route
+  announcer on hydration, which makes it the signal to wait for.
+*/
+async function gotoHydrated(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto(CHROME_ROUTE)
+  await page.locator('next-route-announcer').waitFor({ state: 'attached' })
+}
+
 /** The dock's own question box, in either language. */
 const questionBox = (page: import('@playwright/test').Page) =>
   page.getByRole('region', { name: /assistant|المساعد/i }).getByRole('textbox')
@@ -28,7 +39,7 @@ const questionBox = (page: import('@playwright/test').Page) =>
 test.describe('the assistant panel', () => {
   test('is offered on the board, and opens', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
 
     const launcher = page.getByRole('button', { name: /assistant/i })
     await expect(launcher).toBeVisible()
@@ -55,7 +66,7 @@ test.describe('the assistant panel', () => {
   */
   test('toggles from the keyboard, and Escape does not discard it', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
 
     const dock = page.getByRole('region', { name: /assistant|المساعد/i })
 
@@ -78,7 +89,7 @@ test.describe('the assistant panel', () => {
   */
   test('leaves the page behind it live', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await page.keyboard.press('ControlOrMeta+k')
     await expect(page.getByRole('region', { name: /assistant|المساعد/i })).toBeVisible()
 
@@ -92,11 +103,11 @@ test.describe('the assistant panel', () => {
     page,
   }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await page.keyboard.press('ControlOrMeta+k')
     await expect(page.getByRole('region', { name: /assistant|المساعد/i })).toBeVisible()
 
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await expect(page.getByRole('region', { name: /assistant|المساعد/i })).toBeVisible()
     expect(errors).toEqual([])
   })
@@ -111,7 +122,7 @@ test.describe('the assistant panel', () => {
   */
   test('puts the caret in the question box when it opens', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await page.keyboard.press('ControlOrMeta+k')
 
     await expect(questionBox(page)).toBeFocused()
@@ -128,7 +139,7 @@ test.describe('the assistant panel', () => {
   */
   test('says plainly that it cannot change anything', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await page.keyboard.press('ControlOrMeta+k')
 
     const dock = page.getByRole('region', { name: /assistant|المساعد/i })
@@ -138,7 +149,7 @@ test.describe('the assistant panel', () => {
 
   test('offers questions to start from', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await page.keyboard.press('ControlOrMeta+k')
 
     await expect(page.getByRole('button', { name: /overdue/i })).toBeVisible()
@@ -154,7 +165,7 @@ test.describe('the assistant panel', () => {
   */
   test('explains itself when no model is configured', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
     await page.keyboard.press('ControlOrMeta+k')
 
     await questionBox(page).fill('Which invoices are overdue?')
@@ -186,7 +197,7 @@ test.describe('the assistant panel in Arabic', () => {
 
   test('is labelled in Arabic, not in an English fallback', async ({ page }) => {
     const errors = collectPageErrors(page)
-    await page.goto(CHROME_ROUTE)
+    await gotoHydrated(page)
 
     // The server's own statement that this is the Arabic render — gating on it
     // turns a timing-dependent assertion into a deterministic one, exactly as
