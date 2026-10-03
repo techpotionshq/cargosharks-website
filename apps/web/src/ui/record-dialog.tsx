@@ -47,7 +47,7 @@ import {
   type Span,
 } from './form'
 import { Icon, type IconName } from './icon'
-import { Modal, ModalCancel, type ModalSize } from './modal'
+import { Modal, ModalCancel, type ModalSize, type ModalTriggerProps } from './modal'
 import { MENU_ITEM, MENU_ITEM_DANGER, buttonClass } from './control'
 import { useInMenu } from './menu'
 import { toast } from './toast'
@@ -177,7 +177,7 @@ export interface RecordDialogProps {
   /** Renders the trigger as an icon-only button — for a row's action column. */
   readonly iconOnly?: boolean
   /** Replaces the built-in trigger entirely. */
-  readonly trigger?: (props: { onClick: () => void }) => ReactNode
+  readonly trigger?: (props: ModalTriggerProps) => ReactNode
   /**
    * The record's version (its `updated_at`), for an edit dialog.
    *
@@ -282,10 +282,11 @@ export function RecordDialog({
       }
       trigger={
         trigger ??
-        (({ onClick }) => (
+        (({ onClick, invoker }) => (
           <button
             type="button"
             onClick={onClick}
+            {...invoker}
             title={iconOnly ? labels.open : undefined}
             aria-label={iconOnly ? labels.open : undefined}
             className={
