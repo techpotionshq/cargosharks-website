@@ -918,7 +918,7 @@ export const saveReferenceRecord = refuseForbidden(async function saveReferenceR
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await tx
           .update(target as any)
-          .set({ ...values, updatedAt: now })
+          .set({ ...values, updatedAt: new Date() })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .where(eq((target as any).id, data.recordId))
       } else {
