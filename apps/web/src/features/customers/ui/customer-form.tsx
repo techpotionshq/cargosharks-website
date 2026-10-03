@@ -9,6 +9,7 @@
  * action; there is no client-side fetch and no API route.
  */
 
+import type { Route } from 'next'
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { usePathname, useRouter } from 'next/navigation'
@@ -379,7 +380,7 @@ export function CustomerForm({
                 defaultValue={termsBranchId}
                 onChange={(event) =>
                   router.replace(
-                    `${pathname}?terms=${encodeURIComponent(event.target.value)}#commercial-terms`,
+                    `${pathname}?terms=${encodeURIComponent(event.target.value)}#commercial-terms` as Route,
                     { scroll: false },
                   )
                 }
