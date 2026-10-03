@@ -2224,7 +2224,7 @@
     "addressHint": "Line breaks are preserved",
     "city": "City",
     "country": "Country",
-    "countryHint": "Two-letter code",
+    "countryHint": "Printed on the documents as its two-letter code.",
     "contact": "Contact",
     "phone": "Phone",
     "email": "Email",
@@ -4112,7 +4112,9 @@
     "issueShipmentNotFound": "That shipment is not there, or is outside your branches.",
     "issueTypeNotSetUp": "The {kind, select, house_bill {house bill of lading} delivery_order {delivery order} packing_list {packing list} customs_pack {customs declaration pack} air_waybill {house air waybill} other {document}} is not set up as a document type in this deployment. An administrator adds it under Reference data → Document types; on a fresh install, run pnpm db:seed.",
     "issueNotStored": "The document was rendered, but its copy could not be stored, so nothing was issued. Try again; if it keeps failing, check the storage settings under Settings › Integrations.",
-    "issueUnknownKind": "That document cannot be issued from here."
+    "issueUnknownKind": "That document cannot be issued from here.",
+    "countryCode": "Choose the country from the list. Typed by hand, it is the two-letter ISO code, such as CN for China.",
+    "countryUnknown": "We do not hold that country code. Choose the country from the list."
   },
   "jobsValidation": {
     "numbersOnly": "Numbers only",

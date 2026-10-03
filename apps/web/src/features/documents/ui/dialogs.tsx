@@ -12,9 +12,10 @@
  * because the line breaks in them match what is stencilled on the carton.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
+import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { saveCargoLine, saveJobParty } from '../form-actions'
 
@@ -55,8 +56,25 @@ export async function PartyDialog({
   const session = await requireSession()
   if (!can(session, 'job.update')) return null
 
-  const [t, tc] = await Promise.all([getTranslations('parties'), getTranslations('common')])
+  const [t, tc, options] = await Promise.all([
+    getTranslations('parties'),
+    getTranslations('common'),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
+  ])
   const editing = Boolean(defaults?.id)
+
+  /*
+    The country is a choice from the countries we hold, not a box to type in.
+
+    It was a two-character text field, so "China" typed in became "Ch" at the
+    browser's length cap, and the code that reached the column's foreign key
+    was refused as a server error. A party saved under a code since retired
+    keeps it: it is put back into the list, or saving unchanged would clear it.
+  */
+  const countries =
+    defaults?.country && !options.countries.some((c) => c.value === defaults.country)
+      ? [{ value: defaults.country, label: defaults.country }, ...options.countries]
+      : options.countries
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'jobId', value: jobId },
@@ -97,12 +115,12 @@ export async function PartyDialog({
     },
     { kind: 'text', name: 'city', label: t('city'), span: 6, defaultValue: defaults?.city },
     {
-      kind: 'text',
+      kind: 'select',
       name: 'country',
       label: t('country'),
       span: 6,
-      maxLength: 2,
-      mono: true,
+      options: countries,
+      placeholder: tc('none'),
       hint: t('countryHint'),
       defaultValue: defaults?.country,
     },

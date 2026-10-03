@@ -264,6 +264,39 @@ describe.skipIf(!enabled)('shipment documents', () => {
       expect(state.errors?.email).toBeDefined()
     })
 
+    /*
+      A country typed as its name, or as two letters we hold no country for,
+      reached the column's foreign key and came back as a server error.
+    */
+    it('refuses a country that is a name or an unknown code, as a field error', async () => {
+      const jobId = await freshJob()
+      const named = await saveJobParty(
+        {},
+        form({ jobId, role: 'shipper', nameEn: 'Ningbo Exports', country: 'China' }),
+      )
+      expect(named.errors?.country).toBe('documentsValidation.countryCode')
+
+      const unknown = await saveJobParty(
+        {},
+        form({ jobId, role: 'shipper', nameEn: 'Ningbo Exports', country: 'QQ' }),
+      )
+      expect(unknown.errors?.country).toBe('documentsValidation.countryUnknown')
+      expect(unknown.values?.nameEn).toBe('Ningbo Exports')
+
+      const known = await saveJobParty(
+        {},
+        form({ jobId, role: 'shipper', nameEn: 'Ningbo Exports', country: 'cn' }),
+      )
+      expect(known.errors).toBeUndefined()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ country: jobParties.country })
+          .from(jobParties)
+          .where(eq(jobParties.jobId, jobId)),
+      )
+      expect(row?.country).toBe('CN')
+    })
+
     /** A blank email field is no email, not an invalid one. */
     it('treats a blank email as absent', async () => {
       const jobId = await freshJob()
