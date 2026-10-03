@@ -235,7 +235,9 @@ export function RecordDialog({
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (previous, form) => {
       const result = await action(previous, form)
-      if (result.ok) toast(labels.success)
+      // An action that succeeded with something to add (a login made but its
+      // invitation not mailed) says that instead of the plain "done".
+      if (result.ok) toast(result.message ?? labels.success)
       return result
     },
     {},

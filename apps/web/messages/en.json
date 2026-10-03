@@ -3855,7 +3855,8 @@
       "refused": "No email was sent: the mail service refused it. The account exists; check the outbound mail settings and try again.",
       "unreachable": "No email was sent: the mail service could not be reached. The account exists; try again in a few minutes.",
       "throttled": "Several links have already gone to this address in the last hour. Ask them to use the newest one, or try again later.",
-      "no_login": "No email was sent: this person has no login to set a password for."
+      "no_login": "No email was sent: this person has no login to set a password for.",
+      "logged": "No email was sent: mail on this deployment is set to log only. This person already has a password, so their link is not shown here; they can sign in with it, or reset it once mail is switched on."
     },
     "webhookEveryBranch": "Choose a branch. Sending every branch's events needs administrator rights in every branch.",
     "apiAccessNotAdministered": "You do not administer API access in that branch.",
@@ -3863,7 +3864,10 @@
     "keyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so mailbox passwords and integration credentials can be neither stored nor read.",
     "keyWrongLength": "MAILBOX_ENCRYPTION_KEY must be {expected} bytes, base64-encoded; this one decodes to {bytes}.",
     "fxRateExample": "A rate above zero, with up to eight decimals — for example 0.30700000.",
-    "fxSameCurrency": "Choose two different currencies."
+    "fxSameCurrency": "Choose two different currencies.",
+    "invitedNoMail": "Login created for {email}, but no invitation email went. Use Send sign-in link beside them for what to do next.",
+    "signInLinkLogged": "No email was sent: mail on this deployment is set to log only. Give {email} the link below yourself. It sets their password once and works for one hour.",
+    "signInLinkHandOver": "Set-password link, to pass on"
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",

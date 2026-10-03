@@ -25,6 +25,8 @@ const harness = vi.hoisted(() => ({
   session: null as unknown,
   /** The mail outcome a sign-in link reports — the service is not running here. */
   linkOutcome: 'not_configured' as string,
+  /** The link a log-only deployment hands back for an invitation. */
+  linkHandOver: null as string | null,
   linksSent: [] as string[],
   /** What each link was worded as, in order (D11). */
   linkIntents: [] as (string | undefined)[],
@@ -38,11 +40,13 @@ vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session })
   of which this suite stands up. What is asserted is that an invitation asks for
   the link, and that the administrator is told what became of it.
 */
-vi.mock('./sign-in-link', () => ({
+vi.mock('./sign-in-link', async (importOriginal) => ({
+  // `invitedNotice` is the real one: it only words the result.
+  ...(await importOriginal<typeof import('./sign-in-link')>()),
   sendSignInLink: async (email: string, intent?: string) => {
     harness.linksSent.push(email)
     harness.linkIntents.push(intent)
-    return harness.linkOutcome
+    return { outcome: harness.linkOutcome, handOver: harness.linkHandOver }
   },
 }))
 
@@ -396,6 +400,46 @@ describe.skipIf(!enabled)('administration', () => {
       harness.linkOutcome = 'not_configured'
     })
 
+    /*
+      Mail set to log only sent nothing and said so, and the person invited
+      had no way in. The link now reaches the administrator who asked.
+    */
+    it('hands over the link when mail is only logged, and nothing else', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Logged Only',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+
+      harness.linkOutcome = 'logged'
+      harness.linkHandOver = 'https://app.test/reset-password/token-1'
+      try {
+        const handed = await sendUserSignInLink({}, form({ principalId: principal!.id }))
+        expect(handed.ok).toBeDefined()
+        expect(handed.message).toBe(`adminValidation.signInLinkLogged:${JSON.stringify({ email })}`)
+        expect(handed.link?.href).toBe('https://app.test/reset-password/token-1')
+
+        // No link to show (a reset, which `sendSignInLink` never hands over):
+        // said plainly, with nothing to copy.
+        harness.linkHandOver = null
+        const withheld = await sendUserSignInLink({}, form({ principalId: principal!.id }))
+        expect(withheld.ok).toBeUndefined()
+        expect(withheld.message).toBe('adminValidation.signInLink.logged')
+        expect(withheld.link).toBeUndefined()
+      } finally {
+        harness.linkOutcome = 'not_configured'
+        harness.linkHandOver = null
+      }
+    })
+
     /**
      * D11. A first link is an invitation, a link to somebody who already has a
      * password is a reset; the reset wording told a new contact their
@@ -670,6 +714,9 @@ describe.skipIf(!enabled)('administration', () => {
       expect(row).toMatchObject({ type: 'customer_contact', customerId: CUSTOMER, locale: 'ar' })
       expect(row?.authUserId).toBeTruthy()
       expect(harness.linksSent).toEqual([email])
+      // Saved, and the confirmation says the invitation did not go.
+      expect(state.ok).toBeDefined()
+      expect(state.message).toBe(`adminValidation.invitedNoMail:${JSON.stringify({ email })}`)
 
       // And the customer page can see it — a portal login with no branch role
       // used to be invisible to every member of staff.

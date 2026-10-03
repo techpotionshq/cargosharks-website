@@ -55,6 +55,7 @@ const harness = vi.hoisted(() => ({
   principal: null as { locale: string; nameEn: string; nameAr: string | null } | null,
   mailed: [] as { to: string; subject: string; body: string; locale: string }[],
   mailThrows: false,
+  mailDriver: 'smtp' as 'smtp' | 'log',
   stored: [] as { storageKey: string; bytes: number }[],
   storePutThrows: false,
   signedUrlThrows: false,
@@ -114,7 +115,7 @@ vi.mock('../adapters/index', () => ({
   */
   mailSettings: async () => ({
     key: 'smtp',
-    driver: 'smtp',
+    driver: harness.mailDriver,
     live: true,
     missing: [],
     fromRow: false,
@@ -296,6 +297,7 @@ beforeEach(async () => {
   harness.principal = null
   harness.mailed.length = 0
   harness.mailThrows = false
+  harness.mailDriver = 'smtp'
   harness.stored.length = 0
   harness.storePutThrows = false
   harness.signedUrlThrows = false
@@ -796,6 +798,25 @@ describe('the internal API’s handlers', () => {
       expect(response.statusCode).toBe(502)
       expect(response.json()).toEqual({ error: 'mail_failed' })
       expect(JSON.stringify(response.json())).not.toContain('mailbox unavailable')
+    })
+
+    /*
+      A deployment set to log went to the relay anyway, so every invitation
+      failed against a relay nobody had configured.
+    */
+    it('sends nothing on the log driver, and says it was logged', async () => {
+      harness.mailDriver = 'log'
+      harness.mailThrows = true
+
+      const response = await post('/mail/password-reset', {
+        email: 'someone@example.com',
+        url: 'https://app.test/reset?token=abc',
+        intent: 'invitation',
+      })
+
+      expect(response.statusCode).toBe(202)
+      expect(response.json()).toEqual({ status: 'logged' })
+      expect(harness.mailed).toHaveLength(0)
     })
   })
 

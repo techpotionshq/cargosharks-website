@@ -1062,8 +1062,29 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     const locale = principal?.locale === 'ar' ? 'ar' : 'en'
     const name = (locale === 'ar' ? principal?.nameAr : principal?.nameEn) ?? ''
 
+    /*
+      Log only means log only, here as in the dispatcher.
+
+      This route went to the relay whatever the driver said, so on a deployment
+      deliberately set to log, every invitation failed against a relay nobody
+      configured and came back `mail_failed`, and an administrator inviting a
+      portal contact had no way to get them signed in. It now says `logged`,
+      which is the truth, and the web app, knowing nothing went, can hand the
+      link to the administrator who asked for it. The link itself is not
+      written to the log: it sets a password, and logs travel further than
+      the person it was made for.
+    */
+    const settings = await mailSettings()
+    if (settings.driver === 'log') {
+      request.log.info(
+        { to: email, intent: invitation ? 'invitation' : 'reset' },
+        'password reset mail not sent: MAIL_DRIVER=log',
+      )
+      return reply.code(202).send({ status: 'logged' })
+    }
+
     try {
-      await sendMail(smtpOptions(await mailSettings()), {
+      await sendMail(smtpOptions(settings), {
         to: email,
         subject: invitation
           ? locale === 'ar'
