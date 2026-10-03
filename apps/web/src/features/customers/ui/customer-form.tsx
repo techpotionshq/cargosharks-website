@@ -44,6 +44,10 @@ export interface CustomerFormLabels {
   readonly creditCurrency: string
   readonly freeTimeDays: string
   readonly defaultIncoterm: string
+  readonly marginKind: string
+  readonly marginValue: string
+  readonly marginHint: string
+  readonly marginKinds: Readonly<Record<'percent' | 'absolute' | 'target_sell', string>>
   readonly submit: string
   readonly submitting: string
   readonly saved: string
@@ -73,6 +77,8 @@ export interface CustomerDefaults {
   readonly creditCurrency?: string | null
   readonly freeTimeDays?: number | null
   readonly defaultIncoterm?: string | null
+  readonly defaultMarginKind?: string | null
+  readonly defaultMarginValue?: string | null
 }
 
 const FIELD = `h-10 w-full rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink transition-colors focus:bg-surface ${FOCUS_RING}`
@@ -310,7 +316,11 @@ export function CustomerForm({
         </div>
       </section>
 
-      <section className="rounded-card border border-line bg-surface p-5 shadow-card">
+      {/* Anchored: "Price it" links here when a customer has no house margin. */}
+      <section
+        id="commercial-terms"
+        className="scroll-mt-20 rounded-card border border-line bg-surface p-5 shadow-card"
+      >
         <h2 className="font-display text-title font-semibold text-ink">{labels.terms}</h2>
         <p className="mt-1 mb-4 text-body-sm text-ink-muted">{labels.termsHint}</p>
 
@@ -409,6 +419,44 @@ export function CustomerForm({
                 ),
               )}
             </select>
+          </Field>
+
+          <Field
+            label={labels.marginKind}
+            name="defaultMarginKind"
+            error={error('defaultMarginKind')}
+            span={3}
+          >
+            <select
+              id="defaultMarginKind"
+              name="defaultMarginKind"
+              defaultValue={value('defaultMarginKind')}
+              className={`${FIELD} ${error('defaultMarginKind') ? FIELD_ERROR : ''}`}
+            >
+              <option value="">{labels.choose}</option>
+              {(['percent', 'absolute', 'target_sell'] as const).map((kind) => (
+                <option key={kind} value={kind}>
+                  {labels.marginKinds[kind]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field
+            label={labels.marginValue}
+            name="defaultMarginValue"
+            error={error('defaultMarginValue')}
+            hint={labels.marginHint}
+            span={6}
+          >
+            <input
+              id="defaultMarginValue"
+              name="defaultMarginValue"
+              inputMode="decimal"
+              dir="ltr"
+              defaultValue={value('defaultMarginValue')}
+              className={`${FIELD} numeric ${error('defaultMarginValue') ? FIELD_ERROR : ''}`}
+            />
           </Field>
         </div>
 

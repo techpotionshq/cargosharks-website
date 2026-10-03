@@ -313,7 +313,8 @@ export async function extractEnquiry(
   const writable: { proposal: FieldProposal; wasEmpty: boolean }[] = []
 
   /*
-    Fields a coordinator is already looking at, skipped rather than duplicated.
+    Fields a coordinator is already looking at: the same answer is skipped
+    rather than duplicated, and a different answer replaces the open one.
 
     This job is not run once. pg-boss retries a provider that returned nothing,
     the same mail can be re-read after a prompt revision, and a backfill would
@@ -322,18 +323,32 @@ export async function extractEnquiry(
     twice is a queue people stop reading carefully, which costs exactly the
     attention the evidence span was added to buy.
 
-    Only *open* proposals are skipped. An applied one has filled its column, so
-    the emptiness check below discards it anyway; a rejected one was somebody
+    A *different* value is not a duplicate, though. The intake agent re-reads
+    the whole conversation every turn, and "China" in the first message
+    becoming "the port of Shanghai" in the third is the customer correcting
+    themselves. Skipping it left the stale proposal in the queue and in the
+    completeness check, which counted an origin no port resolves from as known.
+    So the open row is closed as `superseded` in the same transaction the newer
+    one is written in, which keeps the history (nothing is deleted) and leaves
+    exactly one open answer per field: the latest.
+
+    Only *open* proposals are considered. An applied one has filled its column,
+    so the emptiness check below discards it anyway; a rejected one was somebody
     saying "not that", and re-proposing it after a prompt revision is a new
     answer to a question they have already been asked once — which is worth
     seeing, and is how a revision proves itself.
   */
-  const alreadyOpen = new Set(context.openProposals)
+  const openByField = new Map<string, { id: string; value: string }[]>()
+  for (const open of context.openProposals) {
+    openByField.set(open.field, [...(openByField.get(open.field) ?? []), open])
+  }
+  const superseded: string[] = []
 
   for (const proposal of allowed) {
     const column = COLUMN[proposal.field as EnquiryField]
     if (!column) continue
-    if (alreadyOpen.has(proposal.field)) continue
+    const open = openByField.get(proposal.field) ?? []
+    if (open.some((o) => sameAnswer(o.value, proposal.value))) continue
 
     const current = context.current[proposal.field as EnquiryField]
     const wasEmpty = current === null || current === undefined || current === ''
@@ -373,6 +388,7 @@ export async function extractEnquiry(
     }
 
     writable.push({ proposal, wasEmpty })
+    superseded.push(...open.map((o) => o.id))
   }
 
   if (writable.length === 0) {
@@ -385,6 +401,27 @@ export async function extractEnquiry(
 
   let applied = 0
   await withActor(actor, async (tx) => {
+    if (superseded.length > 0) {
+      // Decided by the system, which the attribution check requires of every
+      // state but `proposed` and `refused`: nobody chose this, a newer read did.
+      const now = new Date()
+      await tx
+        .update(extractionProposals)
+        .set({
+          status: 'superseded',
+          decidedById: SYSTEM_PRINCIPAL_ID,
+          decidedAt: now,
+          closedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            inArray(extractionProposals.id, superseded),
+            // A coordinator who accepted it while the model read has the last word.
+            eq(extractionProposals.status, 'proposed'),
+          ),
+        )
+    }
     await tx.insert(extractionProposals).values(
       writable.map(({ proposal, wasEmpty }) => ({
         branchId: input.branchId,
@@ -414,6 +451,17 @@ export async function extractEnquiry(
   })
 
   return { invocationId, proposed: writable.length, applied, refused: refusedNames, occupied }
+}
+
+/**
+ * Whether two readings of a field say the same thing, ignoring case and spacing.
+ *
+ * "Shanghai" and "shanghai " are one answer read twice, and superseding one with
+ * the other would churn the queue for nothing; "China" and "Shanghai" are not.
+ */
+export function sameAnswer(a: string, b: string): boolean {
+  const fold = (v: string) => v.trim().replace(/\s+/g, ' ').toLowerCase()
+  return fold(a) === fold(b)
 }
 
 /** The confidence ceiling when the setting supplies none — high, on purpose. */
@@ -492,7 +540,7 @@ interface Loaded {
   readonly body: string
   readonly incoterms: readonly string[]
   /** Fields already sitting unanswered in the review queue for this enquiry. */
-  readonly openProposals: readonly string[]
+  readonly openProposals: readonly { id: string; field: string; value: string }[]
   readonly current: Readonly<Record<EnquiryField, string | null>>
 }
 
@@ -543,7 +591,11 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
           .where(eq(incotermsTable.isActive, true)),
       () =>
         tx
-          .select({ field: extractionProposals.field })
+          .select({
+            id: extractionProposals.id,
+            field: extractionProposals.field,
+            value: extractionProposals.value,
+          })
           .from(extractionProposals)
           .where(
             and(
@@ -565,7 +617,11 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
       subject: mail.subject,
       body: mail.body,
       incoterms: codes.map((c: { code: string }) => c.code),
-      openProposals: open.map((row: { field: string }) => row.field),
+      openProposals: open.map((row: { id: string; field: string; value: string }) => ({
+        id: row.id,
+        field: row.field,
+        value: row.value,
+      })),
       current: {
         mode: asText(row.mode),
         tradeDirection: asText(row.tradeDirection),

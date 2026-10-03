@@ -34,7 +34,6 @@ import {
   money as moneyOf,
   planCreditNote,
   positionFromDb,
-  quoteMachine,
   round,
   toScale,
   todayIn,
@@ -55,6 +54,7 @@ import {
   paymentAllocations,
   payments,
   latestFxRate,
+  moveQuote,
   quoteLines,
   quotes,
   rederiveInvoiceSettlement,
@@ -423,124 +423,20 @@ export const setQuoteStatus = refuseForbidden(async function setQuoteStatus(
     status === 'accepted' ? 'quote.accept' : status === 'rejected' ? 'quote.reject' : 'quote.send'
   assertCan(session, permission)
 
-  let lapsed = false
-  try {
-    await withActor(session.actor, async (tx) => {
-      /*
-        The customer comes from the enquiry, because a quote does not carry one.
-
-        `quotes` references an enquiry and a branch; the customer is the
-        enquiry's. That join is here rather than in the notification dispatcher
-        for a reason worth stating once: the outbox row records *who the event
-        was about at the time it happened*, so a customer later reassigned on
-        the enquiry does not silently redirect a notification about a quotation
-        that was already sent.
-      */
-      const [current] = await tx
-        .select({
-          status: quotes.status,
-          reference: quotes.reference,
-          branchId: quotes.branchId,
-          enquiryId: quotes.enquiryId,
-          totalSell: quotes.totalSell,
-          currency: quotes.currency,
-          validUntil: quotes.validUntil,
-          customerId: enquiries.customerId,
-        })
-        .from(quotes)
-        .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
-        .where(eq(quotes.id, quoteId))
-        .limit(1)
-        /*
-          Locked, so a double-click on Send is two transactions in a row
-          rather than two at once: the second reads `sent`, the machine
-          refuses sent → sent, and the customer gets one `quote.sent` mail
-          instead of two (S17).
-        */
-        .for('update', { of: quotes })
-      if (!current) throw new Error('not_found')
-
-      assertTransition(quoteMachine, current.status, status as 'sent')
-
-      /*
-        A lapsed quotation is not an offer anyone can send or accept (S9). The
-        validity is a calendar day, compared in the branch's zone, so the last
-        valid day is valid all day. Rejecting one stays allowed — a customer
-        may well say no to an offer that ran out.
-      */
-      if (
-        (status === 'sent' || status === 'accepted') &&
-        current.validUntil !== null &&
-        current.validUntil < todayIn()
-      ) {
-        lapsed = true
-        return
-      }
-
-      await tx
-        .update(quotes)
-        .set({
-          status: status as 'sent',
-          sentAt: status === 'sent' ? sql`coalesce(${quotes.sentAt}, now())` : undefined,
-          decidedAt: ['accepted', 'rejected'].includes(status) ? new Date() : undefined,
-          updatedAt: new Date(),
-        })
-        .where(eq(quotes.id, quoteId))
-
-      // FR-NT-01. In this transaction, so a quote that fails to move never
-      // announces itself to the customer (§7.4).
-      if (status === 'sent') {
-        await tx.insert(notificationOutbox).values({
-          branchId: current.branchId,
-          eventKey: 'quote.sent',
-          enquiryId: current.enquiryId,
-          customerId: current.customerId,
-          payload: {
-            reference: current.reference,
-            /*
-              At the currency's own precision, not the column's.
-
-              `numeric(19,6)` comes back as `1250.000000`, and a quotation that
-              quotes a KWD figure to six decimal places reads as a machine
-              rather than as a price. `toScale` puts it at the three decimals
-              KWD actually has.
-            */
-            total: toScale(fromDb(current.totalSell, current.currency)),
-            currency: current.currency,
-            validUntil: current.validUntil ?? '',
-          },
-        })
-
-        /*
-          Sending the quotation is what makes the enquiry `quoted` (S1).
-          Nothing moved it out of `rating` — pricing only ever moved `new` and
-          `assigned` — and `won` is legal only from `quoted`, so an enquiry
-          that went through an RFQ could be sent, accepted and then never
-          closed as won. `rating → quoted` is the machine's own transition,
-          gated on the `quote.send` this action already asserted.
-        */
-        await tx
-          .update(enquiries)
-          .set({
-            status: 'quoted',
-            firstRespondedAt: sql`coalesce(${enquiries.firstRespondedAt}, now())`,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(enquiries.id, current.enquiryId),
-              inArray(enquiries.status, ['new', 'assigned', 'rating']),
-            ),
-          )
-      }
-    })
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('transition')) {
-      return failWith(tv('quoteBadTransition'))
-    }
-    throw error
+  /*
+    The move itself is `moveQuote` in `@qabandi/db`, shared with the customer
+    portal's Accept and Decline (D12), so the machine, the validity rule, the
+    outbox and the enquiry's status are one implementation whichever door the
+    decision came through.
+  */
+  const moved = await withActor(session.actor, (tx) =>
+    moveQuote(tx, quoteId, status as 'sent', { by: 'staff' }),
+  )
+  if (!moved.ok) {
+    if (moved.refusal === 'transition') return failWith(tv('quoteBadTransition'))
+    if (moved.refusal === 'lapsed') return failWith(tv('quoteLapsed'))
+    throw new Error('not_found')
   }
-  if (lapsed) return failWith(tv('quoteLapsed'))
 
   revalidatePath('/quotes')
   revalidatePath(`/quotes/${quoteId}`)

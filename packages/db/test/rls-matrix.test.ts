@@ -37,6 +37,7 @@ import {
   chargeLines,
   createDatabase,
   customers,
+  enquiries,
   invoices,
   jobMilestones,
   jobPartners,
@@ -44,6 +45,8 @@ import {
   partners,
   principalBranchRoles,
   principals,
+  quoteLines,
+  quotes,
   roles,
   systemActor,
   withActor,
@@ -72,6 +75,15 @@ const JOB_DXB = '00000000-0000-7000-8000-0000000001e2'
 const INVOICE_KWI = '00000000-0000-7000-8000-0000000001f1'
 const INVOICE_DXB = '00000000-0000-7000-8000-0000000001f2'
 const CHARGE_KWI = '00000000-0000-7000-8000-000000000201'
+/** D12: issued documents and sent offers, which is all a portal contact may hold. */
+const INVOICE_KWI_ISSUED = '00000000-0000-7000-8000-0000000001f3'
+const INVOICE_DXB_ISSUED = '00000000-0000-7000-8000-0000000001f4'
+const ENQUIRY_A = '00000000-0000-7000-8000-000000000221'
+const ENQUIRY_B = '00000000-0000-7000-8000-000000000222'
+const QUOTE_A_SENT = '00000000-0000-7000-8000-000000000231'
+const QUOTE_A_DRAFT = '00000000-0000-7000-8000-000000000232'
+const QUOTE_A_REPLACED = '00000000-0000-7000-8000-000000000233'
+const QUOTE_B_SENT = '00000000-0000-7000-8000-000000000234'
 const MILESTONE_INTERNAL = '00000000-0000-7000-8000-000000000211'
 
 const REVOKED_ADMIN = '00000000-0000-7000-8000-0000000001a9'
@@ -97,6 +109,13 @@ const customerAContact: Actor = {
   type: 'customer_contact',
   branchIds: [],
   customerId: CUSTOMER_A,
+}
+/** The second company's portal user, D12's "a second customer sees nothing". */
+const customerBContact: Actor = {
+  principalId: '00000000-0000-7000-8000-0000000001a5',
+  type: 'customer_contact',
+  branchIds: [],
+  customerId: CUSTOMER_B,
 }
 const agentContact: Actor = {
   principalId: '00000000-0000-7000-8000-0000000001a4',
@@ -285,6 +304,92 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
               currency: currencyCode,
             },
           ])
+          .onConflictDoNothing()
+
+        // Issued, so a portal contact may read them (`invoices_customer_reads`).
+        // The drafts above stay, as what a contact must not see.
+        await tx
+          .insert(invoices)
+          .values([
+            {
+              id: INVOICE_KWI_ISSUED,
+              branchId: KUWAIT,
+              customerId: CUSTOMER_A,
+              currency: currencyCode,
+              status: 'issued',
+              seriesNo: 'MTX-KWI-000001',
+              issuedAt: new Date('2026-06-01T09:00:00Z'),
+            },
+            {
+              id: INVOICE_DXB_ISSUED,
+              branchId: DUBAI,
+              customerId: CUSTOMER_B,
+              currency: currencyCode,
+              status: 'issued',
+              seriesNo: 'MTX-DXB-000001',
+              issuedAt: new Date('2026-06-01T09:00:00Z'),
+            },
+          ])
+          .onConflictDoNothing()
+
+        await tx
+          .insert(enquiries)
+          .values([
+            {
+              id: ENQUIRY_A,
+              reference: 'MTX-ENQ-A',
+              branchId: KUWAIT,
+              customerId: CUSTOMER_A,
+              mode: 'air',
+              tradeDirection: 'import',
+            },
+            {
+              id: ENQUIRY_B,
+              reference: 'MTX-ENQ-B',
+              branchId: DUBAI,
+              customerId: CUSTOMER_B,
+              mode: 'air',
+              tradeDirection: 'export',
+            },
+          ])
+          .onConflictDoNothing()
+
+        const quote = (id: string, enquiryId: string, branchId: string, version: number) => ({
+          id,
+          reference: `MTX-QTE-${id.slice(-3)}`,
+          enquiryId,
+          branchId,
+          version,
+          currency: currencyCode,
+          totalSell: '100.000',
+          totalCost: '80.000',
+        })
+        await tx
+          .insert(quotes)
+          .values([
+            { ...quote(QUOTE_A_REPLACED, ENQUIRY_A, KUWAIT, 1), status: 'superseded' as const },
+            { ...quote(QUOTE_A_SENT, ENQUIRY_A, KUWAIT, 2), status: 'sent' as const },
+            { ...quote(QUOTE_A_DRAFT, ENQUIRY_A, KUWAIT, 3), status: 'draft' as const },
+            { ...quote(QUOTE_B_SENT, ENQUIRY_B, DUBAI, 1), status: 'sent' as const },
+          ])
+          .onConflictDoNothing()
+        await tx
+          .update(quotes)
+          .set({ supersededById: QUOTE_A_SENT })
+          .where(eq(quotes.id, QUOTE_A_REPLACED))
+        await tx
+          .insert(quoteLines)
+          .values(
+            [QUOTE_A_SENT, QUOTE_A_DRAFT, QUOTE_A_REPLACED, QUOTE_B_SENT].map((quoteId, i) => ({
+              id: `00000000-0000-7000-8000-00000000024${i}`,
+              quoteId,
+              chargeTypeId,
+              basis: 'flat',
+              rate: '100.000',
+              amount: '100.000',
+              currency: currencyCode,
+            })),
+          )
           .onConflictDoNothing()
 
         // Cost data. A customer must never see what the job cost the operator,
@@ -640,17 +745,189 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
     expect((result.rows[0] as CountRow).n).toBe(0)
   })
 
-  /** A customer contact sees their own invoice and not the other customer's. */
-  it("scopes invoices to the contact's own customer", async () => {
+  /**
+   * A customer contact sees their own issued invoice and not the other
+   * customer's, and not their own draft either, since D12: a draft can still
+   * change and has no number, and the portal now reads this table.
+   */
+  it("scopes invoices to the contact's own customer, issued only", async () => {
     const result = await withActor(
       customerAContact,
       async (tx) =>
         tx.execute(sql`
-          select id::text from invoices where id in (${INVOICE_KWI}, ${INVOICE_DXB})
+          select id::text from invoices
+           where id in (${INVOICE_KWI}, ${INVOICE_DXB}, ${INVOICE_KWI_ISSUED}, ${INVOICE_DXB_ISSUED})
         `),
       app,
     )
-    expect((result.rows as { id: string }[]).map((r) => r.id)).toEqual([INVOICE_KWI])
+    expect((result.rows as { id: string }[]).map((r) => r.id)).toEqual([INVOICE_KWI_ISSUED])
+  })
+
+  // ------------------------------------------------------------------------
+  // The portal's quotations and invoices, D12
+  // ------------------------------------------------------------------------
+
+  const visible = async (actor: Actor, table: 'quotes' | 'quote_lines', ids: string[]) => {
+    const column = table === 'quotes' ? sql`id` : sql`quote_id`
+    const result = await withActor(
+      actor,
+      async (tx) =>
+        tx.execute(sql`
+          select ${column}::text as id from ${sql.identifier(table)}
+           where ${column} in (${sql.join(
+             ids.map((id) => sql`${id}`),
+             sql`, `,
+           )})
+           order by 1
+        `),
+      app,
+    )
+    return (result.rows as { id: string }[]).map((r) => r.id)
+  }
+
+  const ALL_QUOTES = [QUOTE_A_SENT, QUOTE_A_DRAFT, QUOTE_A_REPLACED, QUOTE_B_SENT]
+
+  /** Sent and current only: never a draft, never a version the branch replaced. */
+  it('shows a customer contact only their own sent, current quotation', async () => {
+    expect(await visible(customerAContact, 'quotes', ALL_QUOTES)).toEqual([QUOTE_A_SENT])
+    // The lines follow their quotation through `quote_lines_scope`'s subquery.
+    expect(await visible(customerAContact, 'quote_lines', ALL_QUOTES)).toEqual([QUOTE_A_SENT])
+  })
+
+  it("shows a second customer's portal user none of the first's", async () => {
+    expect(await visible(customerBContact, 'quotes', ALL_QUOTES)).toEqual([QUOTE_B_SENT])
+    expect(await visible(customerBContact, 'quote_lines', ALL_QUOTES)).toEqual([QUOTE_B_SENT])
+    const invoices = await withActor(
+      customerBContact,
+      async (tx) => tx.execute(sql`select id::text from invoices`),
+      app,
+    )
+    expect((invoices.rows as { id: string }[]).map((r) => r.id)).toEqual([INVOICE_DXB_ISSUED])
+  })
+
+  /** Staff are untouched by the customer-only restrictive policies. */
+  it('still shows staff the drafts and replaced versions in their branch', async () => {
+    expect(await visible(kuwaitStaff, 'quotes', ALL_QUOTES)).toEqual(
+      [QUOTE_A_SENT, QUOTE_A_DRAFT, QUOTE_A_REPLACED].sort(),
+    )
+  })
+
+  /**
+   * The one write a portal contact makes, and nothing past it.
+   *
+   * Each attempt runs in a transaction that is then rolled back, so the fixture
+   * quote stays `sent` for the next run against the same database.
+   */
+  class Rollback extends Error {}
+  async function attempt(actor: Actor, statement: ReturnType<typeof sql>) {
+    let rowCount: number | null = null
+    try {
+      await withActor(
+        actor,
+        async (tx) => {
+          rowCount = (await tx.execute(statement)).rowCount
+          throw new Rollback()
+        },
+        app,
+      )
+    } catch (error) {
+      if (!(error instanceof Rollback)) throw error
+    }
+    return { rowCount }
+  }
+
+  it('lets a customer contact answer their own sent quotation', async () => {
+    const result = await attempt(
+      customerAContact,
+      sql`update quotes set status = 'accepted', decided_at = now() where id = ${QUOTE_A_SENT}`,
+    )
+    expect(result.rowCount).toBe(1)
+  })
+
+  it('refuses a customer contact any other quotation write', async () => {
+    // Another company's offer, a draft and a replaced version: not there to touch.
+    for (const id of [QUOTE_B_SENT, QUOTE_A_DRAFT, QUOTE_A_REPLACED]) {
+      expectNoRowsAffected(
+        await attempt(
+          customerAContact,
+          sql`update quotes set status = 'accepted' where id = ${id}`,
+        ),
+        `a portal contact answered quote ${id}`,
+      )
+    }
+    // Their own sent offer, moved anywhere but to a decision.
+    await expectRlsViolation(
+      withActor(
+        customerAContact,
+        async (tx) =>
+          tx.execute(sql`update quotes set status = 'draft' where id = ${QUOTE_A_SENT}`),
+        app,
+      ),
+    )
+    await expectRlsViolation(
+      withActor(
+        customerAContact,
+        async (tx) =>
+          tx.execute(sql`
+            insert into quote_lines (quote_id, charge_type_id, basis, rate, amount, currency)
+            values (${QUOTE_A_SENT}, ${chargeTypeId}, 'flat', 1, 1, ${currencyCode})
+          `),
+        app,
+      ),
+    )
+  })
+
+  it('refuses a customer contact any invoice write', async () => {
+    expectNoRowsAffected(
+      await attempt(
+        customerAContact,
+        sql`update invoices set amount_paid = total where id = ${INVOICE_KWI_ISSUED}`,
+      ),
+      'a portal contact marked their own invoice paid',
+    )
+    await expectRlsViolation(
+      withActor(
+        customerAContact,
+        async (tx) =>
+          tx.execute(sql`
+            insert into invoices (branch_id, customer_id, currency)
+            values (${KUWAIT}, ${CUSTOMER_A}, ${currencyCode})
+          `),
+        app,
+      ),
+    )
+  })
+
+  /** The branch hears the answer, and a contact can raise nothing else. */
+  it('lets a customer contact raise only their own decision notice', async () => {
+    const raise = (eventKey: string, enquiryId: string, branchId: string) =>
+      sql`insert into notification_outbox (branch_id, event_key, enquiry_id, customer_id, payload)
+          values (${branchId}, ${eventKey}, ${enquiryId}, ${CUSTOMER_A}, '{}'::jsonb)`
+
+    expect(
+      (await attempt(customerAContact, raise('quote.accepted', ENQUIRY_A, KUWAIT))).rowCount,
+    ).toBe(1)
+    await expectRlsViolation(
+      withActor(
+        customerAContact,
+        async (tx) => tx.execute(raise('quote.sent', ENQUIRY_A, KUWAIT)),
+        app,
+      ),
+    )
+    await expectRlsViolation(
+      withActor(
+        customerAContact,
+        async (tx) => tx.execute(raise('quote.accepted', ENQUIRY_B, DUBAI)),
+        app,
+      ),
+    )
+    await expectRlsViolation(
+      withActor(
+        customerAContact,
+        async (tx) => tx.execute(raise('quote.accepted', ENQUIRY_A, DUBAI)),
+        app,
+      ),
+    )
   })
 
   /** `customer_visible = false` means what it says, on a job they can see. */

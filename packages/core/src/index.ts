@@ -35,6 +35,7 @@ export * from './grouping'
 export * from './assistant'
 export * from './labels'
 export * from './time'
+export * from './correspondence'
 
 /**
  * `./import` is deliberately *not* re-exported here.

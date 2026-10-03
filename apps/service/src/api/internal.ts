@@ -44,6 +44,7 @@ import { DocumentTypeNotSeededError, storeJobDocument } from '../pdf/store'
 import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
 import { extractSupplierInvoice } from '../workers/invoice-extract'
 import { draftQuoteCoverNote } from '../workers/quote-cover-note'
+import { sendEnquiryReply } from '../workers/enquiry-reply'
 import { AiUnavailableError } from '../ai/ledger'
 import { ask, askStreaming } from '../ai/assistant'
 import { closeThread, historyFor, listThreads, readThread, recordExchange } from '../ai/threads'
@@ -79,9 +80,20 @@ interface VoidExportRequest {
   readonly reason?: string
 }
 
+interface EnquiryReplyRequest {
+  readonly actor?: Actor
+  readonly body?: string
+}
+
 interface PasswordResetRequest {
   readonly email: string
   readonly url: string
+  /**
+   * Why the link is being sent. `invitation` is an administrator's first
+   * sign-in link to somebody who has never had a password; anything else is a
+   * reset. Only the wording changes: the link and its expiry are the same.
+   */
+  readonly intent?: 'reset' | 'invitation'
 }
 
 interface AssistantRequest {
@@ -968,12 +980,53 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     }
   })
 
+  /**
+   * A coordinator's reply to the customer, from the enquiry screen (D5).
+   *
+   * Here rather than in the web app because the provider credentials are only
+   * here; see `workers/enquiry-reply.ts`. The actor both scopes what may be
+   * answered (RLS) and is the message's author, which is what makes the intake
+   * agent stand down. Each refusal travels as a code the web translates: 422
+   * for the ones the coordinator can act on (nothing to answer, the WhatsApp
+   * window closed), 503 for a channel switched off, 502 for a provider that
+   * refused, with its words beside the code.
+   */
+  app.post<{ Params: { id: string }; Body: EnquiryReplyRequest }>(
+    '/enquiries/:id/reply',
+    async (request, reply) => {
+      const { actor, body } = request.body ?? {}
+      if (!actor?.principalId || !actor.type) {
+        return reply.code(400).send({ error: 'no_actor' })
+      }
+      if (typeof body !== 'string') return reply.code(400).send({ error: 'empty' })
+
+      const result = await sendEnquiryReply({ actor, enquiryId: request.params.id, body })
+      if (result.ok) {
+        return reply.send({ messageId: result.messageId, channel: result.channel })
+      }
+      const status =
+        result.code === 'not_found'
+          ? 404
+          : result.code === 'empty' || result.code === 'too_long'
+            ? 400
+            : result.code === 'channel_off'
+              ? 503
+              : result.code === 'send_failed'
+                ? 502
+                : 422
+      return reply.code(status).send({ error: result.code, detail: result.detail ?? null })
+    },
+  )
+
   app.post<{ Body: PasswordResetRequest }>('/mail/password-reset', async (request, reply) => {
-    const { email, url } = request.body ?? {}
+    const { email, url, intent } = request.body ?? {}
 
     if (typeof email !== 'string' || typeof url !== 'string' || !email || !url) {
       return reply.code(400).send({ error: 'invalid_request' })
     }
+    // A newly invited customer contact used to receive "Reset your password ...
+    // your current password still works" about a password they never had.
+    const invitation = intent === 'invitation'
 
     /*
       The recipient's own language.
@@ -1007,8 +1060,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     try {
       await sendMail(smtpOptions(await mailSettings()), {
         to: email,
-        subject: locale === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset your password',
-        body: passwordResetBody(locale, name, url),
+        subject: invitation
+          ? locale === 'ar'
+            ? 'دعوة لتعيين كلمة المرور'
+            : 'You have been invited, set your password'
+          : locale === 'ar'
+            ? 'إعادة تعيين كلمة المرور'
+            : 'Reset your password',
+        body: invitation ? invitationBody(locale, name, url) : passwordResetBody(locale, name, url),
         locale,
       })
       return reply.code(202).send({ status: 'sent' })
@@ -1231,5 +1290,43 @@ function passwordResetBody(locale: 'en' | 'ar', name: string, url: string): stri
     '',
     'If you did not ask for this, no action is needed — your current password',
     'still works and nothing has changed.',
+  ].join(NEWLINE)
+}
+
+/**
+ * The invitation, in the recipient's language: the same set-password link as
+ * a reset, worded for somebody who has never had a password. Fixed in code for
+ * the same reason as the reset mail above, its link is what an attacker would
+ * most like to point elsewhere.
+ */
+function invitationBody(locale: 'en' | 'ar', name: string, url: string): string {
+  const NEWLINE = '\n'
+
+  if (locale === 'ar') {
+    return [
+      `مرحباً ${name}`.trim(),
+      '',
+      'تمت دعوتكم لاستخدام حساب جديد. لتعيين كلمة المرور وتسجيل الدخول، يرجى فتح الرابط التالي:',
+      '',
+      url,
+      '',
+      'ينتهي هذا الرابط خلال ساعة واحدة ويصلح لمرة واحدة فقط. إذا انتهت صلاحيته، اطلبوا من الشخص الذي دعاكم إرسال رابط جديد.',
+      '',
+      'إذا لم تكونوا تتوقعون هذه الدعوة، يمكنكم تجاهل هذه الرسالة.',
+    ].join(NEWLINE)
+  }
+
+  return [
+    `Hello ${name}`.trim(),
+    '',
+    'You have been invited to a new account. To set your password and sign in,',
+    'open the link below:',
+    '',
+    url,
+    '',
+    'The link expires in one hour and can be used once. If it has expired, ask',
+    'the person who invited you to send a new one.',
+    '',
+    'If you were not expecting this invitation, you can ignore this email.',
   ].join(NEWLINE)
 }

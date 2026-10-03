@@ -460,7 +460,8 @@
     "progress": "{done} of {total} steps",
     "documentCount": "{count, plural, one {# document} other {# documents}}",
     "etaPassed": "Past its ETA",
-    "backToShipments": "All shipments"
+    "backToShipments": "All shipments",
+    "sections": "Your account"
   },
   "agent": {
     "title": "Assigned shipments",
@@ -703,7 +704,15 @@
     "restore": "Bring back",
     "restoreTitle": "Bring {name} back",
     "restoreDescription": "Makes them selectable again on new work.",
-    "restoreNote": "They become selectable again everywhere they were before."
+    "restoreNote": "They become selectable again everywhere they were before.",
+    "marginKind": "House margin",
+    "marginValue": "Margin",
+    "marginHint": "Used when only a buying rate covers a lane. A percentage is of cost; a fixed amount or selling price is in the branch currency.",
+    "marginKinds": {
+      "percent": "Percentage over cost",
+      "absolute": "Fixed amount over cost",
+      "target_sell": "Fixed selling price"
+    }
   },
   "setup": {
     "title": "Finish setting up",
@@ -1282,7 +1291,14 @@
       "walk_in": "Walk-in"
     },
     "containers": "Containers",
-    "containersHint": "Sea FCL only — the quotation is priced per container."
+    "containersHint": "Sea FCL only — the quotation is priced per container.",
+    "editOpen": "Edit details",
+    "editTitle": "Edit enquiry details",
+    "editDescription": "Correct what the customer asked for. A field you change here settles any suggestion read for it from their messages.",
+    "editSubmit": "Save changes",
+    "editDone": "Enquiry updated",
+    "containerType": "Container type",
+    "whoEditHint": "The branch and the channel it came in by stay as they are."
   },
   "partnerForm": {
     "open": "Add partner",
@@ -1827,7 +1843,8 @@
     "bookedAs": "Booked as shipment",
     "reviewTitle": "Check this draft before sending it",
     "reviewNegativeMargin": "{charge} sells below what it costs ({margin}% margin).",
-    "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it."
+    "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it.",
+    "customerReason": "Customer's reason for declining"
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
@@ -2407,7 +2424,9 @@
     "source": {
       "consol_allocation": "Allocated from a consolidation",
       "consol_allocation_reversal": "Reversed consolidation allocation",
-      "free_time_clock": "Accrued by the free-time clock"
+      "free_time_clock": "Accrued by the free-time clock",
+      "quote_line": "From the accepted quotation",
+      "quote_cost": "Buy rate on the accepted quotation"
     },
     "match": {
       "na": "—",
@@ -2870,7 +2889,9 @@
       },
       "quote": {
         "sent": "A quotation is sent",
-        "expiring": "A quotation is about to expire"
+        "expiring": "A quotation is about to expire",
+        "accepted": "A customer accepts a quotation",
+        "declined": "A customer declines a quotation"
       },
       "enquiry": {
         "created": "An enquiry arrives",
@@ -2927,7 +2948,9 @@
       },
       "quote": {
         "sent": "A quotation has been sent to the customer.",
-        "expiring": "A sent quotation reaches the end of its validity soon."
+        "expiring": "A sent quotation reaches the end of its validity soon.",
+        "accepted": "A customer accepted a quotation on the portal.",
+        "declined": "A customer declined a quotation on the portal."
       },
       "job": {
         "created": "A shipment has been booked.",
@@ -3990,8 +4013,8 @@
     "suggestionFieldFilled": "That field has been filled in since, so the suggestion was not applied.",
     "actionFailed": "That did not work.",
     "noneApplied": "None could be applied — those fields have since been filled in.",
-    "suggestionNotOnFile": "“{value}” is not a place or commodity on file, so it was not applied. Add it, or set the field by hand.",
-    "suggestionAmbiguous": "“{value}” matches {count} records, and guessing between them is how the wrong one gets written. Set the field by hand.",
+    "suggestionNotOnFile": "“{value}” is not a place or commodity on file, so it was not applied. Add it, or choose the field yourself with Edit details.",
+    "suggestionAmbiguous": "“{value}” matches {count} records, and guessing between them is how the wrong one gets written. Choose the right one yourself with Edit details.",
     "suggestionInvalid": "“{value}” is not a valid value — expected {expected}.",
     "suggestionUnknownField": "That suggestion names a field this screen cannot set.",
     "customerOrEmail": "An enquiry needs either a known customer or a contact email",
@@ -4008,7 +4031,9 @@
     "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry.",
     "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
     "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
-    "notPermitted": "Your role does not allow this in this enquiry's branch."
+    "notPermitted": "Your role does not allow this in this enquiry's branch.",
+    "editClosed": "This enquiry is closed, so its details can no longer be changed.",
+    "containerTypeUnknown": "Choose a container type from the list."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",
@@ -4068,7 +4093,8 @@
     "quoteNotBookable": "That quotation could not be found.",
     "quoteNotAccepted": "Only an accepted quotation can be booked.",
     "quoteOtherCustomer": "That quotation is for a different customer or branch.",
-    "quoteAlreadyBooked": "A shipment has already been opened from that quotation."
+    "quoteAlreadyBooked": "A shipment has already been opened from that quotation.",
+    "quoteNoFxRate": "This quotation is priced in a currency with no exchange rate to the branch's currency on file. Add the rate, then book it."
   },
   "supportValidation": {
     "supportSessionCannotGrant": "A support session cannot grant support access",
@@ -4089,7 +4115,10 @@
     "chooseBranch": "Choose a branch",
     "numbersOnly": "Numbers only",
     "codeInUse": "That customer code is already in use.",
-    "nothingToUpdate": "Nothing to update."
+    "nothingToUpdate": "Nothing to update.",
+    "marginNeedsValue": "Enter the margin, or clear the kind",
+    "marginNeedsKind": "Choose how the margin applies",
+    "marginPositive": "The margin must be more than zero"
   },
   "podValidation": {
     "notCoordinate": "Not a coordinate",
@@ -4198,7 +4227,8 @@
     "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override.",
     "creditAmountNumber": "Enter the amount to credit, in figures.",
     "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
-    "creditTooPrecise": "This currency does not have that many decimal places."
+    "creditTooPrecise": "This currency does not have that many decimal places.",
+    "openCustomerTerms": "Set the house margin"
   },
   "validation": {
     "invalidType": "Enter a valid value.",
@@ -4487,5 +4517,166 @@
     "noModel": "No model is configured to read the file.",
     "notABill": "The file did not read as a bill. Enter it on the payables screen.",
     "readTimedOut": "Reading the file took too long. Try again."
+  },
+  "portalQuotes": {
+    "title": "My quotations",
+    "subtitle": "The prices we sent you. Accept or decline an offer while it is valid.",
+    "awaiting": "Awaiting your answer",
+    "accepted": "Accepted",
+    "empty": "No quotations yet.",
+    "emptyHint": "A quotation appears here when we send it to you.",
+    "validUntil": "Valid until",
+    "total": "Total",
+    "statusSent": "Awaiting your answer",
+    "statusAccepted": "Accepted",
+    "statusRejected": "Declined",
+    "statusExpired": "Expired",
+    "expiredBadge": "Expired",
+    "expiredOn": "This offer expired on {on}. Ask us for a new price.",
+    "validNotice": "This offer is valid until the end of {on}, Kuwait time.",
+    "viewQuote": "View quotation",
+    "backToQuotes": "All quotations",
+    "lines": "Charges",
+    "charge": "Charge",
+    "basis": "Basis",
+    "quantity": "Quantity",
+    "rate": "Rate",
+    "amount": "Amount",
+    "noLines": "This quotation has no itemised charges. The total is the price we offer.",
+    "about": "Details",
+    "enquiry": "Your enquiry",
+    "issuedBy": "Issued by",
+    "incoterm": "Incoterm",
+    "sentAt": "Sent",
+    "decidedAt": "Answered",
+    "version": "Version {version}",
+    "coverNote": "Our note",
+    "yourReason": "Your reason",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)",
+    "accept": {
+      "open": "Accept",
+      "title": "Accept quotation {reference}?",
+      "description": "We book the shipment at this price after you accept.",
+      "note": "You agree to the total and the terms in this quotation. Our team contacts you to book the shipment.",
+      "submit": "Accept quotation",
+      "done": "Quotation accepted. We will contact you to book the shipment."
+    },
+    "decline": {
+      "open": "Decline",
+      "title": "Decline quotation {reference}?",
+      "description": "Tell us why, so that we can give you a better offer next time.",
+      "reason": "Reason (optional)",
+      "placeholder": "For example: the price is too high, or the transit time is too long.",
+      "submit": "Decline quotation",
+      "done": "Quotation declined. Thank you for telling us."
+    },
+    "refusedExpired": "This offer has expired. Ask us for a new price.",
+    "refusedDecided": "You already answered this quotation.",
+    "refusedMissing": "This quotation is no longer available. We may have sent you a newer version. Refresh the page."
+  },
+  "portalInvoices": {
+    "title": "My invoices",
+    "subtitle": "Issued invoices, what you paid, and what is still due.",
+    "outstanding": "Balance due",
+    "outstandingHint": "One figure for each currency. We do not add amounts in different currencies.",
+    "overdueCount": "Overdue invoices",
+    "nothingDue": "Nothing due",
+    "empty": "No invoices yet.",
+    "emptyHint": "An invoice appears here when we issue it.",
+    "issued": "Issued",
+    "due": "Due",
+    "total": "Total",
+    "paid": "Paid",
+    "credited": "Credited",
+    "balance": "Balance",
+    "overdue": "Overdue",
+    "overdueSince": "Overdue since {on}",
+    "creditNote": "Credit note",
+    "creditsInvoice": "Credits invoice {number}",
+    "creditNotes": "Credit notes",
+    "statusIssued": "Issued",
+    "statusPartPaid": "Part paid",
+    "statusPaid": "Paid",
+    "statusCredited": "Credited",
+    "viewInvoice": "View invoice",
+    "backToInvoices": "All invoices",
+    "lines": "Lines",
+    "description": "Description",
+    "quantity": "Quantity",
+    "unitPrice": "Unit price",
+    "amount": "Amount",
+    "tax": "Tax",
+    "subtotal": "Before tax",
+    "noLines": "This invoice has no lines.",
+    "about": "Details",
+    "issuedBy": "Issued by",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)"
+  },
+  "conversation": {
+    "title": "Conversation",
+    "description": "{count, plural, one {# message} other {# messages}} · replies go out on {channel}",
+    "descriptionNoReply": "{count, plural, one {# message} other {# messages}}",
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "other": "In the app"
+    },
+    "fromCustomer": "Customer",
+    "byAgent": "Automatic reply",
+    "byStaff": "{name}",
+    "byStaffOutside": "Staff, from outside the app",
+    "showQuoted": "Show earlier messages quoted in this email",
+    "attachments": "Attachments",
+    "noFile": "The file itself was not kept",
+    "empty": "No messages on this enquiry yet.",
+    "windowWarning": "The customer last wrote on WhatsApp more than 24 hours ago. WhatsApp only accepts a free-text reply within 24 hours of their last message, so this will probably be refused until they write again or an approved template is sent.",
+    "replyLabel": "Reply to the customer",
+    "replyPlaceholder": "Write your reply…",
+    "replyHint": "Sent on {channel} to {to}, in your name. The intake agent stays quiet while you have the conversation.",
+    "send": "Send reply",
+    "sending": "Sending…",
+    "sent": "Reply sent",
+    "notFound": "This enquiry could not be found.",
+    "bodyRequired": "Write a reply first.",
+    "bodyTooLong": "A reply can be at most {max} characters.",
+    "serviceNotConfigured": "Replies are sent by the service, and it is not configured on this deployment. Nothing was sent.",
+    "serviceUnreachable": "The service did not answer, so the reply was not sent. Try again in a moment.",
+    "windowClosed": "WhatsApp refused the reply: it has been more than 24 hours since the customer last wrote. They need to send a message first, or the conversation must be reopened with an approved template.",
+    "noThread": "There is no message from the customer to answer on this enquiry, so there is nowhere to send a reply.",
+    "channelOff": "This channel is not switched on for this deployment, so the reply was not sent. An administrator can turn it on under Settings › Integrations.",
+    "sendFailed": "The reply was not sent. The provider said: {detail}"
+  },
+  "customerContacts": {
+    "eyebrow": "People",
+    "title": "Contacts",
+    "description": "Who speaks for this customer. A WhatsApp message is filed under them by the phone number here.",
+    "add": "Add contact",
+    "addTitle": "Add a contact",
+    "editTitle": "Edit {name}",
+    "formDescription": "Type the phone number with its country code where you know it, as WhatsApp sends it.",
+    "none": "No contacts on file yet.",
+    "name": "Name",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "email": "Email",
+    "phone": "Phone",
+    "role": "Role",
+    "portalLogin": "Portal login",
+    "emailOnLoginHint": "This contact signs in to the portal with this address, so it is changed on their login.",
+    "deactivate": "Deactivate",
+    "deactivateTitle": "Deactivate {name}",
+    "deactivateNote": "Their messages are no longer matched to this customer and they receive no notifications. Nothing is deleted, and they can be brought back.",
+    "restore": "Bring back",
+    "restoreTitle": "Bring {name} back",
+    "restoreNote": "Their phone number and email match this customer again.",
+    "nameRequired": "Enter a name",
+    "validEmail": "Enter a valid email address",
+    "validPhone": "Enter a phone number of 7 to 15 digits",
+    "phoneTaken": "That number belongs to a contact at another customer. WhatsApp could not tell them apart, so it would match neither.",
+    "emailOnLogin": "This contact signs in with this address. Change it on their portal login.",
+    "notFound": "That contact is not on file.",
+    "customerInactive": "This customer is retired. Bring them back before adding contacts."
   }
 }

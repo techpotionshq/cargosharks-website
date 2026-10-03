@@ -222,14 +222,19 @@ export async function marginByDimension(
           Grouping by two ids and stitching the names afterwards would need a
           second query per lane or a map of every location in the deployment.
           The pair is the identity here — Jebel Ali to Shuwaikh is one lane and
-          the reverse is a different one, which is why the codes are
+          the reverse is a different one, which is why the pair is
           concatenated in order rather than sorted.
+
+          The key is the two location ids, not their UN/LOCODEs. A location
+          entered by hand often has no code, and two of them used to share the
+          key "? → ?" while staying separate groups, so the screen got two rows
+          with one React key. The codes and names stay in the labels.
         */
         const origin = sql`origin`
         const destination = sql`destination`
         return tx
           .select({
-            key: sql<string>`coalesce(${origin}.unlocode, '?') || ' → ' || coalesce(${destination}.unlocode, '?')`,
+            key: sql<string>`coalesce(${origin}.id::text, '-') || ':' || coalesce(${destination}.id::text, '-')`,
             labelEn: sql<string>`coalesce(${origin}.name_en, '—') || ' → ' || coalesce(${destination}.name_en, '—')`,
             labelAr: sql<
               string | null
@@ -246,6 +251,8 @@ export async function marginByDimension(
           .leftJoin(sql`${locations} as destination`, sql`destination.id = ${jobs.destinationId}`)
           .where(where)
           .groupBy(
+            sql`origin.id`,
+            sql`destination.id`,
             sql`origin.unlocode`,
             sql`destination.unlocode`,
             sql`origin.name_en`,

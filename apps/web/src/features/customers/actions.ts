@@ -101,6 +101,8 @@ export const createCustomer = refuseForbidden(async function createCustomer(
         creditCurrency: data.creditCurrency ?? null,
         freeTimeDays: data.freeTimeDays ?? null,
         defaultIncoterm: data.defaultIncoterm,
+        defaultMarginKind: data.defaultMarginKind ?? null,
+        defaultMarginValue: data.defaultMarginValue,
       })
 
       return customerId
@@ -178,6 +180,8 @@ export const updateCustomer = refuseForbidden(async function updateCustomer(
           creditCurrency: data.creditCurrency ?? null,
           freeTimeDays: data.freeTimeDays ?? null,
           defaultIncoterm: data.defaultIncoterm,
+          defaultMarginKind: data.defaultMarginKind ?? null,
+          defaultMarginValue: data.defaultMarginValue,
         })
         .onConflictDoUpdate({
           target: [customerBranchTerms.customerId, customerBranchTerms.branchId],
@@ -187,6 +191,10 @@ export const updateCustomer = refuseForbidden(async function updateCustomer(
             creditCurrency: data.creditCurrency ?? null,
             freeTimeDays: data.freeTimeDays ?? null,
             defaultIncoterm: data.defaultIncoterm,
+            // Cleared when both fields are blank: "no house margin" is a
+            // choice an operator makes on this form, not only a default.
+            defaultMarginKind: data.defaultMarginKind ?? null,
+            defaultMarginValue: data.defaultMarginValue,
             updatedAt: new Date(),
           },
         })

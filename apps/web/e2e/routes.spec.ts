@@ -130,6 +130,26 @@ test.describe('customer and partner surfaces', () => {
     await visitAndAssertHealthy(page, href!, testInfo)
   })
 
+  /*
+    D12: the portal's quotations and invoices, each list and the first record
+    from it. Offline the pilot persona previews the portal on fixtures; against
+    a database the suite is staff and the portal sends it away (A9), so the
+    record walk is skipped there for the same reason as the shipment above.
+  */
+  for (const [register, prefix] of [
+    ['/portal/quotes', '/portal/quotes/'],
+    ['/portal/invoices', '/portal/invoices/'],
+  ] as const) {
+    test(`renders ${register} and opens its first record`, async ({ page }, testInfo) => {
+      test.skip(MODE === 'full', 'the e2e account is staff, and the portal is for customers')
+      await visitAndAssertHealthy(page, register, testInfo)
+      const first = page.locator(`a[href^="${prefix}"]`).first()
+      const href = await first.getAttribute('href')
+      expect(href, `${register} linked no record`).toBeTruthy()
+      await visitAndAssertHealthy(page, href!, testInfo)
+    })
+  }
+
   test('renders the public tracking page without a session', async ({ browser }, testInfo) => {
     // A fresh context: the tracking page is the one surface that must work for
     // someone who has never signed in, and reusing the suite's context would

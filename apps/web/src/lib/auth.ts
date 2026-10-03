@@ -50,7 +50,11 @@ export type ResetMailOutcome = 'sent' | 'not_configured' | 'refused' | 'unreacha
  * colleague their first sign-in link (A7) must be told the truth, or "invite
  * sent" becomes a sentence about an email that never left the building.
  */
-export async function deliverResetMail(email: string, url: string): Promise<ResetMailOutcome> {
+export async function deliverResetMail(
+  email: string,
+  url: string,
+  intent: ResetMailIntent = 'reset',
+): Promise<ResetMailOutcome> {
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
 
@@ -66,7 +70,7 @@ export async function deliverResetMail(email: string, url: string): Promise<Rese
     const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/mail/password-reset`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
-      body: JSON.stringify({ email, url }),
+      body: JSON.stringify({ email, url, intent }),
       signal: AbortSignal.timeout(20_000),
     })
 
@@ -91,6 +95,20 @@ export async function deliverResetMail(email: string, url: string): Promise<Rese
  * The store is per call, so nothing leaks between requests.
  */
 export const resetMailOutcome = new AsyncLocalStorage<ResetMailOutcome[]>()
+
+/** Why a set-password link is being mailed; it changes the wording only. */
+export type ResetMailIntent = 'reset' | 'invitation'
+
+/**
+ * The intent of the reset flow running inside `resetMailIntent.run(…)`.
+ *
+ * Better Auth has one mail hook for every set-password link, so an invitation
+ * sent through it arrived worded "Reset your password ... your current
+ * password still works" to somebody who had never had one (D11). Same pattern
+ * as `resetMailOutcome`: only an administrator's sign-in link sets it, and the
+ * public reset form, which never does, keeps the reset wording.
+ */
+export const resetMailIntent = new AsyncLocalStorage<ResetMailIntent>()
 
 /**
  * Stated once, so the policy and the message a person reads cannot drift.
@@ -180,7 +198,7 @@ export const auth = betterAuth({
      * it says so in the log rather than appearing to work.
      */
     sendResetPassword: async ({ user, url }) => {
-      const outcome = await deliverResetMail(user.email, url)
+      const outcome = await deliverResetMail(user.email, url, resetMailIntent.getStore() ?? 'reset')
       // Told to whoever asked to hear it — an administrator sending a sign-in
       // link (A7). The public form never asks, for the reason above.
       resetMailOutcome.getStore()?.push(outcome)

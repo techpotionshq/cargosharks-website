@@ -12,11 +12,12 @@
  */
 
 import { cache } from 'react'
-import { and, asc, eq, ilike, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import {
   branches,
   countries,
   customerBranchTerms,
+  customerContacts,
   customers,
   withActor,
   type Actor,
@@ -24,6 +25,7 @@ import {
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotCustomer,
+  pilotCustomerContacts,
   pilotCustomers,
   pilotFormReference,
   pilotHasAnyCustomer,
@@ -52,6 +54,9 @@ export interface CustomerDetail extends CustomerRow {
     readonly creditCurrency: string | null
     readonly freeTimeDays: number | null
     readonly defaultIncoterm: string | null
+    /** The house margin "Price it" uses over a buying rate (D8). */
+    readonly defaultMarginKind: string | null
+    readonly defaultMarginValue: string | null
     readonly isOnHold: boolean
   }[]
 }
@@ -137,6 +142,8 @@ export const getCustomer = cache(
           creditCurrency: customerBranchTerms.creditCurrency,
           freeTimeDays: customerBranchTerms.freeTimeDays,
           defaultIncoterm: customerBranchTerms.defaultIncoterm,
+          defaultMarginKind: customerBranchTerms.defaultMarginKind,
+          defaultMarginValue: customerBranchTerms.defaultMarginValue,
           isOnHold: customerBranchTerms.isOnHold,
         })
         .from(customerBranchTerms)
@@ -148,6 +155,48 @@ export const getCustomer = cache(
     })
   },
 )
+
+export interface CustomerContactRow {
+  readonly id: string
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly role: string | null
+  readonly isActive: boolean
+  /** Joined to a portal login, whose address is changed on the login. */
+  readonly hasLogin: boolean
+}
+
+/**
+ * The people at a customer, with the phone number WhatsApp matching keys on
+ * (D3). Inactive contacts are listed too, below the active ones, because a
+ * deactivated contact is brought back from here and nothing is deleted.
+ */
+export async function listCustomerContacts(
+  actor: Actor,
+  customerId: string,
+): Promise<CustomerContactRow[]> {
+  if (usePilotFixtures()) return pilotCustomerContacts(customerId)
+
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        id: customerContacts.id,
+        nameEn: customerContacts.nameEn,
+        nameAr: customerContacts.nameAr,
+        email: customerContacts.email,
+        phone: customerContacts.phone,
+        role: customerContacts.role,
+        isActive: customerContacts.isActive,
+        hasLogin: sql<boolean>`${customerContacts.principalId} is not null`,
+      })
+      .from(customerContacts)
+      .where(eq(customerContacts.customerId, customerId))
+      .orderBy(desc(customerContacts.isActive), asc(customerContacts.nameEn))
+      .limit(200),
+  )
+}
 
 export interface BranchOption {
   readonly id: string

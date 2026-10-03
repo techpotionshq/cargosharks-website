@@ -103,6 +103,16 @@ export function EnquiryPricingHeader({
       {state.message ? (
         <Notice tone="caution" className="mb-6">
           {state.message}
+          {/* The way to the fix, where the refusal has one: the customer's
+              commercial terms for a missing house margin (D8). */}
+          {state.link ? (
+            <>
+              {' '}
+              <a href={state.link.href} className="font-medium underline underline-offset-2">
+                {state.link.label}
+              </a>
+            </>
+          ) : null}
         </Notice>
       ) : null}
     </>

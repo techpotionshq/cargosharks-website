@@ -75,6 +75,7 @@ import type {
   ConsolidationHouseRow,
   ConsolidationSummary,
   CreditOverrideRowLike,
+  CustomerContactRow,
   CustomerDetail,
   CustomerRow,
   CustomsRow,
@@ -107,6 +108,9 @@ import type {
   MailboxRowLike,
   WhatsappNumberRowLike,
   EnquiryIntakeLike,
+  EnquiryConversationLike,
+  ConversationMessageLike,
+  EnquiryEditLike,
   IntakeSettingsRowLike,
   PartnerMailLike,
   MatchCandidateRow,
@@ -131,6 +135,10 @@ import type {
   PaymentRow,
   PaymentSummary,
   PodRow,
+  PortalInvoice,
+  PortalInvoiceDetail,
+  PortalQuote,
+  PortalQuoteDetail,
   PortalShipment,
   CoveringAgent,
   RateRequestsView,
@@ -1894,6 +1902,28 @@ const ENQUIRY_SEEDS: readonly EnquirySeed[] = [
     age: 9,
     sla: 24,
   },
+  /*
+    An offer waiting on the portal customer (D12). Their only priced enquiry
+    was already won, so the portal's Accept and Decline had nothing to stand
+    on offline and the e2e walk could never reach them. Appended, so every
+    list that takes the first seed still takes the same one.
+  */
+  {
+    seq: 325,
+    branch: 'KWI',
+    status: 'quoted',
+    channel: 'portal',
+    mode: 'air',
+    customer: 0,
+    origin: 'KWKWI',
+    destination: 'DEHAM',
+    owner: 1,
+    age: 20,
+    sla: 24,
+    respondedAfter: 2,
+    sell: 1386,
+    margin: 19.5,
+  },
 ]
 
 /** `locale` names the ports, as `listEnquiries` does (F27). */
@@ -2315,6 +2345,165 @@ export function pilotPortalShipments(
         nextMilestone: (ar ? next?.nameAr : next?.nameEn) ?? null,
       }
     })
+}
+
+/*
+  The portal customer's quotations and invoices (D12), the registers' own
+  rows, filtered the way `quotes_customer_reads` and `invoices_customer_reads`
+  filter a real database: this customer only, sent and current quotations,
+  issued invoices. Derived rather than restated, so the portal and the staff
+  register cannot disagree about a figure.
+*/
+const PORTAL_QUOTE_STATUSES = new Set(['sent', 'accepted', 'rejected', 'expired'])
+const PORTAL_INVOICE_STATUSES = new Set(['issued', 'part_paid', 'paid', 'credited'])
+
+export function pilotPortalQuotes(now = Date.now(), locale: 'en' | 'ar' = 'en'): PortalQuote[] {
+  return pilotQuotes(now, undefined, locale)
+    .filter((row) => PORTAL_QUOTE_STATUSES.has(row.status))
+    .map((row) => pilotPortalQuote(row.id, now, locale))
+    .filter((quote): quote is PortalQuoteDetail => quote !== undefined)
+    .map(
+      ({
+        id,
+        reference,
+        version,
+        status,
+        currency,
+        total,
+        validUntil,
+        sentAt,
+        decidedAt,
+        mode,
+        originName,
+        destinationName,
+      }) => ({
+        id,
+        reference,
+        version,
+        status,
+        currency,
+        total,
+        validUntil,
+        sentAt,
+        decidedAt,
+        mode,
+        originName,
+        destinationName,
+      }),
+    )
+    .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0))
+}
+
+export function pilotPortalQuote(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalQuoteDetail | undefined {
+  const detail = pilotQuoteDetail(id, now, locale)
+  if (!detail || !PORTAL_QUOTE_STATUSES.has(detail.status)) return undefined
+  if (detail.customerId !== customerId(0)) return undefined
+
+  const seq = Number(id.replace('quote-', ''))
+  const seed = ENQUIRY_SEEDS.find((candidate) => candidate.seq === seq)!
+  const home = branch(seed.branch)
+  return {
+    id: detail.id,
+    reference: detail.reference,
+    version: detail.version,
+    status: detail.status,
+    currency: detail.currency,
+    total: detail.totalSell,
+    validUntil: detail.validUntil,
+    sentAt: detail.sentAt,
+    decidedAt: detail.decidedAt,
+    mode: detail.mode,
+    originName: locale === 'ar' ? PORTS[seed.origin].ar : PORTS[seed.origin].en,
+    destinationName: locale === 'ar' ? PORTS[seed.destination].ar : PORTS[seed.destination].en,
+    enquiryReference: detail.enquiryReference,
+    branchName: pickName(locale, home.en, home.ar),
+    incoterm: null,
+    coverNote: null,
+    decisionNote: null,
+    lines: detail.lines,
+  }
+}
+
+export function pilotPortalInvoices(now = Date.now(), locale: 'en' | 'ar' = 'en'): PortalInvoice[] {
+  return INVOICE_SEEDS.filter((seed) => seed.customer === 0)
+    .map((seed) => pilotPortalInvoice(`inv-${seed.seq}`, now, locale))
+    .filter((invoice): invoice is PortalInvoiceDetail => invoice !== undefined)
+    .map(
+      ({
+        id,
+        seriesNo,
+        status,
+        currency,
+        total,
+        amountPaid,
+        amountCredited,
+        balance,
+        issuedAt,
+        dueOn,
+        isCreditNote,
+        creditsSeriesNo,
+      }) => ({
+        id,
+        seriesNo,
+        status,
+        currency,
+        total,
+        amountPaid,
+        amountCredited,
+        balance,
+        issuedAt,
+        dueOn,
+        isCreditNote,
+        creditsSeriesNo,
+      }),
+    )
+    .sort((a, b) => (b.issuedAt?.getTime() ?? 0) - (a.issuedAt?.getTime() ?? 0))
+}
+
+export function pilotPortalInvoice(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalInvoiceDetail | undefined {
+  const detail = pilotInvoiceDetail(id, now, locale)
+  if (!detail || !PORTAL_INVOICE_STATUSES.has(detail.status)) return undefined
+  if (detail.customerId !== customerId(0)) return undefined
+
+  const seed = INVOICE_SEEDS.find((candidate) => `inv-${candidate.seq}` === id)!
+  const home = branch(seed.branch)
+  return {
+    id: detail.id,
+    seriesNo: detail.seriesNo,
+    status: detail.status,
+    currency: detail.currency,
+    total: detail.total,
+    amountPaid: detail.amountPaid,
+    amountCredited: detail.amountCredited,
+    balance: detail.isCreditNote
+      ? numeric('0')
+      : minus(minus(detail.total, detail.amountPaid), detail.amountCredited),
+    issuedAt: detail.issuedAt,
+    dueOn: detail.dueOn,
+    isCreditNote: detail.isCreditNote,
+    creditsSeriesNo: null,
+    subtotal: detail.subtotal,
+    taxAmount: detail.taxAmount,
+    branchName: pickName(locale, home.en, home.ar),
+    creditsInvoiceId: detail.creditsInvoiceId,
+    lines: detail.lines.map((line) => ({
+      id: line.id,
+      description: pickName(locale, line.descriptionEn, line.descriptionAr),
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      amount: line.amount,
+      taxAmount: line.taxAmount,
+    })),
+    creditNotes: [],
+  }
 }
 
 /**
@@ -3416,6 +3605,11 @@ export function pilotRateCardSummary(): RateCardSummary {
     ).length,
     lanesCovered: buyKeys.size,
     uncoveredLanes: [...trafficked].filter((key) => !buyKeys.has(key)).length,
+    cards: {
+      all: RATE_CARD_SEEDS.length,
+      buy: RATE_CARD_SEEDS.filter((c) => c.direction === 'buy').length,
+      sell: RATE_CARD_SEEDS.filter((c) => c.direction === 'sell').length,
+    },
   }
 }
 
@@ -3587,6 +3781,9 @@ export function pilotCustomer(id: string): CustomerDetail | null {
         creditCurrency: home.currency,
         freeTimeDays: 10,
         defaultIncoterm: 'CFR',
+        // A house margin, so the pilot shows "Price it" over a buying card.
+        defaultMarginKind: 'percent',
+        defaultMarginValue: '15.000000',
         /*
           One customer on stop, and it is the one carrying the 130-day debt.
           A credit hold that does not line up with the receivables screen is a
@@ -3596,6 +3793,34 @@ export function pilotCustomer(id: string): CustomerDetail | null {
       },
     ],
   }
+}
+
+/**
+ * Serves `listCustomerContacts`.
+ *
+ * One buyer per customer with a Kuwaiti or Emirati mobile, written the way
+ * people type them, so the card shows what WhatsApp matching keys on.
+ */
+export function pilotCustomerContacts(id: string): CustomerContactRow[] {
+  const index = CUSTOMERS.findIndex((_, i) => customerId(i) === id)
+  if (index === -1) return []
+  const customer = CUSTOMERS[index]!
+  const domain = `${customer.code.toLowerCase()}.example`
+  return [
+    {
+      id: `contact-${String(index).padStart(2, '0')}-1`,
+      nameEn: 'Purchasing desk',
+      nameAr: 'قسم المشتريات',
+      email: `purchasing@${domain}`,
+      phone:
+        customer.country === 'AE'
+          ? `+97150${1000000 + index * 7919}`
+          : `+9655${1000000 + index * 7919}`,
+      role: 'Buyer',
+      isActive: true,
+      hasLogin: false,
+    },
+  ]
 }
 
 /** Serves `loadFormReference` — the branch and country lists a form needs. */
@@ -9400,6 +9625,110 @@ export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
         sendError: null,
       },
     ],
+  }
+}
+
+/**
+ * The WhatsApp thread behind the intake panel above, as the conversation panel
+ * shows it: the greeting the agent let pass, the messages it read in one turn
+ * (in the words the suggestions panel cites as evidence), the clarification it
+ * sent, and the packing list the customer answered with. Served for every enquiry, as `pilotEnquiryIntake` is, so whichever file
+ * a visitor opens tells the same story. Read-only: the reply box refuses in
+ * fixture mode like every other write.
+ */
+export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationLike {
+  const minutesAgo = (m: number) => new Date(now - 1000 * 60 * m)
+  const customer = '+965 6555 0142'
+  const office = '+965 2200 1234'
+  const inbound = (
+    id: string,
+    at: Date,
+    body: string,
+    attachments: ConversationMessageLike['attachments'] = [],
+  ): ConversationMessageLike => ({
+    id,
+    channel: 'whatsapp',
+    direction: 'inbound',
+    at,
+    fromAddress: customer,
+    subject: null,
+    body,
+    author: null,
+    authorName: null,
+    attachments,
+  })
+  return {
+    branchId: BRANCHES[0]!.id,
+    replyChannel: 'whatsapp',
+    replyTo: customer,
+    lastInboundAt: minutesAgo(6),
+    messages: [
+      inbound('conv-demo-1', minutesAgo(20), 'Good morning 👋'),
+      // The same words the suggestions panel quotes as its evidence.
+      inbound(
+        'conv-demo-2',
+        minutesAgo(17),
+        "We have 2 × 40'HC of steel coils to move\nex Ningbo, cargo ready at the mill",
+      ),
+      inbound('conv-demo-3', minutesAgo(16), 'Delivered to our yard in Shuwaikh'),
+      {
+        id: 'conv-demo-4',
+        channel: 'whatsapp',
+        direction: 'outbound',
+        at: minutesAgo(14),
+        fromAddress: office,
+        subject: null,
+        body: pilotEnquiryIntake(now).recent[0]!.replyBody ?? '',
+        author: 'agent',
+        authorName: null,
+        attachments: [],
+      },
+      // No bytes behind a fixture, so the file is named and not linked.
+      inbound('conv-demo-5', minutesAgo(6), 'Gross 38,400 kgs in total. Packing list attached', [
+        { assetId: null, fileName: 'packing-list.jpg' },
+      ]),
+    ],
+  }
+}
+
+/**
+ * The "Edit details" dialog's defaults on the fixture board, read off the same
+ * seed the register shows, with ids that match `pilotOptions` so every select
+ * opens on the value the facts card states.
+ */
+export function pilotEnquiryForEdit(id: string): EnquiryEditLike | undefined {
+  const seed = ENQUIRY_SEEDS.find((s) => `enq-${s.seq}` === id)
+  if (!seed) return undefined
+  const branch = BRANCHES.find((b) => b.code === seed.branch) ?? BRANCHES[0]!
+  // The comparison fixture's own rules, so the dialog agrees with the facts card.
+  const importing = ['KW', 'AE'].includes(PORTS[seed.destination].country)
+  const fcl = seed.mode === 'sea_fcl'
+  const count = fcl && seed.sell !== undefined ? 1 : null
+  return {
+    id,
+    branchId: branch.id,
+    status: seed.status,
+    customerId: customerId(seed.customer),
+    customerLabel: null,
+    contactName: null,
+    contactEmail: null,
+    mode: seed.mode,
+    tradeDirection: importing ? 'import' : 'export',
+    originId: locationId(seed.origin),
+    originLabel: null,
+    destinationId: locationId(seed.destination),
+    destinationLabel: null,
+    commodityId: null,
+    commodityLabel: null,
+    incoterm: importing ? 'CFR' : 'FOB',
+    readyOn: null,
+    grossWeightKg: null,
+    volumeCbm: null,
+    pieces: null,
+    containerCount: count,
+    containerType: count ? '40HC' : null,
+    isDangerous: false,
+    notes: null,
   }
 }
 

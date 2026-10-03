@@ -16,6 +16,7 @@ import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
 import { CustomerForm } from '@/features/customers/ui/customer-form'
 import { RetireCustomerDialog } from '@/features/customers/ui/dialogs'
+import { CustomerContactsCard } from '@/features/customers/ui/contacts-card'
 import { creditView } from '@/features/credit/queries'
 import { CreditStandingCard } from '@/features/credit/ui/panels'
 import { customerFormLabels } from '@/features/customers/ui/labels'
@@ -139,6 +140,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   {t('freeTimeDays')}
                 </TH>
                 <TH priority="low">{t('defaultIncoterm')}</TH>
+                <TH priority="low">{t('marginKind')}</TH>
                 <TH>{tc('status')}</TH>
               </TR>
             </THead>
@@ -160,6 +162,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   <TD priority="low" className="ref">
                     {term.defaultIncoterm ?? '—'}
                   </TD>
+                  <TD priority="low">
+                    {term.defaultMarginKind && term.defaultMarginValue
+                      ? `${t(`marginKinds.${term.defaultMarginKind}` as 'marginKinds.percent')} · ${trimDecimal(term.defaultMarginValue)}`
+                      : '—'}
+                  </TD>
                   <TD>
                     {term.isOnHold ? (
                       <Badge tone="critical" icon="hold">
@@ -175,6 +182,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </TableShell>
         </Card>
       ) : null}
+
+      {/* Who speaks for the customer, and the phone number WhatsApp matching
+          keys on (D3). */}
+      <CustomerContactsCard
+        customerId={id}
+        primaryBranchId={customer.primaryBranchId}
+        className="mb-4"
+      />
 
       {/* Who at this customer can sign in to the portal (A7). Renders only
           for somebody who may grant a login. */}
@@ -201,6 +216,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             creditCurrency: primaryTerms?.creditCurrency ?? null,
             freeTimeDays: primaryTerms?.freeTimeDays ?? null,
             defaultIncoterm: primaryTerms?.defaultIncoterm ?? null,
+            defaultMarginKind: primaryTerms?.defaultMarginKind ?? null,
+            defaultMarginValue: trimDecimal(primaryTerms?.defaultMarginValue),
           }}
         />
       ) : (

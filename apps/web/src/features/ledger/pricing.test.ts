@@ -538,6 +538,8 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
       expect(state.message).toBe('ledgerValidation.pricingNoMargin')
+      // D8: the refusal leads to where the margin is set.
+      expect(state.link?.href).toBe(`/customers/${CUSTOMER}#commercial-terms`)
       expect(await quoteFor(id)).toBeUndefined()
     })
   })

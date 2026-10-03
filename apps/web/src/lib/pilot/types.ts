@@ -425,6 +425,93 @@ export interface PortalShipment {
   readonly nextMilestone: string | null
 }
 
+/**
+ * A quotation as the customer holds it (D12), `features/portal/queries.ts`.
+ *
+ * Sell side only. There is no cost, margin, preparer or covering-note draft
+ * here, and no field to put one in: the portal's projection is what a
+ * customer was sent, and a shape without the column cannot leak it.
+ */
+export interface PortalQuote {
+  readonly id: string
+  readonly reference: string
+  readonly version: number
+  /** Only `sent`, `accepted`, `rejected` or `expired` reach a customer. */
+  readonly status: string
+  readonly currency: string
+  readonly total: string | null
+  /** A `date` column, `YYYY-MM-DD`; the offer stands all of that day in Kuwait. */
+  readonly validUntil: string | null
+  readonly sentAt: Date | null
+  readonly decidedAt: Date | null
+  readonly mode: Mode | null
+  readonly originName: string | null
+  readonly destinationName: string | null
+}
+
+export interface PortalQuoteDetail extends PortalQuote {
+  readonly enquiryReference: string
+  readonly branchName: string | null
+  readonly incoterm: string | null
+  /** The covering note in the reader's language, as it was sent. */
+  readonly coverNote: string | null
+  /** The customer's own reason, where they declined with one. */
+  readonly decisionNote: string | null
+  readonly lines: readonly {
+    readonly id: string
+    readonly chargeName: string
+    readonly description: string | null
+    readonly basis: string
+    readonly quantity: string
+    readonly rate: string
+    readonly amount: string
+    readonly currency: string
+  }[]
+}
+
+/** An issued invoice or credit note, as the customer holds it (D12). */
+export interface PortalInvoice {
+  readonly id: string
+  readonly seriesNo: string | null
+  /** Only `issued`, `part_paid`, `paid` or `credited` reach a customer. */
+  readonly status: string
+  readonly currency: string
+  readonly total: string
+  readonly amountPaid: string
+  readonly amountCredited: string
+  /** `total - amount_paid - amount_credited`, in SQL; zero on a credit note. */
+  readonly balance: string
+  readonly issuedAt: Date | null
+  /** A `date` column, `YYYY-MM-DD`. */
+  readonly dueOn: string | null
+  readonly isCreditNote: boolean
+  /** On a credit note, the number of the invoice it credits. */
+  readonly creditsSeriesNo: string | null
+}
+
+export interface PortalInvoiceDetail extends PortalInvoice {
+  readonly subtotal: string
+  readonly taxAmount: string
+  readonly branchName: string | null
+  readonly creditsInvoiceId: string | null
+  readonly lines: readonly {
+    readonly id: string
+    readonly description: string
+    readonly quantity: string
+    readonly unitPrice: string
+    readonly amount: string
+    readonly taxAmount: string
+  }[]
+  /** Credit notes raised against this invoice, newest first. */
+  readonly creditNotes: readonly {
+    readonly id: string
+    readonly seriesNo: string | null
+    readonly total: string
+    /** Read through `json_build_object`, so an ISO string rather than a `Date`. */
+    readonly issuedAt: string | null
+  }[]
+}
+
 /* ===========================================================================
    Register rows.
 
@@ -593,6 +680,11 @@ export interface RateCardSummary {
   readonly lanesCovered: number
   /** Lanes with traffic and no live buy card — quoting those is guessing. */
   readonly uncoveredLanes: number
+  /**
+   * Every card the reader can see, by direction, before the register's tab
+   * filters it, so the All/Buying/Selling counts do not change with the tab.
+   */
+  readonly cards: { readonly all: number; readonly buy: number; readonly sell: number }
 }
 
 /** Mirrors `LaneMarginRow`. `marginPct` is null where one side is missing. */
@@ -647,8 +739,24 @@ export interface CustomerDetail extends CustomerRow {
     readonly creditCurrency: string | null
     readonly freeTimeDays: number | null
     readonly defaultIncoterm: string | null
+    /** The house margin "Price it" uses over a buying rate (D8). */
+    readonly defaultMarginKind: string | null
+    readonly defaultMarginValue: string | null
     readonly isOnHold: boolean
   }[]
+}
+
+/** Mirrors `CustomerContactRow` in `features/customers/queries.ts`. */
+export interface CustomerContactRow {
+  readonly id: string
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly role: string | null
+  readonly isActive: boolean
+  /** Joined to a portal login, whose address is changed on the login. */
+  readonly hasLogin: boolean
 }
 
 /** Mirrors `FormReference`. */
@@ -1330,6 +1438,8 @@ export interface QuoteDetail {
   /** The covering note the model drafts and a coordinator edits — one per language. */
   readonly coverNoteEn: string | null
   readonly coverNoteAr: string | null
+  /** The customer's reason for declining on the portal (D12). */
+  readonly decisionNote?: string | null
   readonly lines: readonly {
     id: string
     chargeName: string
@@ -2049,6 +2159,86 @@ export interface EnquiryIntakeLike {
   readonly readyAt: Date | null
   /** Newest first, at most a handful. */
   readonly recent: readonly IntakeTurnLike[]
+}
+
+/**
+ * An enquiry's editable facts, for the "Edit details" dialog.
+ *
+ * The labels ride along with the ids because the option lists are capped
+ * (`loadOptions`): a port outside the first six hundred would otherwise be
+ * missing from its own select, and saving the dialog unchanged would clear it.
+ */
+export interface EnquiryEditLike {
+  readonly id: string
+  readonly branchId: string
+  readonly status: string
+  readonly customerId: string | null
+  readonly customerLabel: string | null
+  readonly contactName: string | null
+  readonly contactEmail: string | null
+  readonly mode: string | null
+  readonly tradeDirection: string | null
+  readonly originId: string | null
+  readonly originLabel: string | null
+  readonly destinationId: string | null
+  readonly destinationLabel: string | null
+  readonly commodityId: string | null
+  readonly commodityLabel: string | null
+  readonly incoterm: string | null
+  readonly readyOn: string | null
+  /** `numeric` as text, never a number (KWD-grade decimals, CLAUDE.md). */
+  readonly grossWeightKg: string | null
+  readonly volumeCbm: string | null
+  readonly pieces: number | null
+  readonly containerCount: number | null
+  readonly containerType: string | null
+  readonly isDangerous: boolean
+  readonly notes: string | null
+}
+
+/** A file that came with, or went with, one message on the thread. */
+export interface ConversationAttachmentLike {
+  /** Null where there are no bytes to serve — the fixture thread, or a dropped oversize file. */
+  readonly assetId: string | null
+  readonly fileName: string
+}
+
+/** One message on an enquiry's thread, for the conversation panel. */
+export interface ConversationMessageLike {
+  readonly id: string
+  readonly channel: 'whatsapp' | 'email' | 'other'
+  readonly direction: 'inbound' | 'outbound'
+  readonly at: Date
+  readonly fromAddress: string | null
+  readonly subject: string | null
+  readonly body: string
+  /**
+   * Who wrote an outbound message: the intake agent or another automation
+   * (`agent`), a named member of staff (`staff` with `authorName`), or a person
+   * outside the product, from their own phone (`staff` with no name).
+   * Null on inbound.
+   */
+  readonly author: 'agent' | 'staff' | null
+  readonly authorName: string | null
+  readonly attachments: readonly ConversationAttachmentLike[]
+}
+
+/** An enquiry's whole thread, and whether a reply can go back on it. */
+export interface EnquiryConversationLike {
+  readonly branchId: string
+  /** Oldest first. */
+  readonly messages: readonly ConversationMessageLike[]
+  /**
+   * The channel a reply goes back on, and who it reaches — null when nothing
+   * on the thread says where (an enquiry typed in with no message on it).
+   */
+  readonly replyChannel: 'whatsapp' | 'email' | null
+  readonly replyTo: string | null
+  /**
+   * When the customer last wrote on WhatsApp. Meta refuses free text more than
+   * 24 hours after it, so the panel can warn before the send fails.
+   */
+  readonly lastInboundAt: Date | null
 }
 
 /** One branch's intake-agent settings, for Settings › Intake agent. */

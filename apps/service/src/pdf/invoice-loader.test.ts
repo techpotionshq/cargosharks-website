@@ -170,6 +170,30 @@ describe.skipIf(!enabled)('loading an invoice for print', () => {
       await expect(loadInvoiceView(actor, ABSENT)).rejects.toThrow(`No invoice ${ABSENT}`)
     })
 
+    /*
+      The portal's PDF link runs this loader under the customer's own actor
+      (D12), so the policies are what keep a draft, and another company's
+      invoice, out of a customer's hands. Not found either way (FR-ID-04).
+    */
+    it('prints a customer their own issued invoice and nothing else', async () => {
+      const contact = (customerId: string): Actor => ({
+        principalId: PRINCIPAL,
+        type: 'customer_contact',
+        branchIds: [],
+        customerId,
+      })
+      const issued = await invoice()
+      const draft = await invoice({ status: 'draft', seriesNo: null, issuedAt: null })
+
+      expect((await loadInvoiceView(contact(CUSTOMER), issued)).seriesNo).toMatch(/^INV-/)
+      await expect(loadInvoiceView(contact(CUSTOMER), draft)).rejects.toBeInstanceOf(
+        DocumentNotFoundError,
+      )
+      await expect(loadInvoiceView(contact(ABSENT), issued)).rejects.toBeInstanceOf(
+        DocumentNotFoundError,
+      )
+    })
+
     it('carries the invoice, the customer and the issuing entity', async () => {
       const id = await invoice({ notes: 'Payable within 30 days' })
 
