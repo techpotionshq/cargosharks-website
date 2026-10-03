@@ -631,9 +631,6 @@ export async function ingestMessage(
         intake.enabled &&
         (message.channel === 'whatsapp' || (message.channel ?? 'email') === 'email')
 
-      const target =
-        (await findTarget(tx, message)) ??
-        (message.channel === 'whatsapp' ? await findOpenConversation(tx, message, branch.id) : null)
       const customerId = await matchCustomer(tx, message)
       /*
         The sender may be a supplier as well as — or instead of — a customer.
@@ -641,9 +638,27 @@ export async function ingestMessage(
         Both matches run because the two are not exclusive: an overseas agent
         is a partner on our payables and, on their own imports, a customer on
         our receivables. `matchPartner` decides only whose *bill* an attachment
-        is, and refuses two candidates exactly as `matchCustomer` does.
+        is, and refuses two candidates exactly as `matchCustomer` does. It reads
+        the channel the way `matchCustomer` does: a partner's WhatsApp is matched
+        on their contact phone, or the partner got a customer enquiry and the
+        intake agent asked them what their cargo was (N4).
       */
-      const partnerId = await matchPartner(tx, message.from)
+      const partnerId = await matchPartner(tx, message)
+      const partnerOnly = partnerId !== null && customerId === null
+
+      /*
+        A partner's chat is not threaded onto their "open conversation".
+
+        `findOpenConversation` exists so a customer's "Hi" and "2x40HC" make one
+        enquiry; for a partner it would only find an enquiry that should never
+        have been opened for them, and keep feeding it. A reply that quotes a
+        reference or one of our messages still threads, as their email does.
+      */
+      const target =
+        (await findTarget(tx, message)) ??
+        (message.channel === 'whatsapp' && !partnerOnly
+          ? await findOpenConversation(tx, message, branch.id)
+          : null)
 
       /*
         A broker's reply to a rate request we sent — FR-RT-10.
@@ -668,7 +683,11 @@ export async function ingestMessage(
         mail is filed on its enquiry and a person is told.
       */
       const rfqToken = rfqTokenIn(message.subject ?? null, message.body)
-      const matched = rfqToken ? await findRateRequestByToken(tx, rfqToken, branch.id) : null
+      const matched = rfqToken
+        ? await findRateRequestByToken(tx, rfqToken, branch.id)
+        : message.channel === 'whatsapp' && partnerOnly && !target
+          ? await findOnlyOpenRateRequest(tx, partnerId, branch.id)
+          : null
       const rateRequest = matched && AWAITING_REPLY.has(matched.status) ? matched : null
       const late = matched && !rateRequest ? matched : null
 
@@ -685,7 +704,7 @@ export async function ingestMessage(
         agent on their own imports — still opens an enquiry, because then it may
         genuinely be one, and refusing it would lose a customer.
       */
-      const supplierOnly = !matched && !target && partnerId !== null && customerId === null
+      const supplierOnly = !matched && !target && partnerOnly
 
       const context = matched
         ? { enquiryId: matched.enquiryId, jobId: null, created: false }
@@ -800,8 +819,14 @@ export async function ingestMessage(
         message — so a turn that commits between the two can never miss it, and
         a crash between the two leaves neither.
       */
+      /*
+        Never for a partner's message, though. A partner writing onto a
+        customer's enquiry (quoting its reference) is not the customer still
+        typing, and a turn would read their words as the customer's and answer
+        the customer about them.
+      */
       const intakeMoved =
-        matched || !context.enquiryId
+        matched || !context.enquiryId || partnerOnly
           ? null
           : await noteIntake(tx, {
               message,
@@ -1285,7 +1310,13 @@ async function findOpenConversation(
  * the caller is a coordinator standing on a screen; here it is the mailbox the
  * bill arrived from, which is the only other evidence worth trusting.
  */
-async function matchPartner(tx: any, from: string): Promise<string | null> {
+async function matchPartner(tx: any, message: InboundMessage): Promise<string | null> {
+  return message.channel === 'whatsapp'
+    ? matchPartnerByPhone(tx, message.from)
+    : matchPartnerByEmail(tx, message.from)
+}
+
+async function matchPartnerByEmail(tx: any, from: string): Promise<string | null> {
   const address = from.trim().toLowerCase()
   if (!address.includes('@')) return null
 
@@ -1314,6 +1345,66 @@ async function matchPartner(tx: any, from: string): Promise<string | null> {
     .limit(2)
 
   return byDomain.length === 1 ? byDomain[0]!.partnerId : null
+}
+
+/**
+ * A partner contact by phone, by the rule `matchCustomerByPhone` uses.
+ *
+ * The same digits-only comparison and the same national-part match, because a
+ * partner's number is typed by the same people the same ways. Two partners on
+ * one number is none, as two customers is.
+ */
+async function matchPartnerByPhone(tx: any, from: string): Promise<string | null> {
+  const digits = from.replace(/[^0-9]/g, '').replace(/^00/, '')
+  if (digits.length < 7) return null
+
+  const stored = sql`regexp_replace(regexp_replace(coalesce(${partnerContacts.phone}, ''), '[^0-9]', '', 'g'), '^0{1,2}', '')`
+  const rows = await tx
+    .selectDistinct({ partnerId: partnerContacts.partnerId })
+    .from(partnerContacts)
+    .where(
+      and(
+        sql`(${stored} = ${digits} or (
+          length(${stored}) >= 7
+          and ${digits.length} - length(${stored}) between 1 and 3
+          and right(${digits}, length(${stored})) = ${stored}
+        ))`,
+        eq(partnerContacts.isActive, true),
+      ),
+    )
+    .limit(2)
+
+  return rows.length === 1 ? rows[0]!.partnerId : null
+}
+
+/**
+ * The one request a partner's WhatsApp can be answering, or null.
+ *
+ * A chat carries no subject, so no RFQ tag: an agent who got our request by
+ * email and answers "USD 3,100 all in" on WhatsApp has nothing to match by
+ * token. When exactly one request to that partner on this branch is still
+ * awaiting a reply, the message can only be about that one, and it is read as
+ * its rate reply. Two or more is a guess, so it is none: the message is filed
+ * to the partner and a person decides, which is what the email rule does for
+ * a mail with no tag.
+ */
+async function findOnlyOpenRateRequest(
+  tx: any,
+  partnerId: string,
+  branchId: string,
+): Promise<Awaited<ReturnType<typeof findRateRequestByToken>>> {
+  const rows = await tx
+    .select({ token: rateRequests.token })
+    .from(rateRequests)
+    .where(
+      and(
+        eq(rateRequests.partnerId, partnerId),
+        eq(rateRequests.branchId, branchId),
+        inArray(rateRequests.status, [...AWAITING_REPLY] as ('sent' | 'responded')[]),
+      ),
+    )
+    .limit(2)
+  return rows.length === 1 ? findRateRequestByToken(tx, rows[0]!.token, branchId) : null
 }
 
 /** The request states a reply is read into; any other state is a late reply. */
