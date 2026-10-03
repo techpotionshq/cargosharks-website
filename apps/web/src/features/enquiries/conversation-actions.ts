@@ -97,6 +97,8 @@ export const replyToCustomer = refuseForbidden(async function replyToCustomer(
         return failWith(t('windowClosed'), echo(form))
       case 'no_thread':
         return failWith(t('noThread'), echo(form))
+      case 'not_customer':
+        return failWith(t('notCustomer'), echo(form))
       case 'channel_off':
         return failWith(t('channelOff'), echo(form))
       case 'not_found':

@@ -2235,6 +2235,12 @@ export interface EnquiryConversationLike {
   readonly replyChannel: 'whatsapp' | 'email' | null
   readonly replyTo: string | null
   /**
+   * True when the thread has messages but none from anyone a reply may reach:
+   * only an agent's rate reply, a colleague, or the office itself (NEW-1). The
+   * panel says why there is no box rather than offering one to the agent.
+   */
+  readonly replyRefused: boolean
+  /**
    * When the customer last wrote on WhatsApp. Meta refuses free text more than
    * 24 hours after it, so the panel can warn before the send fails.
    */

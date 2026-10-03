@@ -22,6 +22,7 @@ export * from './pricing'
 export * from './quote-moves'
 export * from './enquiry-proposals'
 export * from './intake'
+export * from './enquiry-thread'
 export * from './integrations'
 export * from './schema-version'
 /*

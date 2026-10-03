@@ -4646,7 +4646,8 @@
     "windowClosed": "WhatsApp refused the reply: it has been more than 24 hours since the customer last wrote. They need to send a message first, or the conversation must be reopened with an approved template.",
     "noThread": "There is no message from the customer to answer on this enquiry, so there is nowhere to send a reply.",
     "channelOff": "This channel is not switched on for this deployment, so the reply was not sent. An administrator can turn it on under Settings › Integrations.",
-    "sendFailed": "The reply was not sent. The provider said: {detail}"
+    "sendFailed": "The reply was not sent. The provider said: {detail}",
+    "notCustomer": "Replies from here go only to the customer, and every message on this thread is from a partner, a colleague or this office, so there is nobody to send one to. Contact the customer directly."
   },
   "customerContacts": {
     "eyebrow": "People",

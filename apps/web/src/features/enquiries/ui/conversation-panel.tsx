@@ -131,6 +131,10 @@ export async function ConversationPanel({ enquiryId }: { readonly enquiryId: str
             }}
           />
         </div>
+      ) : conversation.replyRefused && canIn(session, 'enquiry.assign', conversation.branchId) ? (
+        <p className="border-t border-line px-4 py-3 text-body-sm text-ink-muted">
+          {t('notCustomer')}
+        </p>
       ) : null}
     </Card>
   )
