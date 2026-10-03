@@ -102,6 +102,11 @@ export function identifyingDomain(address: string): string | null {
  * a customer's documents without joining anything — the same reasoning as
  * `storageKeyFor` in `pdf/store.ts`. The filename is sanitised on the way in:
  * it is the sender's, and a sender may call a file `../../etc/passwd`.
+ *
+ * The `nonce` is what makes it unique (NEW-10). The Message-ID is the
+ * sender's too: a client that reuses one, a re-delivered message, or a second
+ * deployment polling the same mailbox into the same bucket all produced the
+ * same key, and the PUT replaced the first file with the second.
  */
 export function inboundStorageKey(
   branchCode: string,
@@ -109,6 +114,7 @@ export function inboundStorageKey(
   externalId: string,
   filename: string,
   index: number,
+  nonce: string,
 ): string {
   /*
     Dots are collapsed as well as separators replaced, and both are needed.
@@ -126,7 +132,7 @@ export function inboundStorageKey(
       .replace(/\.{2,}/g, '.')
       .slice(0, 100)
   const thread = safe(externalId.replace(/[<>]/g, ''))
-  return `inbound/${safe(branchCode)}/${receivedAt.getUTCFullYear()}/${thread}/${index}-${safe(filename)}`
+  return `inbound/${safe(branchCode)}/${receivedAt.getUTCFullYear()}/${thread}/${index}-${safe(nonce)}-${safe(filename)}`
 }
 
 function dedupe(values: readonly string[]): string[] {

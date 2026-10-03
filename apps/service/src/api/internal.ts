@@ -1168,14 +1168,20 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
 
       Two drivers photographing the same delivery note produce the same object
       once. It also means a re-submitted form — the classic double tap on a
-      phone — overwrites rather than accumulating, and the key carries nothing
-      an operator typed, so a filename with a slash in it cannot escape the
-      prefix.
+      phone — reuses the object rather than accumulating, and the key carries
+      nothing an operator typed, so a filename with a slash in it cannot escape
+      the prefix.
+
+      Content-addressed, so it needs no random part to be collision-proof
+      (NEW-10): the same key is the same bytes, and the store is told to keep
+      what is there rather than refuse. The full branch uuid, not a prefix.
     */
       const storageKey = `${rules.prefix}/${branchId}/${checksum}.${extension}`
 
       try {
-        const stored = await (await fileStore()).put(storageKey, bytes, contentType)
+        const stored = await (
+          await fileStore()
+        ).put(storageKey, bytes, contentType, { ifExists: 'keep' })
 
         const [asset] = await withActor(actor, (tx) =>
           tx

@@ -70,6 +70,7 @@ import {
 } from '@qabandi/db'
 import { slaDueAt, turnDueAt, type IntakeSettings, type WorkingCalendar } from '@qabandi/core'
 import { fileStore, resolveInboundMail } from '../adapters/index'
+import { putUnique, storageNonce } from '../adapters/file-store'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
 import {
   identifyingDomain,
@@ -1704,13 +1705,15 @@ async function storeAttachments(
   const out: StoredAttachment[] = []
 
   for (const [index, part] of message.attachments.entries()) {
-    const key = inboundStorageKey(
-      branch.code,
-      message.receivedAt,
-      message.externalId,
-      part.filename,
-      index,
-    )
+    const keyFor = (nonce: string) =>
+      inboundStorageKey(
+        branch.code,
+        message.receivedAt,
+        message.externalId,
+        part.filename,
+        index,
+        nonce,
+      )
 
     /*
       An oversized part was emptied by the adapter and is recorded, not stored.
@@ -1723,7 +1726,7 @@ async function storeAttachments(
     */
     if (part.content.byteLength === 0) {
       out.push({
-        storageKey: `oversized:${key}`,
+        storageKey: `oversized:${keyFor(storageNonce())}`,
         filename: part.filename,
         contentType: part.contentType,
         byteSize: 0,
@@ -1733,7 +1736,8 @@ async function storeAttachments(
       continue
     }
 
-    const stored = await store.put(key, part.content, part.contentType)
+    // A fresh key, and the store will not overwrite (NEW-10).
+    const stored = await putUnique(store, keyFor, part.content, part.contentType)
     out.push({
       storageKey: stored.storageKey,
       filename: part.filename,
