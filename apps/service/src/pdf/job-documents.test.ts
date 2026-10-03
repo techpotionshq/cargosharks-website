@@ -135,6 +135,37 @@ const base: JobDocumentView = {
 const view = (patch: Partial<JobDocumentView>): JobDocumentView => ({ ...base, ...patch })
 
 describe('house bill of lading', () => {
+  /* The packing list's NEW-8 fault, on the bill: customer as shipper always. */
+  describe('names the parties by the direction of the job', () => {
+    const block = (html: string, heading: string) => {
+      const cell = html.split('<div class="cell">').find((c) => c.includes(`<h2>${heading}</h2>`))
+      return (cell ?? '').split('</div>')[0]!
+    }
+    const bare = (tradeDirection: string) => ({ ...base, tradeDirection, parties: [] })
+
+    it('puts the customer as consignee on an import with no party records', () => {
+      const html = renderBillOfLadingHtml(bare('import'), 'en')
+      expect(block(html, 'Shipper / Exporter')).not.toContain('Gulf Trading Co.')
+      expect(block(html, 'Consignee')).toContain('Gulf Trading Co.')
+    })
+
+    it('puts the customer as shipper on an export, consignee to order', () => {
+      const html = renderBillOfLadingHtml(bare('export'), 'en')
+      expect(block(html, 'Shipper / Exporter')).toContain('Gulf Trading Co.')
+      expect(block(html, 'Consignee')).toContain('TO ORDER')
+    })
+
+    it('prints the customer in Arabic on the Arabic copy', () => {
+      const html = renderBillOfLadingHtml(bare('import'), 'ar')
+      expect(block(html, 'المرسل إليه')).toContain('شركة الخليج للتجارة')
+    })
+
+    it("uses the job's party records when it has them", () => {
+      const html = renderBillOfLadingHtml(base, 'en')
+      expect(block(html, 'Shipper / Exporter')).toContain('Shanghai Hongqiao Ltd.')
+    })
+  })
+
   it('prints the shipper, consignee and notify party in their own boxes', () => {
     const html = renderBillOfLadingHtml(base, 'en')
 
@@ -558,6 +589,41 @@ describe('packing list', () => {
 
   it('carries the HS code for the officer reading it', () => {
     expect(renderPackingListHtml(base, 'en')).toContain('6907.21.00')
+  })
+
+  /*
+    NEW-8: with no bill parties the customer was printed as shipper on every
+    job, so a Kuwaiti importer appeared as its own overseas supplier.
+  */
+  describe('names the parties by the direction of the job', () => {
+    // One party cell: from its heading to the next cell or the reference row.
+    const block = (html: string, heading: string) => {
+      const cell = html.split('<div class="cell">').find((c) => c.includes(`<h2>${heading}</h2>`))
+      return (cell ?? '').split('<div class="row"')[0]!
+    }
+
+    it('puts the customer as consignee on an import with no party records', () => {
+      const html = renderPackingListHtml({ ...base, tradeDirection: 'import', parties: [] }, 'en')
+      expect(block(html, 'Shipper')).not.toContain('Gulf Trading Co.')
+      expect(block(html, 'Consignee')).toContain('Gulf Trading Co.')
+    })
+
+    it('puts the customer as shipper on an export with no party records', () => {
+      const html = renderPackingListHtml({ ...base, tradeDirection: 'export', parties: [] }, 'en')
+      expect(block(html, 'Shipper')).toContain('Gulf Trading Co.')
+      expect(block(html, 'Consignee')).not.toContain('Gulf Trading Co.')
+    })
+
+    it('prints the customer in Arabic on the Arabic copy', () => {
+      const html = renderPackingListHtml({ ...base, tradeDirection: 'import', parties: [] }, 'ar')
+      expect(block(html, 'المرسل إليه')).toContain('شركة الخليج للتجارة')
+    })
+
+    it("uses the job's party records when it has them", () => {
+      const html = renderPackingListHtml({ ...base, tradeDirection: 'import' }, 'en')
+      expect(block(html, 'Shipper')).toContain('Shanghai Hongqiao Ltd.')
+      expect(block(html, 'Consignee')).toContain('TO ORDER')
+    })
   })
 })
 

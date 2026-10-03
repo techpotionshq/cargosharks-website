@@ -27,6 +27,7 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { assets, documentTypes, documents, jobs, withActor, type Actor } from '@qabandi/db'
 import { fileStore } from '../adapters/index'
+import { putUnique } from '../adapters/file-store'
 import { DocumentNotFoundError } from './documents'
 import type { DocumentLocale } from './document-kit'
 import { DOCUMENT_TYPE_KEYS, type JobDocumentKind } from './job-documents'
@@ -58,12 +59,16 @@ export interface StoredDocument {
 /**
  * Where a document lives in the bucket.
  *
- * Keyed by job and version rather than by a random id, so an operator with
- * bucket access can find a shipment's documents without joining anything, and
- * so a re-render of the same version is idempotent rather than accumulating
- * orphans. The checksum is not in the key: two renders of the same version
- * *should* collide, because the second is a correction of the first within one
- * transaction that failed.
+ * Readable by job and version, so an operator with bucket access can find a
+ * shipment's documents without joining anything, and ending in a random
+ * `nonce` so the key is never reused (NEW-10). It was deterministic, on the
+ * reasoning that a re-render of one version should land on the same object,
+ * and with an unconditional PUT that made any second writer of the same
+ * (branch prefix, reference, version) an overwrite: two deployments sharing a
+ * bucket whose branches were created in the same minute (the prefix is the
+ * first 8 hex of a uuidv7, a time bucket), or a re-seeded database whose job
+ * references start again at 00001, replaced each other's issued documents.
+ * The `documents` row is what names the file; the key only has to be unique.
  */
 export function storageKeyFor(
   branchCode: string,
@@ -71,9 +76,10 @@ export function storageKeyFor(
   kind: string,
   version: number,
   locale: DocumentLocale,
+  nonce: string,
 ): string {
   const safe = (s: string): string => s.replace(/[^A-Za-z0-9._-]/g, '-')
-  return `documents/${safe(branchCode)}/${safe(jobReference)}/${safe(kind)}-v${version}-${locale}.pdf`
+  return `documents/${safe(branchCode)}/${safe(jobReference)}/${safe(kind)}-v${version}-${locale}-${safe(nonce)}.pdf`
 }
 
 export async function storeJobDocument(
@@ -97,7 +103,8 @@ export async function storeJobDocument(
     All three in one transaction, under a lock on (job, kind, locale) — O13.
     The version was read in one transaction and written in another, so two
     issues at once both computed v3, both wrote the same storage key (the
-    second render over the first's bytes and checksum) and both recorded v3.
+    second render over the first's bytes and checksum; keys now carry a nonce
+    and the store refuses to overwrite, NEW-10) and both recorded v3.
     The lock makes the second wait and then read v3 as the previous version;
     the unique index on (job, type, locale, version) is the backstop, and a
     clash that still reaches it is refused rather than recorded twice.
@@ -157,15 +164,21 @@ export async function storeJobDocument(
       version: (previous?.version ?? 0) + 1,
     }
 
-    const storageKey = storageKeyFor(
-      context.branchId.slice(0, 8),
-      context.reference,
-      kind,
-      context.version,
-      locale,
+    // A fresh key every time, and the store refuses to overwrite (NEW-10).
+    const stored = await putUnique(
+      store,
+      (nonce) =>
+        storageKeyFor(
+          context.branchId.slice(0, 8),
+          context.reference,
+          kind,
+          context.version,
+          locale,
+          nonce,
+        ),
+      pdf,
+      'application/pdf',
     )
-
-    const stored = await store.put(storageKey, pdf, 'application/pdf')
 
     const [asset] = await tx
       .insert(assets)

@@ -12,9 +12,10 @@
  * database rather than by a check here that somebody could forget.
  */
 
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
+  assets,
   branches,
   chargeTypes,
   customers,
@@ -25,9 +26,12 @@ import {
   principals,
   quoteLines,
   quotes,
+  systemActor,
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { fileStore } from '../adapters/index'
+import { FileStoreError, putUnique } from '../adapters/file-store'
 import { renderInvoiceHtml, type DocumentLocale, type InvoiceView } from './invoice'
 import { renderQuotationHtml, type QuotationView } from './quotation'
 import { createRenderer } from './renderer'
@@ -143,34 +147,154 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
 /**
  * A rendered invoice, and the filename it should be saved under.
  *
- * Generated on demand and streamed rather than stored. That is a deliberate
- * consequence of `FileStore` having no implementation yet — but it is also the
- * better default: an invoice PDF is a *view* of rows that can still change
- * before issue, and a stored copy would go stale the moment a line was edited.
- * Once storage exists, the copy worth keeping is the one made at issue, when
- * the document stops being a view and becomes a record.
+ * A draft is rendered on demand: it is a *view* of rows that can still change,
+ * and a stored copy would go stale the moment a line was edited.
+ *
+ * An issued invoice is rendered once and kept (NEW-9). It was re-rendered on
+ * every download from current rows and the current template, so a template
+ * change or a re-costed customer name quietly changed a document the customer
+ * already holds, and `invoices.pdf_asset_id` was never written. Now the first
+ * download after issue stores the copy and every later one serves those bytes.
  */
 export async function renderInvoicePdf(
   actor: Actor,
   invoiceId: string,
   requested?: DocumentLocale,
 ): Promise<{ pdf: Buffer; filename: string }> {
+  // Under the caller's actor first: this is the visibility check (FR-ID-04).
   const view = await loadInvoiceView(actor, invoiceId)
   // The language asked for, else the invoice's own (NEW-6): a download that
   // names none is the document as issued, not an English copy of it.
   const locale: DocumentLocale = requested ?? view.language ?? 'en'
-  const renderer = createRenderer()
-
-  const pdf = await renderer.render({
-    html: renderInvoiceHtml(view, locale),
-    locale,
-  })
 
   // The series number, because that is what finance files it under. A draft
   // has none, so it is named by id and marked draft on its face.
   const stem = view.seriesNo ?? `draft-${invoiceId.slice(0, 8)}`
+  const filename = `${stem}-${locale}.pdf`
 
-  return { pdf, filename: `${stem}-${locale}.pdf` }
+  const render = (of: InvoiceView) =>
+    createRenderer().render({ html: renderInvoiceHtml(of, locale), locale })
+
+  if (!view.issuedAt) return { pdf: await render(view), filename }
+
+  return { pdf: await issuedCopy(invoiceId, locale, filename, view, render), filename }
+}
+
+/**
+ * The stored copy of an issued invoice in one language, made on first use.
+ *
+ * Run as the system: the caller has already proved it can see the invoice,
+ * and the first download may well be the customer's, from the portal, whose
+ * actor may neither insert an asset nor update an invoice. Nothing the caller
+ * supplied reaches a table name or chooses a row other than this invoice.
+ *
+ * One column, two languages. `pdf_asset_id` holds the copy in the invoice's
+ * own `language`, the document of record; the courtesy copy in the other
+ * language is an asset too, found by its `meta`, so both are frozen alike.
+ *
+ * Rendered as issued: received and credited are zeroed, because the copy may
+ * be made after a receipt, and a stored "Balance due 0.000" would then be
+ * what the invoice says for ever. Payment status is the screen's job.
+ *
+ * Storage failing is not a reason to refuse an invoice that rendered before
+ * this existed, so a store error serves the live render and stores nothing;
+ * the next download tries again.
+ */
+async function issuedCopy(
+  invoiceId: string,
+  locale: DocumentLocale,
+  filename: string,
+  view: InvoiceView,
+  render: (of: InvoiceView) => Promise<Buffer>,
+): Promise<Buffer> {
+  const store = await fileStore()
+
+  return withActor(systemActor(), async (tx) => {
+    // Two first downloads at once would otherwise both store a copy.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`invoice-pdf:${invoiceId}:${locale}`}, 0))`,
+    )
+
+    const [invoice] = await tx
+      .select({
+        branchId: invoices.branchId,
+        language: invoices.language,
+        pdfAssetId: invoices.pdfAssetId,
+        branchCode: branches.code,
+      })
+      .from(invoices)
+      .innerJoin(branches, eq(branches.id, invoices.branchId))
+      .where(eq(invoices.id, invoiceId))
+      .limit(1)
+    if (!invoice) throw new DocumentNotFoundError(invoiceId, 'invoice')
+
+    const ofRecord = invoice.language === locale
+    const [existing] = await tx
+      .select({ storageKey: assets.storageKey })
+      .from(assets)
+      .where(
+        ofRecord && invoice.pdfAssetId
+          ? eq(assets.id, invoice.pdfAssetId)
+          : and(
+              eq(assets.branchId, invoice.branchId),
+              sql`${assets.meta}->>'invoiceId' = ${invoiceId}`,
+              sql`${assets.meta}->>'locale' = ${locale}`,
+              isNull(assets.retiredAt),
+            ),
+      )
+      .limit(1)
+
+    if (existing) {
+      try {
+        return await store.get(existing.storageKey)
+      } catch (error) {
+        // A memory store after a restart, or a bucket that lost the object:
+        // the row stays as the record of what was issued, the reader gets a
+        // live render rather than an error.
+        if (error instanceof FileStoreError) return render(view)
+        throw error
+      }
+    }
+
+    const pdf = await render({ ...view, amountPaid: '0', amountCredited: '0' })
+
+    let stored
+    try {
+      const safe = (v: string) => v.replace(/[^A-Za-z0-9._-]/g, '-')
+      stored = await putUnique(
+        store,
+        (nonce) =>
+          `invoices/${safe(invoice.branchCode)}/${safe(filename.replace(/\.pdf$/, ''))}-${nonce}.pdf`,
+        pdf,
+        'application/pdf',
+      )
+    } catch (error) {
+      if (error instanceof FileStoreError) return pdf
+      throw error
+    }
+
+    const [asset] = await tx
+      .insert(assets)
+      .values({
+        branchId: invoice.branchId,
+        storageKey: stored.storageKey,
+        fileName: filename,
+        contentType: 'application/pdf',
+        byteSize: stored.byteSize,
+        checksum: stored.checksum,
+        meta: { kind: 'invoice', invoiceId, locale, generated: true },
+      })
+      .returning({ id: assets.id })
+
+    if (ofRecord) {
+      await tx
+        .update(invoices)
+        .set({ pdfAssetId: asset!.id, updatedAt: new Date() })
+        .where(and(eq(invoices.id, invoiceId), isNull(invoices.pdfAssetId)))
+    }
+
+    return pdf
+  })
 }
 
 /**
@@ -325,8 +449,9 @@ export async function loadQuotationView(actor: Actor, quoteId: string): Promise<
 /**
  * A rendered quotation, and the filename it should be saved under.
  *
- * Streamed rather than stored, on the same reasoning as the invoice — and more
- * strongly here. A quotation is already immutable in the record: FR-RT-08
+ * Streamed rather than stored. `quotes` has no PDF asset column to point at a
+ * stored copy (unlike `invoices.pdf_asset_id`, NEW-9), and a quotation is
+ * already immutable in the record: FR-RT-08
  * makes a revision a new row with the previous one marked superseded, so the
  * quote *is* the archive and a stored PDF beside it would be a second copy
  * with nothing to reconcile it against.

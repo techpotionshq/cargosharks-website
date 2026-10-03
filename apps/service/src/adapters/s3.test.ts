@@ -15,8 +15,10 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  FileExistsError,
   memoryFileStore,
   parseStorageKey,
+  putUnique,
   presignUrl,
   qualifyKey,
   s3FileStore,
@@ -200,6 +202,60 @@ describe('the S3 driver', () => {
     expect(result.checksum).toBe('d1cb546b102fab8362de413fdacc187b05be10df72b72db3b3e50b4953f6a555')
   })
 
+  /*
+    NEW-10: the PUT was unconditional, so a second deployment, or a re-seeded
+    database reusing references, replaced another's file. `If-None-Match: *`
+    makes the store refuse an existing key atomically; R2 and S3 honour it.
+  */
+  it('asks the store to refuse an existing key, and signs that header', async () => {
+    const calls = stubFetch()
+    await store().put('jobs/AQ-1/hbl.pdf', Buffer.from('pdf bytes'), 'application/pdf')
+
+    expect(calls[0]!.headers['if-none-match']).toBe('*')
+    expect(calls[0]!.headers.authorization).toMatch(/SignedHeaders=[^,]*if-none-match/)
+  })
+
+  it('turns a 412 into FileExistsError rather than a generic failure', async () => {
+    stubFetch(
+      () =>
+        new Response(
+          '<Error><Code>PreconditionFailed</Code><Message>At least one of the pre-conditions you specified did not hold</Message></Error>',
+          { status: 412 },
+        ),
+    )
+    await expect(
+      store().put('jobs/AQ-1/hbl.pdf', Buffer.from('x'), 'application/pdf'),
+    ).rejects.toBeInstanceOf(FileExistsError)
+  })
+
+  it('keeps an existing content-addressed object when told to', async () => {
+    stubFetch(() => new Response('', { status: 412 }))
+    const stored = await store().put('pod/b/sum.jpg', Buffer.from('x'), 'image/jpeg', {
+      ifExists: 'keep',
+    })
+    expect(stored.storageKey).toBe('s3:qabandi-docs/pod/b/sum.jpg')
+  })
+
+  it('retries a refused key with a fresh nonce', async () => {
+    let first = true
+    const calls = stubFetch(() => {
+      if (!first) return new Response('')
+      first = false
+      return new Response('', { status: 412 })
+    })
+    const stored = await putUnique(
+      store(),
+      (nonce) => `documents/KWI/J-1/hbl-v1-en-${nonce}.pdf`,
+      Buffer.from('x'),
+      'application/pdf',
+    )
+    expect(calls).toHaveLength(2)
+    expect(calls[0]!.url).not.toBe(calls[1]!.url)
+    expect(stored.storageKey).toBe(
+      `s3:qabandi-docs/${new URL(calls[1]!.url).pathname.slice('/qabandi-docs/'.length)}`,
+    )
+  })
+
   /** Virtual-host addressing puts the bucket in the host, not the path. */
   it('addresses a bucket by host when path style is off', async () => {
     const calls = stubFetch()
@@ -278,6 +334,34 @@ describe('the memory driver', () => {
     expect(stored.byteSize).toBe(5)
     expect((await files.get(stored.storageKey)).toString()).toBe('hello')
     expect(await files.signedUrl('a/b.txt', 60)).toBe('data:text/plain;base64,aGVsbG8=')
+  })
+
+  /** NEW-10: the same refusal as the S3 driver's conditional write. */
+  it('refuses to overwrite an existing key', async () => {
+    const files = memoryFileStore()
+    await files.put('a/b.txt', Buffer.from('first'), 'text/plain')
+    await expect(files.put('a/b.txt', Buffer.from('second'), 'text/plain')).rejects.toBeInstanceOf(
+      FileExistsError,
+    )
+    expect(files.contents.get('a/b.txt')?.toString()).toBe('first')
+  })
+
+  it('keeps the existing object for a content-addressed key', async () => {
+    const files = memoryFileStore()
+    await files.put('a/sum.txt', Buffer.from('same'), 'text/plain')
+    const again = await files.put('a/sum.txt', Buffer.from('same'), 'text/plain', {
+      ifExists: 'keep',
+    })
+    expect(again.storageKey).toBe(qualifyKey('memory', 'a/sum.txt'))
+    expect(files.contents.size).toBe(1)
+  })
+
+  it('stores under a fresh key every time through putUnique', async () => {
+    const files = memoryFileStore()
+    const a = await putUnique(files, (n) => `d/x-${n}.pdf`, Buffer.from('1'), 'application/pdf')
+    const b = await putUnique(files, (n) => `d/x-${n}.pdf`, Buffer.from('2'), 'application/pdf')
+    expect(a.storageKey).not.toBe(b.storageKey)
+    expect(files.contents.size).toBe(2)
   })
 
   /** The same retirement semantics as S3, so a test means the same under both. */

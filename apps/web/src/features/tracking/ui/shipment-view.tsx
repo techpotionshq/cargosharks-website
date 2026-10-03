@@ -18,6 +18,7 @@ import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneTimeline } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
+import { journey } from '../journey'
 
 export async function ShipmentView({
   result,
@@ -43,6 +44,8 @@ export async function ShipmentView({
   const nameOf = (en: string, ar: string | null) => pickName(locale, en, ar)
   const done = result.milestones.filter((m) => m.actualAt !== null).length
   const total = result.milestones.length
+  // "Departed"/"Arrived" only on an actual date; a planned one says so (NEW-7).
+  const { departure, arrival } = journey(result)
 
   return (
     <>
@@ -72,16 +75,16 @@ export async function ShipmentView({
               {t('progress', { done, total })}
             </span>
             <span className="numeric text-body-sm text-ink-muted">
-              {result.ata ? t('arrived') : t('eta')}{' '}
+              {arrival.actual ? t('arrived') : t('eta')}{' '}
               <span className="font-semibold text-ink">
-                {formatDate(result.ata ?? result.eta, locale, timeZone)}
+                {formatDate(arrival.at, locale, timeZone)}
               </span>
             </span>
           </div>
           <Meter
             value={done}
             max={total}
-            tone={result.ata ? 'var(--qb-positive)' : 'var(--qb-accent)'}
+            tone={arrival.actual ? 'var(--qb-positive)' : 'var(--qb-accent)'}
             label={t('progress', { done, total })}
           />
         </div>
@@ -94,9 +97,11 @@ export async function ShipmentView({
             </span>
           </Field>
           <Field label={t('vessel')}>{result.vesselOrFlight ?? '—'}</Field>
-          <Field label={t('departed')}>{formatDate(result.etd, locale, timeZone)}</Field>
-          <Field label={result.ata ? t('arrived') : t('eta')}>
-            {formatDate(result.ata ?? result.eta, locale, timeZone)}
+          <Field label={departure.actual ? t('departed') : t('departureEstimated')}>
+            {formatDate(departure.at, locale, timeZone)}
+          </Field>
+          <Field label={arrival.actual ? t('arrived') : t('eta')}>
+            {formatDate(arrival.at, locale, timeZone)}
           </Field>
         </dl>
 
@@ -187,9 +192,11 @@ export async function ShipmentView({
                       <span className="min-w-0 flex-1 truncate text-body-sm text-ink">
                         {nameOf(document.nameEn, document.nameAr)}
                       </span>
-                      <span className="numeric shrink-0 text-micro text-ink-subtle">
-                        {formatNumber(document.sizeKb, locale)} KB
-                      </span>
+                      {document.sizeKb === null ? null : (
+                        <span className="numeric shrink-0 text-micro text-ink-subtle">
+                          {formatNumber(document.sizeKb, locale)} KB
+                        </span>
+                      )}
                       <Icon
                         name={documentHref ? 'download' : 'check'}
                         size={15}

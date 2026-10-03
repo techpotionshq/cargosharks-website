@@ -148,7 +148,11 @@ export interface DocumentView {
   readonly nameAr: string
   readonly version: number
   readonly releasedAt: Date | null
-  readonly sizeKb: number
+  /**
+   * Null where the reader may see the document but not its asset row: a
+   * customer contact, under whose actor `assets_scope` hides every file.
+   */
+  readonly sizeKb: number | null
 }
 
 export interface JobSummary {
@@ -362,8 +366,10 @@ export interface TrackingResult {
   readonly destinationName: string
   readonly destinationNameAr: string
   readonly vesselOrFlight: string | null
+  /** Planned. Never shown as "Departed": see `features/tracking/journey.ts`. */
   readonly etd: Date | null
   readonly eta: Date | null
+  readonly atd: Date | null
   readonly ata: Date | null
   readonly containers: readonly ContainerView[]
   readonly milestones: readonly MilestoneView[]

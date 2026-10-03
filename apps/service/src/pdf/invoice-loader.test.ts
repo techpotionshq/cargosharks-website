@@ -39,8 +39,23 @@ vi.mock('./renderer', () => ({
   }),
 }))
 
+/*
+  A memory store the test can look into: issued invoices are now stored on
+  first download (NEW-9), and the memory driver refuses an overwrite exactly
+  as the S3 one does (NEW-10).
+*/
+vi.mock('../adapters/index', async () => {
+  const { memoryFileStore } = await import('../adapters/s3')
+  const store = memoryFileStore()
+  return { fileStore: async () => store, __store: store }
+})
+
 const { branches, customers, invoiceLines, invoices, principals, withActor, workingCalendars } =
   await import('@qabandi/db')
+const { assets } = await import('@qabandi/db')
+const { __store: memoryStore } = (await import('../adapters/index')) as unknown as {
+  __store: { contents: Map<string, Buffer> }
+}
 
 const { loadInvoiceView, renderInvoicePdf, DocumentNotFoundError } = await import('./documents')
 
@@ -329,6 +344,64 @@ describe.skipIf(!enabled)('loading an invoice for print', () => {
       expect(result.filename).toMatch(/-ar\.pdf$/)
       expect(printer.calls[0]?.locale).toBe('ar')
       expect(printer.calls[0]?.html).toContain('dir="rtl"')
+    })
+
+    /*
+      NEW-9: an issued invoice was re-rendered on every download, from
+      current rows and the current template, and pdf_asset_id was never set.
+    */
+    it('stores an issued invoice once and serves those bytes thereafter', async () => {
+      const id = await invoice({ language: 'en' })
+
+      const first = await renderInvoicePdf(actor, id, 'en')
+      const [row] = await withActor(systemActor, (tx) =>
+        tx.select({ pdfAssetId: invoices.pdfAssetId }).from(invoices).where(eq(invoices.id, id)),
+      )
+      expect(row?.pdfAssetId).toBeTruthy()
+      const [asset] = await withActor(systemActor, (tx) =>
+        tx.select().from(assets).where(eq(assets.id, row!.pdfAssetId!)),
+      )
+      expect(asset?.storageKey).toMatch(/invoices\/DCP\/INV-.*-en-[0-9a-f]{12}\.pdf$/)
+
+      // A later edit to the rows must not reach the issued document.
+      await withActor(systemActor, (tx) =>
+        tx.update(invoices).set({ notes: 'changed after issue' }).where(eq(invoices.id, id)),
+      )
+      printer.calls.length = 0
+      const second = await renderInvoicePdf(actor, id, 'en')
+      expect(printer.calls).toHaveLength(0)
+      expect(second.pdf.equals(first.pdf)).toBe(true)
+    })
+
+    it('freezes the courtesy language as well, without taking the column', async () => {
+      const id = await invoice({ language: 'en' })
+      const before = memoryStore.contents.size
+
+      await renderInvoicePdf(actor, id, 'ar')
+      printer.calls.length = 0
+      await renderInvoicePdf(actor, id, 'ar')
+
+      expect(printer.calls).toHaveLength(0)
+      expect(memoryStore.contents.size).toBe(before + 1)
+      const [row] = await withActor(systemActor, (tx) =>
+        tx.select({ pdfAssetId: invoices.pdfAssetId }).from(invoices).where(eq(invoices.id, id)),
+      )
+      expect(row?.pdfAssetId).toBeNull()
+    })
+
+    it('stores the copy as issued, without later receipts on its face', async () => {
+      const id = await invoice({ amountPaid: '100.000' })
+      await renderInvoicePdf(actor, id, 'en')
+      expect(printer.calls[0]?.html).not.toContain('Balance due')
+    })
+
+    it('keeps rendering a draft live, and stores nothing for it', async () => {
+      const id = await invoice({ status: 'draft', seriesNo: null, issuedAt: null })
+      const before = memoryStore.contents.size
+      await renderInvoicePdf(actor, id, 'en')
+      await renderInvoicePdf(actor, id, 'en')
+      expect(printer.calls).toHaveLength(2)
+      expect(memoryStore.contents.size).toBe(before)
     })
 
     it('refuses to render an invoice it cannot see', async () => {

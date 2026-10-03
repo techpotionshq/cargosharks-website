@@ -233,9 +233,9 @@ describe('inboundStorageKey', () => {
   const received = new Date('2026-08-18T07:14:00Z')
 
   it('files an attachment under its branch, year and message', () => {
-    expect(inboundStorageKey('KWI', received, '<c1@shipper.com.kw>', 'packing-list.pdf', 0)).toBe(
-      'inbound/KWI/2026/c1-shipper.com.kw/0-packing-list.pdf',
-    )
+    expect(
+      inboundStorageKey('KWI', received, '<c1@shipper.com.kw>', 'packing-list.pdf', 0, 'f00d'),
+    ).toBe('inbound/KWI/2026/c1-shipper.com.kw/0-f00d-packing-list.pdf')
   })
 
   /**
@@ -247,24 +247,31 @@ describe('inboundStorageKey', () => {
    * is confined to.
    */
   it('neutralises a filename attempting to escape its prefix', () => {
-    const key = inboundStorageKey('KWI', received, '<x@y.com>', '../../../etc/passwd', 0)
+    const key = inboundStorageKey('KWI', received, '<x@y.com>', '../../../etc/passwd', 0, 'n')
     expect(key).not.toContain('..')
-    expect(key).toBe('inbound/KWI/2026/x-y.com/0-.-.-.-etc-passwd')
+    expect(key).toBe('inbound/KWI/2026/x-y.com/0-n-.-.-.-etc-passwd')
   })
 
   it('neutralises a filename in a script or a foreign alphabet', () => {
-    const key = inboundStorageKey('KWI', received, '<x@y.com>', 'قائمة التعبئة.pdf', 0)
+    const key = inboundStorageKey('KWI', received, '<x@y.com>', 'قائمة التعبئة.pdf', 0, 'n')
     expect(key).toMatch(/^inbound\/KWI\/2026\/x-y\.com\/0-[A-Za-z0-9._-]+$/)
   })
 
   it('keeps two attachments of one message apart', () => {
-    const a = inboundStorageKey('KWI', received, '<x@y.com>', 'invoice.pdf', 0)
-    const b = inboundStorageKey('KWI', received, '<x@y.com>', 'invoice.pdf', 1)
+    const a = inboundStorageKey('KWI', received, '<x@y.com>', 'invoice.pdf', 0, 'n')
+    const b = inboundStorageKey('KWI', received, '<x@y.com>', 'invoice.pdf', 1, 'n')
+    expect(a).not.toBe(b)
+  })
+
+  /** NEW-10: a reused Message-ID no longer names the same object. */
+  it('keeps two deliveries of one message apart by their nonce', () => {
+    const a = inboundStorageKey('KWI', received, '<x@y.com>', 'invoice.pdf', 0, 'aaaa')
+    const b = inboundStorageKey('KWI', received, '<x@y.com>', 'invoice.pdf', 0, 'bbbb')
     expect(a).not.toBe(b)
   })
 
   it('bounds a filename long enough to break a storage key', () => {
-    const key = inboundStorageKey('KWI', received, '<x@y.com>', `${'a'.repeat(4000)}.pdf`, 0)
+    const key = inboundStorageKey('KWI', received, '<x@y.com>', `${'a'.repeat(4000)}.pdf`, 0, 'n')
     expect(key.length).toBeLessThan(200)
   })
 })

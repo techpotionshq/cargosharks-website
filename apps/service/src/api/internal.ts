@@ -311,7 +311,8 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
   /**
    * Render an invoice, bilingually, on demand.
    *
-   * Streamed rather than stored — see `renderInvoicePdf`. `Content-Disposition`
+   * A draft renders live; an issued invoice is stored on first download and
+   * served from storage after that — see `renderInvoicePdf`. `Content-Disposition`
    * carries the series number, because that is what finance files it under.
    */
   app.post<{ Params: { id: string }; Body: DocumentRequest }>(
@@ -1169,14 +1170,20 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
 
       Two drivers photographing the same delivery note produce the same object
       once. It also means a re-submitted form — the classic double tap on a
-      phone — overwrites rather than accumulating, and the key carries nothing
-      an operator typed, so a filename with a slash in it cannot escape the
-      prefix.
+      phone — reuses the object rather than accumulating, and the key carries
+      nothing an operator typed, so a filename with a slash in it cannot escape
+      the prefix.
+
+      Content-addressed, so it needs no random part to be collision-proof
+      (NEW-10): the same key is the same bytes, and the store is told to keep
+      what is there rather than refuse. The full branch uuid, not a prefix.
     */
       const storageKey = `${rules.prefix}/${branchId}/${checksum}.${extension}`
 
       try {
-        const stored = await (await fileStore()).put(storageKey, bytes, contentType)
+        const stored = await (
+          await fileStore()
+        ).put(storageKey, bytes, contentType, { ifExists: 'keep' })
 
         const [asset] = await withActor(actor, (tx) =>
           tx

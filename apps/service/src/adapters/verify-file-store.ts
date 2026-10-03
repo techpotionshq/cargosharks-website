@@ -23,9 +23,11 @@
  */
 
 import { loadEnv } from '@qabandi/db'
-import { s3FileStore } from './s3'
+import { s3FileStore, storageNonce } from './s3'
 
-const KEY = `verify/file-store-check.txt`
+// Unique per run: the store refuses to overwrite (NEW-10), and two people
+// checking one bucket at once should not trip over each other.
+const KEY = `verify/file-store-check-${storageNonce()}.txt`
 const BODY = Buffer.from(`al-qabandi file store check\n`)
 
 function required(name: string): string {

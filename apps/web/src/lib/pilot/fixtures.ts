@@ -2582,6 +2582,8 @@ export function pilotTracking(
     vesselOrFlight: job.vesselOrFlight,
     etd: job.etd,
     eta: job.eta,
+    // The pilot job has no departure column; its milestones carry the date.
+    atd: null,
     ata: job.ata,
     containers: job.containers,
     /*
