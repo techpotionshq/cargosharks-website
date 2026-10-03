@@ -876,6 +876,30 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
     expect(thread[0]!.channel).toBe('email')
   })
 
+  /*
+    The email half of a greeting opening nothing: "hi" with no subject worth a
+    word and nothing attached is held, and the sender's request takes it along.
+  */
+  it('holds a bare "hi" mail and files it on the enquiry the next mail opens', async () => {
+    const sender = `greeter-${RUN.toLowerCase()}@unknown-shipper.test`
+    const hi = await runInboundMailPoll(
+      new Date('2026-08-18T07:21:30Z'),
+      sourceOf(mail({ from: sender, subject: 'Hello', body: 'Hi' })),
+    )
+    expect(hi.held).toBe(1)
+    expect(hi.created).toBe(0)
+
+    const request = await runInboundMailPoll(
+      new Date('2026-08-18T07:21:40Z'),
+      sourceOf(mail({ from: sender, subject: `Greeted RFQ ${RUN}` })),
+    )
+    expect(request.created).toBe(1)
+
+    const enquiry = await enquiryNoted(`Greeted RFQ ${RUN}`)
+    const bodies = (await messagesOn(enquiry.id)).map((m: { body: string }) => m.body).sort()
+    expect(bodies).toEqual(['Hi', 'Two 40HC Shanghai to Shuwaikh, ready 25 August.'])
+  })
+
   /**
    * The bug this is here to catch.
    *

@@ -10,6 +10,8 @@
  * This is the door. A message arrives, and it becomes one of two things:
  *
  *   a reply on something we already know about  -> a message on that thread
+ *   a greeting, with nothing open to thread onto -> held, unanswered, until the
+ *                                                  sender's next real message
  *   anything else                               -> a new enquiry, with a clock
  *
  * ## Attribution refuses ambiguity, as it does for carrier events
@@ -44,7 +46,7 @@
  * into a storage key rather than on the way out.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
   assets,
   branches,
@@ -68,7 +70,13 @@ import {
   withActor,
   workingCalendars,
 } from '@qabandi/db'
-import { slaDueAt, turnDueAt, type IntakeSettings, type WorkingCalendar } from '@qabandi/core'
+import {
+  classifyNewContent,
+  slaDueAt,
+  turnDueAt,
+  type IntakeSettings,
+  type WorkingCalendar,
+} from '@qabandi/core'
 import { fileStore, resolveInboundMail } from '../adapters/index'
 import { putUnique, storageNonce } from '../adapters/file-store'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
@@ -97,6 +105,8 @@ export interface InboundMailResult {
   readonly ignored: number
   /** Mail from a known supplier, filed on no enquiry — read as a bill where it carries one. */
   readonly filed: number
+  /** Greetings with no enquiry open, held until the sender says what they need. */
+  readonly held: number
   readonly failed: number
 }
 
@@ -131,6 +141,7 @@ export async function runInboundMailPoll(
       duplicates: 0,
       ignored: 0,
       filed: 0,
+      held: 0,
       failed: 0,
     }
   }
@@ -144,6 +155,7 @@ export async function runInboundMailPoll(
   let duplicates = 0
   let ignored = 0
   let filed = 0
+  let held = 0
   let failed = 0
 
   for (const source of sources) {
@@ -192,6 +204,7 @@ export async function runInboundMailPoll(
           else if (handled.outcome === 'rate_reply') rateReplies++
           else if (handled.outcome === 'ignored') ignored++
           else if (handled.outcome === 'filed') filed++
+          else if (handled.outcome === 'held') held++
           else duplicates++
         } catch (error) {
           /*
@@ -234,7 +247,7 @@ export async function runInboundMailPoll(
     }
   }
 
-  return { collected, created, threaded, rateReplies, duplicates, ignored, filed, failed }
+  return { collected, created, threaded, rateReplies, duplicates, ignored, filed, held, failed }
 }
 
 export interface BranchRef {
@@ -287,7 +300,7 @@ export function branchFor(map: Map<string, BranchRef>, mailbox: string): BranchR
   return map.get(mailbox.trim().toLowerCase())
 }
 
-type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored' | 'rate_reply' | 'filed'
+type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored' | 'rate_reply' | 'filed' | 'held'
 
 /**
  * What `handleMessage` did, and what a model should read next.
@@ -706,11 +719,49 @@ export async function ingestMessage(
       */
       const supplierOnly = !matched && !target && partnerOnly
 
+      /*
+        A greeting is not an enquiry.
+
+        "Hello", "السلام عليكم", a thumbs-up, from somebody with nothing open to
+        thread it onto, used to open an enquiry like any other message: an SLA
+        clock, a reference, and on WhatsApp the bilingual "we've received your
+        enquiry" sent back to a customer who had not asked for anything yet. On
+        the live site that was a returning customer's "Hello" the day after
+        their last enquiry, answered with a fresh reference for nothing.
+
+        So it is held: filed on no record, unanswered, and not lost. The same
+        sender's next substantive message opens the enquiry and takes the held
+        greetings onto its thread (`attachHeldGreetings`), so the conversation
+        panel shows the exchange from its first word. Only words decide it: a
+        message with a file on it (a captionless packing list, a PDF) is read
+        whatever it says, and `classifyNewContent` is the same conservative list
+        the intake agent stays silent on, every word of which must match.
+        Email follows the same rule; a mail's subject is read with its body, so
+        "RFQ" in the subject or a signature block below "Hi" is content.
+      */
+      const greetingOnly =
+        !matched &&
+        !target &&
+        !supplierOnly &&
+        stored.length === 0 &&
+        classifyNewContent([message.subject ?? '', message.body]) === 'chit_chat'
+
       const context = matched
         ? { enquiryId: matched.enquiryId, jobId: null, created: false }
-        : supplierOnly
+        : supplierOnly || greetingOnly
           ? { enquiryId: null, jobId: null, created: false }
           : (target ?? (await createEnquiry(tx, message, branch, customerId, asOf, !agentOn)))
+
+      if (context.created && context.enquiryId) {
+        await attachHeldGreetings(
+          tx,
+          message,
+          branch.id,
+          context.enquiryId,
+          customerId !== null,
+          asOf,
+        )
+      }
 
       const [row] = await tx
         .insert(messages)
@@ -884,7 +935,10 @@ export async function ingestMessage(
               ? bills.length > 0
                 ? 'filed: mail from a known supplier, read as a bill — not a customer enquiry'
                 : 'filed: mail from a known supplier, not a customer enquiry; a person has been told'
-              : null,
+              : greetingOnly
+                ? 'held: a greeting with no enquiry open; filed unanswered until the sender ' +
+                  'writes what they need, which opens the enquiry and takes this onto it'
+                : null,
           updatedAt: asOf,
         })
         .where(eq(inboundWebhookEvents.id, claim.id))
@@ -894,9 +948,11 @@ export async function ingestMessage(
           ? ('rate_reply' as const)
           : supplierOnly
             ? ('filed' as const)
-            : context.created
-              ? ('created' as const)
-              : ('threaded' as const),
+            : greetingOnly
+              ? ('held' as const)
+              : context.created
+                ? ('created' as const)
+                : ('threaded' as const),
         enquiryId: context.enquiryId,
         messageId: row!.id,
         partnerId,
@@ -1258,9 +1314,17 @@ async function findOpenConversation(
   branchId: string,
 ): Promise<Target | null> {
   if (message.from === '') return null
-  const since = new Date(
-    message.receivedAt.getTime() - WHATSAPP_CONVERSATION_HOURS * 60 * 60 * 1000,
-  )
+  const windowMs = WHATSAPP_CONVERSATION_HOURS * 60 * 60 * 1000
+  const since = new Date(message.receivedAt.getTime() - windowMs)
+  /*
+    Forward as well as back. Messages are not always filed in the order they
+    were sent: a receipt whose job failed is re-driven ten minutes later
+    (`inbound-redrive.ts`), by which time the sender's next message has opened
+    the enquiry. Bounded at the received time, the late one found nothing and
+    opened a second enquiry for the same conversation; a held greeting filed
+    late would never have reached its enquiry at all.
+  */
+  const until = new Date(message.receivedAt.getTime() + windowMs)
   const rows = await tx
     .select({ enquiryId: messages.enquiryId })
     .from(messages)
@@ -1272,13 +1336,81 @@ async function findOpenConversation(
         eq(messages.direction, 'inbound'),
         eq(messages.fromAddress, message.from),
         sql`${messages.sentAt} >= ${since}`,
-        sql`${messages.sentAt} <= ${message.receivedAt}`,
+        sql`${messages.sentAt} <= ${until}`,
         inArray(enquiries.status, [...OPEN_ENQUIRY_STATUSES]),
       ),
     )
     .orderBy(sql`${messages.sentAt} desc`)
     .limit(1)
   return rows[0]?.enquiryId ? { enquiryId: rows[0].enquiryId, jobId: null, created: false } : null
+}
+
+/**
+ * How far back a held greeting still belongs to the sender's next enquiry.
+ *
+ * Longer than the WhatsApp conversation window on purpose: "Hello" on a
+ * Thursday evening and the request on Saturday morning are one conversation to
+ * the customer, and a greeting left unattached is only ever invisible, never
+ * wrong. Past this it stays filed on no record, where the receipt explains it.
+ */
+export const HELD_GREETING_HOURS = 48
+
+/**
+ * Take the sender's held greetings onto the enquiry their message just opened.
+ *
+ * The other half of `greetingOnly` in `ingestMessage`. Candidates are the
+ * sender's own inbound messages on this branch and channel, filed on no
+ * enquiry, job or partner, inside the window; each is re-read and moved only
+ * if it is still nothing but a greeting with no file on it. That re-reading is
+ * the guard: a late rate reply to a renewal RFQ is also filed on no record, and
+ * from a sender who may one day be a customer too, and it must never be swept
+ * onto a customer's thread because it shared an address.
+ *
+ * Visibility follows the message that opened the enquiry, for the reason
+ * `customerVisible` gives at the insert: same sender, same freshly created
+ * enquiry, so the two cannot disagree about whose it is.
+ */
+async function attachHeldGreetings(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  message: InboundMessage,
+  branchId: string,
+  enquiryId: string,
+  customerVisible: boolean,
+  asOf: Date,
+): Promise<number> {
+  if (message.from === '') return 0
+  const since = new Date(message.receivedAt.getTime() - HELD_GREETING_HOURS * 60 * 60 * 1000)
+  const candidates: { id: string; subject: string | null; body: string }[] = await tx
+    .select({ id: messages.id, subject: messages.subject, body: messages.body })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.branchId, branchId),
+        eq(messages.channel, message.channel ?? 'email'),
+        eq(messages.direction, 'inbound'),
+        isNull(messages.enquiryId),
+        isNull(messages.jobId),
+        isNull(messages.partnerId),
+        // An email address is matched as written in either case; a phone is digits.
+        sql`lower(${messages.fromAddress}) = lower(${message.from})`,
+        sql`${messages.sentAt} >= ${since}`,
+        sql`${messages.sentAt} <= ${message.receivedAt}`,
+        sql`not exists (select 1 from message_attachments a where a.message_id = ${messages.id})`,
+      ),
+    )
+    .orderBy(asc(messages.sentAt))
+
+  const ids = candidates
+    .filter((m) => classifyNewContent([m.subject ?? '', m.body]) === 'chit_chat')
+    .map((m) => m.id)
+  if (ids.length === 0) return 0
+
+  await tx
+    .update(messages)
+    .set({ enquiryId, customerVisible, updatedAt: asOf })
+    .where(inArray(messages.id, ids))
+  return ids.length
 }
 
 /**

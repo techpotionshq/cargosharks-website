@@ -176,6 +176,45 @@ describe('what a turn’s new messages amount to', () => {
   })
 })
 
+/*
+  The same verdict decides whether an inbound message opens an enquiry at all
+  (`ingestMessage` reads the subject with the body). A customer's "Hello" on
+  the live site opened one and was sent a reference for nothing.
+*/
+describe('a greeting opens no enquiry', () => {
+  it.each([
+    'hello',
+    'Hello',
+    'hello?',
+    'hi',
+    'Hi!',
+    'salam',
+    'السلام عليكم',
+    'مرحبا',
+    'مرحباً',
+    'thanks',
+    'شكرا',
+    'ok',
+    '👍',
+    '🙏',
+  ])('%j, as subject and body, is chit-chat', (text) => {
+    expect(classifyNewContent([text, text])).toBe('chit_chat')
+  })
+
+  it.each([
+    'please price two 40ft containers from Jebel Ali to Shuwaikh port, general cargo, ready 15 October',
+    'ارجو تسعير حاويتين 40 قدم من جبل علي الى ميناء الشويخ، بضائع عامة، جاهزة 15 اكتوبر',
+    'Hello, 2x40HC Shanghai to Shuwaikh',
+  ])('%j is a request', (text) => {
+    expect(classifyNewContent([text, text])).toBe('substantive')
+  })
+
+  it('reads an email subject with its body', () => {
+    expect(classifyNewContent(['RFQ', 'Hi'])).toBe('substantive')
+    expect(classifyNewContent(['', 'Hi'])).toBe('chit_chat')
+  })
+})
+
 describe('language', () => {
   it('reads Arabic from Arabic script', () => {
     expect(detectLanguage(['السلام عليكم', 'عندي حاويتين ٤٠ قدم من شنغهاي', '40HC'])).toBe('ar')

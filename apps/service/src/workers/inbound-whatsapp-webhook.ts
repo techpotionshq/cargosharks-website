@@ -83,6 +83,8 @@ export interface InboundWhatsAppWebhookResult {
     | 'skipped'
     | 'rate_reply'
     | 'filed'
+    /** A greeting with no enquiry open: filed unanswered, attached to the sender's next enquiry. */
+    | 'held'
     /** A message the business sent from outside the product, filed as a staff reply. */
     | 'staff_reply'
   readonly enquiryId?: string | null
@@ -205,6 +207,8 @@ export async function runInboundWhatsAppWebhook(
     Only on a freshly *created* enquiry — a threaded reply or a duplicate is not
     a new conversation to greet — and best-effort: a failed reply must never fail
     the intake, because the enquiry is already filed and its SLA clock running.
+    A bare "Hello" with nothing open is `held`, not created, so it opens nothing
+    to acknowledge.
 
     This is a path that replies to the sender of inbound mail, so it needs a loop
     breaker before anything else (Operations_Findings §11). Our own echo is not
