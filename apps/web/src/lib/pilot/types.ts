@@ -425,6 +425,93 @@ export interface PortalShipment {
   readonly nextMilestone: string | null
 }
 
+/**
+ * A quotation as the customer holds it (D12), `features/portal/queries.ts`.
+ *
+ * Sell side only. There is no cost, margin, preparer or covering-note draft
+ * here, and no field to put one in: the portal's projection is what a
+ * customer was sent, and a shape without the column cannot leak it.
+ */
+export interface PortalQuote {
+  readonly id: string
+  readonly reference: string
+  readonly version: number
+  /** Only `sent`, `accepted`, `rejected` or `expired` reach a customer. */
+  readonly status: string
+  readonly currency: string
+  readonly total: string | null
+  /** A `date` column, `YYYY-MM-DD`; the offer stands all of that day in Kuwait. */
+  readonly validUntil: string | null
+  readonly sentAt: Date | null
+  readonly decidedAt: Date | null
+  readonly mode: Mode | null
+  readonly originName: string | null
+  readonly destinationName: string | null
+}
+
+export interface PortalQuoteDetail extends PortalQuote {
+  readonly enquiryReference: string
+  readonly branchName: string | null
+  readonly incoterm: string | null
+  /** The covering note in the reader's language, as it was sent. */
+  readonly coverNote: string | null
+  /** The customer's own reason, where they declined with one. */
+  readonly decisionNote: string | null
+  readonly lines: readonly {
+    readonly id: string
+    readonly chargeName: string
+    readonly description: string | null
+    readonly basis: string
+    readonly quantity: string
+    readonly rate: string
+    readonly amount: string
+    readonly currency: string
+  }[]
+}
+
+/** An issued invoice or credit note, as the customer holds it (D12). */
+export interface PortalInvoice {
+  readonly id: string
+  readonly seriesNo: string | null
+  /** Only `issued`, `part_paid`, `paid` or `credited` reach a customer. */
+  readonly status: string
+  readonly currency: string
+  readonly total: string
+  readonly amountPaid: string
+  readonly amountCredited: string
+  /** `total - amount_paid - amount_credited`, in SQL; zero on a credit note. */
+  readonly balance: string
+  readonly issuedAt: Date | null
+  /** A `date` column, `YYYY-MM-DD`. */
+  readonly dueOn: string | null
+  readonly isCreditNote: boolean
+  /** On a credit note, the number of the invoice it credits. */
+  readonly creditsSeriesNo: string | null
+}
+
+export interface PortalInvoiceDetail extends PortalInvoice {
+  readonly subtotal: string
+  readonly taxAmount: string
+  readonly branchName: string | null
+  readonly creditsInvoiceId: string | null
+  readonly lines: readonly {
+    readonly id: string
+    readonly description: string
+    readonly quantity: string
+    readonly unitPrice: string
+    readonly amount: string
+    readonly taxAmount: string
+  }[]
+  /** Credit notes raised against this invoice, newest first. */
+  readonly creditNotes: readonly {
+    readonly id: string
+    readonly seriesNo: string | null
+    readonly total: string
+    /** Read through `json_build_object`, so an ISO string rather than a `Date`. */
+    readonly issuedAt: string | null
+  }[]
+}
+
 /* ===========================================================================
    Register rows.
 
@@ -1351,6 +1438,8 @@ export interface QuoteDetail {
   /** The covering note the model drafts and a coordinator edits — one per language. */
   readonly coverNoteEn: string | null
   readonly coverNoteAr: string | null
+  /** The customer's reason for declining on the portal (D12). */
+  readonly decisionNote?: string | null
   readonly lines: readonly {
     id: string
     chargeName: string

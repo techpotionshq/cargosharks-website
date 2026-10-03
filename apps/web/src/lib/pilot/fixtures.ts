@@ -135,6 +135,10 @@ import type {
   PaymentRow,
   PaymentSummary,
   PodRow,
+  PortalInvoice,
+  PortalInvoiceDetail,
+  PortalQuote,
+  PortalQuoteDetail,
   PortalShipment,
   CoveringAgent,
   RateRequestsView,
@@ -1898,6 +1902,28 @@ const ENQUIRY_SEEDS: readonly EnquirySeed[] = [
     age: 9,
     sla: 24,
   },
+  /*
+    An offer waiting on the portal customer (D12). Their only priced enquiry
+    was already won, so the portal's Accept and Decline had nothing to stand
+    on offline and the e2e walk could never reach them. Appended, so every
+    list that takes the first seed still takes the same one.
+  */
+  {
+    seq: 325,
+    branch: 'KWI',
+    status: 'quoted',
+    channel: 'portal',
+    mode: 'air',
+    customer: 0,
+    origin: 'KWKWI',
+    destination: 'DEHAM',
+    owner: 1,
+    age: 20,
+    sla: 24,
+    respondedAfter: 2,
+    sell: 1386,
+    margin: 19.5,
+  },
 ]
 
 /** `locale` names the ports, as `listEnquiries` does (F27). */
@@ -2319,6 +2345,165 @@ export function pilotPortalShipments(
         nextMilestone: (ar ? next?.nameAr : next?.nameEn) ?? null,
       }
     })
+}
+
+/*
+  The portal customer's quotations and invoices (D12), the registers' own
+  rows, filtered the way `quotes_customer_reads` and `invoices_customer_reads`
+  filter a real database: this customer only, sent and current quotations,
+  issued invoices. Derived rather than restated, so the portal and the staff
+  register cannot disagree about a figure.
+*/
+const PORTAL_QUOTE_STATUSES = new Set(['sent', 'accepted', 'rejected', 'expired'])
+const PORTAL_INVOICE_STATUSES = new Set(['issued', 'part_paid', 'paid', 'credited'])
+
+export function pilotPortalQuotes(now = Date.now(), locale: 'en' | 'ar' = 'en'): PortalQuote[] {
+  return pilotQuotes(now, undefined, locale)
+    .filter((row) => PORTAL_QUOTE_STATUSES.has(row.status))
+    .map((row) => pilotPortalQuote(row.id, now, locale))
+    .filter((quote): quote is PortalQuoteDetail => quote !== undefined)
+    .map(
+      ({
+        id,
+        reference,
+        version,
+        status,
+        currency,
+        total,
+        validUntil,
+        sentAt,
+        decidedAt,
+        mode,
+        originName,
+        destinationName,
+      }) => ({
+        id,
+        reference,
+        version,
+        status,
+        currency,
+        total,
+        validUntil,
+        sentAt,
+        decidedAt,
+        mode,
+        originName,
+        destinationName,
+      }),
+    )
+    .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0))
+}
+
+export function pilotPortalQuote(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalQuoteDetail | undefined {
+  const detail = pilotQuoteDetail(id, now, locale)
+  if (!detail || !PORTAL_QUOTE_STATUSES.has(detail.status)) return undefined
+  if (detail.customerId !== customerId(0)) return undefined
+
+  const seq = Number(id.replace('quote-', ''))
+  const seed = ENQUIRY_SEEDS.find((candidate) => candidate.seq === seq)!
+  const home = branch(seed.branch)
+  return {
+    id: detail.id,
+    reference: detail.reference,
+    version: detail.version,
+    status: detail.status,
+    currency: detail.currency,
+    total: detail.totalSell,
+    validUntil: detail.validUntil,
+    sentAt: detail.sentAt,
+    decidedAt: detail.decidedAt,
+    mode: detail.mode,
+    originName: locale === 'ar' ? PORTS[seed.origin].ar : PORTS[seed.origin].en,
+    destinationName: locale === 'ar' ? PORTS[seed.destination].ar : PORTS[seed.destination].en,
+    enquiryReference: detail.enquiryReference,
+    branchName: pickName(locale, home.en, home.ar),
+    incoterm: null,
+    coverNote: null,
+    decisionNote: null,
+    lines: detail.lines,
+  }
+}
+
+export function pilotPortalInvoices(now = Date.now(), locale: 'en' | 'ar' = 'en'): PortalInvoice[] {
+  return INVOICE_SEEDS.filter((seed) => seed.customer === 0)
+    .map((seed) => pilotPortalInvoice(`inv-${seed.seq}`, now, locale))
+    .filter((invoice): invoice is PortalInvoiceDetail => invoice !== undefined)
+    .map(
+      ({
+        id,
+        seriesNo,
+        status,
+        currency,
+        total,
+        amountPaid,
+        amountCredited,
+        balance,
+        issuedAt,
+        dueOn,
+        isCreditNote,
+        creditsSeriesNo,
+      }) => ({
+        id,
+        seriesNo,
+        status,
+        currency,
+        total,
+        amountPaid,
+        amountCredited,
+        balance,
+        issuedAt,
+        dueOn,
+        isCreditNote,
+        creditsSeriesNo,
+      }),
+    )
+    .sort((a, b) => (b.issuedAt?.getTime() ?? 0) - (a.issuedAt?.getTime() ?? 0))
+}
+
+export function pilotPortalInvoice(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalInvoiceDetail | undefined {
+  const detail = pilotInvoiceDetail(id, now, locale)
+  if (!detail || !PORTAL_INVOICE_STATUSES.has(detail.status)) return undefined
+  if (detail.customerId !== customerId(0)) return undefined
+
+  const seed = INVOICE_SEEDS.find((candidate) => `inv-${candidate.seq}` === id)!
+  const home = branch(seed.branch)
+  return {
+    id: detail.id,
+    seriesNo: detail.seriesNo,
+    status: detail.status,
+    currency: detail.currency,
+    total: detail.total,
+    amountPaid: detail.amountPaid,
+    amountCredited: detail.amountCredited,
+    balance: detail.isCreditNote
+      ? numeric('0')
+      : minus(minus(detail.total, detail.amountPaid), detail.amountCredited),
+    issuedAt: detail.issuedAt,
+    dueOn: detail.dueOn,
+    isCreditNote: detail.isCreditNote,
+    creditsSeriesNo: null,
+    subtotal: detail.subtotal,
+    taxAmount: detail.taxAmount,
+    branchName: pickName(locale, home.en, home.ar),
+    creditsInvoiceId: detail.creditsInvoiceId,
+    lines: detail.lines.map((line) => ({
+      id: line.id,
+      description: pickName(locale, line.descriptionEn, line.descriptionAr),
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      amount: line.amount,
+      taxAmount: line.taxAmount,
+    })),
+    creditNotes: [],
+  }
 }
 
 /**

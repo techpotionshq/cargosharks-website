@@ -128,6 +128,28 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     summary: 'A sent quotation reaches the end of its validity soon.',
     fields: ['reference', 'validUntil', 'daysRemaining'],
   }),
+  /*
+    The customer's answer, told to the branch that priced it (D12).
+
+    Raised only when the customer decides on the portal. When a coordinator
+    records an acceptance the customer phoned in, the branch already knows,
+    and a notice to the desk about its own click is noise. Internal both ways:
+    the customer is the one who just pressed the button.
+  */
+  event({
+    key: 'quote.accepted',
+    audience: 'internal',
+    requirement: 'FR-CP-07',
+    summary: 'A customer accepted a quotation on the portal.',
+    fields: ['reference', 'customer', 'customerAr', 'total', 'currency'],
+  }),
+  event({
+    key: 'quote.declined',
+    audience: 'internal',
+    requirement: 'FR-CP-07',
+    summary: 'A customer declined a quotation on the portal.',
+    fields: ['reference', 'customer', 'customerAr', 'total', 'currency', 'reason'],
+  }),
 
   // --- job -----------------------------------------------------------------
   event({

@@ -626,6 +626,71 @@ Please tell us if you would like to proceed, or if you need a fresh price.
 `,
   ),
 
+  // --- quote.accepted / quote.declined (internal) ---------------------------
+  // The customer's answer from the portal, to the branch that priced it.
+  t(
+    'quote.accepted',
+    'en',
+    'Quotation {{reference}} accepted by {{customer}}',
+    `
+Hello {{recipientName}}
+
+{{customer}} accepted quotation {{reference}} on the customer portal.
+
+Total: {{total}} {{currency}}
+
+Open the quotation in Qabandi to book the shipment.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'quote.accepted',
+    'ar',
+    'قبل {{customerAr}} عرض السعر {{reference}}',
+    `
+مرحباً {{recipientName}}
+
+قبل {{customerAr}} عرض السعر {{reference}} عبر بوابة العملاء.
+
+الإجمالي: {{total}} {{currency}}
+
+افتح عرض السعر في نظام قبندي لحجز الشحنة.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'quote.declined',
+    'en',
+    'Quotation {{reference}} declined by {{customer}}',
+    `
+Hello {{recipientName}}
+
+{{customer}} declined quotation {{reference}} on the customer portal.
+
+Total: {{total}} {{currency}}
+Reason given: {{reason}}
+
+{{senderName}}
+`,
+  ),
+  t(
+    'quote.declined',
+    'ar',
+    'رفض {{customerAr}} عرض السعر {{reference}}',
+    `
+مرحباً {{recipientName}}
+
+رفض {{customerAr}} عرض السعر {{reference}} عبر بوابة العملاء.
+
+الإجمالي: {{total}} {{currency}}
+السبب المذكور: {{reason}}
+
+{{senderName}}
+`,
+  ),
+
   // --- job.created (customer) -----------------------------------------------
   t(
     'job.created',
@@ -882,6 +947,32 @@ reference so that we can match it.
     'ar',
     'استفسار جديد {{reference}}',
     'تم استلامه وينتظر الإسناد. افتحه لإسناده وبدء احتساب زمن الاستجابة.',
+  ),
+
+  // --- quote.accepted / quote.declined --------------------------------------
+  ia(
+    'quote.accepted',
+    'en',
+    '{{customer}} accepted {{reference}}',
+    'Accepted on the portal for {{total}} {{currency}}. Open it to book the shipment.',
+  ),
+  ia(
+    'quote.accepted',
+    'ar',
+    'قبل {{customerAr}} العرض {{reference}}',
+    'تم القبول عبر البوابة بقيمة {{total}} {{currency}}. افتحه لحجز الشحنة.',
+  ),
+  ia(
+    'quote.declined',
+    'en',
+    '{{customer}} declined {{reference}}',
+    'Declined on the portal. Reason given: {{reason}}',
+  ),
+  ia(
+    'quote.declined',
+    'ar',
+    'رفض {{customerAr}} العرض {{reference}}',
+    'تم الرفض عبر البوابة. السبب المذكور: {{reason}}',
   ),
 
   // --- enquiry.sla_breached -------------------------------------------------

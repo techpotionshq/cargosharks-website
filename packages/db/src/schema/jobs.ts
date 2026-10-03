@@ -159,6 +159,14 @@ export const quotes = pgTable(
     sentAt: tsz('sent_at'),
     decidedAt: tsz('decided_at'),
     /**
+     * Why the customer declined, in their own words, when they say (D12).
+     *
+     * Typed on the portal and kept on the quote rather than only in the
+     * branch's notification, because a notice is read once and the reason is
+     * what the next quotation to this customer should be priced against.
+     */
+    decisionNote: text('decision_note'),
+    /**
      * The customer-facing covering note, drafted by a model and edited by a
      * coordinator before the quote is sent — one column per language.
      *
