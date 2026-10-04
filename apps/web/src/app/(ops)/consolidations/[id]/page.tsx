@@ -162,7 +162,12 @@ export default async function ConsolidationDetailPage({
         }
       />
 
-      <Grid>
+      {/*
+        `items-start`, as on the job file: the house list and the master
+        costs are different lengths, and stretched the shorter one ended in a
+        tall slab of empty card under its last row.
+      */}
+      <Grid className="items-start">
         <Card className="@4xl:col-span-12">
           <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-4 @5xl:grid-cols-6">
             <Field label={t('carrier')}>{consol.carrierName ?? '—'}</Field>

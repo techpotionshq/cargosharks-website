@@ -310,15 +310,22 @@ export function Lane({
     // on one line was 286px of a 966px card and the reason the enquiry and
     // job registers scrolled sideways at 1280. Wrapping costs nothing where
     // there is room: a table gives a cell its one-line width when it can.
+    //
+    // `max-w-full` is what lets the names truncate at all. An inline-flex box
+    // sizes itself to its widest item's one-line width, so a long port name
+    // made the whole lane wider than its card and the `truncate` below never
+    // engaged: "Kuwait International" plus a terminal ran 170px out of the
+    // dashboard's arriving-next panel. Capped at its parent, the names
+    // shrink and take their ellipsis.
     <span
-      className={['inline-flex flex-wrap items-center gap-x-1.5', className]
+      className={['inline-flex max-w-full flex-wrap items-center gap-x-1.5', className]
         .filter(Boolean)
         .join(' ')}
     >
       <span className="truncate">{origin}</span>
       {/* The arrow travels with the destination (a no-break pair): wrapped on
           its own, it sat alone on a middle line between two place names. */}
-      <span className="inline-flex min-w-0 items-center gap-x-1.5">
+      <span className="inline-flex max-w-full min-w-0 items-center gap-x-1.5">
         <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
         <span className="truncate">{destination}</span>
       </span>

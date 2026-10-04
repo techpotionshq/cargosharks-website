@@ -80,7 +80,12 @@ export function Metric({
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-body-sm leading-tight font-medium text-ink-muted">{label}</p>
+        {/* `min-w-0 break-words`: a label is a flex item beside the chip, and
+            a long word in it (more often Arabic than English) pushed the chip
+            out of a half-width tile on a phone instead of wrapping. */}
+        <p className="min-w-0 text-body-sm leading-tight font-medium break-words text-ink-muted">
+          {label}
+        </p>
         {icon ? (
           <span
             className={`flex size-8 shrink-0 items-center justify-center rounded-full ${CHIP_TONE[tone]}`}
@@ -102,10 +107,19 @@ export function Metric({
         narrower than a phone's. The tile knows its own width; the figure
         steps up only when the tile has room for it. The unit may drop under
         the figure rather than overflow.
+
+        Two steps lower in the narrowest tiles: "KWD 1,840.000" at the
+        headline size was 12px wider than a half-width tile on a 390px phone
+        (137px inside) and ran out of the quotation's "Price quoted" card,
+        and at the heading size it still did not fit, by 3px. The title size
+        does, below 9rem; the heading size from there, which is a 412px
+        phone. `break-words` is the last resort for a figure no size fits
+        (an eight-digit sum in three-decimal dinars): broken onto a second
+        line inside the tile rather than drawn across its border.
       */}
       <p className="mt-3 flex min-w-0 flex-wrap items-baseline gap-1.5">
         <span
-          className={`numeric min-w-0 font-display text-headline leading-none font-semibold tracking-tight text-ink @[13rem]:text-display @[17rem]:text-display-lg ${
+          className={`numeric min-w-0 font-display text-title leading-none font-semibold tracking-tight break-words text-ink @[9rem]:text-heading @[10.5rem]:text-headline @[13rem]:text-display @[17rem]:text-display-lg ${
             live ? 'accruing' : ''
           }`}
         >

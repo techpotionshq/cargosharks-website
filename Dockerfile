@@ -77,7 +77,9 @@ RUN pnpm --filter @qabandi/service build
 FROM base AS service
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `upgrade` first, for the reason given at the runtime stage below.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
       chromium fonts-liberation fonts-noto-core fonts-noto-color-emoji \
       fonts-kacst fonts-freefont-ttf ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -155,6 +157,14 @@ CMD ["node", "apps/service/dist/index.js"]
 # in the build stage.
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
+
+# Debian's security fixes land weeks before the node image is rebuilt on them.
+# `libpcre2-8-0` (CVE-2026-103111, HIGH) had a fixed package in bookworm while
+# the published base image still carried the old one, and the image scan
+# refused every change until it was taken. Upgrading here takes whatever
+# Debian has fixed since the base was cut, instead of waiting for upstream.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
