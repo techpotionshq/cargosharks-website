@@ -98,7 +98,11 @@ export default async function PortalQuotesPage() {
                               className="text-ink-subtle"
                             />
                           ) : null}
-                          <Lane origin={quote.originName} destination={quote.destinationName} />
+                          <Lane
+                            className="min-w-0"
+                            origin={quote.originName}
+                            destination={quote.destinationName}
+                          />
                           {quote.mode ? (
                             <span className="text-ink-subtle">· {tMode(quote.mode)}</span>
                           ) : null}

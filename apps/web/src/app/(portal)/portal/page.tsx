@@ -101,13 +101,20 @@ export default async function PortalHome() {
                           {tJob(`statuses.${shipment.status}` as 'statuses.booked')}
                         </Badge>
                       </div>
-                      <p className="mt-1.5 flex items-center gap-2 text-body text-ink-muted">
+                      {/* `flex-wrap` and a shrinkable lane: on one unwrapping line a
+                          long port name held the lane at its full width and
+                          pushed the mode past the card's edge on a phone. */}
+                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-body text-ink-muted">
                         <Icon
                           name={modeIcon(shipment.mode)}
                           size={16}
                           className="text-ink-subtle"
                         />
-                        <Lane origin={shipment.originName} destination={shipment.destinationName} />
+                        <Lane
+                          className="min-w-0"
+                          origin={shipment.originName}
+                          destination={shipment.destinationName}
+                        />
                         <span className="text-ink-subtle">· {tMode(shipment.mode)}</span>
                       </p>
                       {shipment.customerReference ? (

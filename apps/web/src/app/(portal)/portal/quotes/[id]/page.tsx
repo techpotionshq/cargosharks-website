@@ -80,7 +80,10 @@ export default async function PortalQuotePage({ params }: { params: Promise<{ id
         title={<span className="ref numeric">{quote.reference}</span>}
         description={
           quote.originName && quote.destinationName ? (
-            <span className="inline-flex flex-wrap items-center gap-2">
+            // `max-w-full` for the reason `Lane` gives: without it this box
+            // sized to the lane's one-line width and the port names never
+            // truncated, pushing a phone's page sideways.
+            <span className="inline-flex max-w-full flex-wrap items-center gap-2">
               {quote.mode ? <Icon name={modeIcon(quote.mode)} size={14} /> : null}
               <Lane origin={quote.originName} destination={quote.destinationName} />
               {quote.mode ? ` · ${tMode(quote.mode)}` : ''}
