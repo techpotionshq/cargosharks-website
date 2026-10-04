@@ -228,7 +228,16 @@ export function Modal({
         // `visible`: a dialog opened from a `MoreMenu` lives inside a panel
         // that hides itself with `visibility` once the row is clicked, and
         // visibility is inherited — see `ui/menu.tsx`.
-        className={`visible m-auto max-h-[85dvh] w-[calc(100vw-2rem)] ${SIZE[size]} overflow-hidden rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-[color:var(--qb-scrim)] backdrop:backdrop-blur-[2px] open:flex open:animate-[qb-modal-in_140ms_ease-out]`}
+        //
+        // The text resets are the same problem in another property. A dialog
+        // is a DOM child of its trigger, and the trigger is often in a table
+        // cell: `white-space: nowrap` from an actions column held the suspend
+        // warning to one line and ran it 300px out of the dialog's side, and
+        // the edit dialog's switch hints out of their outlines on a phone.
+        // Alignment, weight and case leak the same way from an end-aligned or
+        // uppercase cell. The top layer moves the box, not the inheritance,
+        // so it is cut here.
+        className={`visible m-auto text-start font-normal tracking-normal whitespace-normal normal-case max-h-[85dvh] w-[calc(100vw-2rem)] ${SIZE[size]} overflow-hidden rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-[color:var(--qb-scrim)] backdrop:backdrop-blur-[2px] open:flex open:animate-[qb-modal-in_140ms_ease-out]`}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col">
           <header className="flex items-start gap-3 border-b border-line px-5 py-4">
