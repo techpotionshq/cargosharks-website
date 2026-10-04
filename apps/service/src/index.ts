@@ -27,6 +27,7 @@ import { describeAdapters } from './adapters/index'
 import { registerWorkers } from './workers/index'
 import { publicApi } from './api/public'
 import { internalApi } from './api/internal'
+import { rateLimitOptions } from './api/rate-limit'
 import { webhooks } from './webhooks/index'
 import { syncNotificationTemplates, systemActor, withActor } from '@qabandi/db'
 
@@ -49,9 +50,10 @@ await app.register(cors, { origin: [config.WEB_URL], credentials: true })
 /**
  * The public read API and the tracking lookup are the only unauthenticated
  * surfaces, and both are rate limited — FR-CP-05's enumeration control and
- * FR-NT-07's throttle are the same mechanism.
+ * FR-NT-07's throttle are the same mechanism. The web app's own calls to
+ * `/internal` are exempt: see `api/rate-limit.ts` for why.
  */
-await app.register(rateLimit, { max: 120, timeWindow: '1 minute' })
+await app.register(rateLimit, rateLimitOptions)
 
 app.get('/health', async () => ({ ok: true, at: new Date().toISOString() }))
 
