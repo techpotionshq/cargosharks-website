@@ -187,7 +187,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
         />
       </div>
 
-      <Grid>
+      {/*
+        `items-start`, as on the job file: stretched to its neighbour, an
+        empty card ("No lanes recorded") floated its sentence in the middle of
+        a tall frame, and a short shipment list ended in a slab of nothing.
+      */}
+      <Grid className="items-start">
         <Panel
           className="@4xl:col-span-8"
           padding="none"

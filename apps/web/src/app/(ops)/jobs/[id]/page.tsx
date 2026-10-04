@@ -270,7 +270,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
       ) : null}
 
-      <Grid className="mb-4">
+      {/*
+        `items-start`: each card is as tall as what it holds. Stretched, the
+        shorter side of every pair here (the free-time card beside seven
+        milestones, "No parties yet" beside the containers) became a tall
+        frame with its content stranded in the middle of it.
+      */}
+      <Grid className="mb-4 items-start">
         {/* --- the milestone timeline ---------------------------------- */}
         <Card className="@4xl:col-span-5">
           <CardHeader
@@ -378,16 +384,17 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           */}
           {job.clocks.length > 0 ? (
             /*
-              `flex-1` on the last card, not on the column.
+              Its own height, not the column's.
 
-              The grid stretches this column to the height of the milestone
-              timeline beside it, but a stack of cards keeps its natural
-              height — so the leftover fell out of the bottom as a band of
-              canvas under the last card, which read as something failing to
-              load. The final card absorbs it instead, and the two columns end
-              on the same line.
+              This was `flex-1`, absorbing whatever height the milestone
+              timeline beside it left over so the two columns ended on one
+              line. With seven milestones that is most of the card, and the
+              clock sat in a tall red frame of nothing, which read worse than
+              the band of canvas it replaced. The grid row is `items-start`
+              now, so neither column is stretched and there is nothing to
+              absorb.
             */
-            <Card tone="critical" className="flex-1">
+            <Card tone="critical">
               <CardHeader
                 icon="clock"
                 eyebrow={t('clocks')}
@@ -508,10 +515,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               neutral rather than critical here — nothing is accruing, and a
               red panel saying so would cry wolf on every shipment.
             */
-            // Centred rather than top-aligned: with no clocks to list there is
-            // nothing to fill the height with, and a sentence pinned to the top
-            // of a tall empty card looks like the rest of it failed to render.
-            <Card className="flex flex-1 flex-col justify-center">
+            // Sized to its content. It used to fill the column and centre the
+            // sentence in it, which left the heading floating halfway down a
+            // mostly empty card beside the timeline; see the clock card above.
+            <Card>
               <CardHeader
                 icon="clock"
                 eyebrow={t('clocks')}
@@ -534,7 +541,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </Grid>
 
-      <Grid>
+      <Grid className="items-start">
         {/* --- the document vault, with release control ---------------- */}
         <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
