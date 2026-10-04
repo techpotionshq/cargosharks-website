@@ -84,6 +84,13 @@ export function TableShell({
         // behind it — see globals.css. `@container` is what the columns'
         // priorities and the cells' padding measure; see `ColumnPriority`.
         'qb-scroll-x @container w-full overflow-x-auto',
+        // Rounded at the foot to the card's inner radius. Most registers end
+        // a flush card, and the shell's square corners (its edge covers, the
+        // hovered last row) were painted across the card's rounded ones, so
+        // the border's curve was cut off by a white corner at both ends.
+        // Bottom only: a shell above other content carries a `border-t`,
+        // and rounding the top would bend that rule's ends down.
+        'rounded-b-[calc(var(--radius-card)-1px)]',
         scroll === 'fill' ? 'qb-scroll min-h-0 flex-1 overflow-y-auto' : '',
         className,
       ]
