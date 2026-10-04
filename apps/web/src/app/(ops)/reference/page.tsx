@@ -562,6 +562,12 @@ export default async function ReferencePage() {
           fills whatever the row turns out to be. The tariff scrolls inside it.
           Both cards end on the same line, neither is padded, and the height
           follows the data rather than a number chosen here.
+
+          Only once the two share a row (`@4xl:`). Stacked in one column there
+          is no neighbour to borrow a height from: the row is sized by this
+          card alone, `h-0` made that zero, and on a phone the tariff was a
+          10px sliver with its header and table drawn down over the card
+          below it.
         */}
         <Card className={`${PANEL} @4xl:col-span-6`} padding="none">
           <div className="p-5 pb-3">
@@ -619,7 +625,7 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <Card className={`${PANEL} h-0 min-h-full @4xl:col-span-6`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-6 @4xl:h-0 @4xl:min-h-full`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="customs"
