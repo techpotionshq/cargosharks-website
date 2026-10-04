@@ -80,7 +80,12 @@ export function Metric({
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-body-sm leading-tight font-medium text-ink-muted">{label}</p>
+        {/* `min-w-0 break-words`: a label is a flex item beside the chip, and
+            a long word in it (more often Arabic than English) pushed the chip
+            out of a half-width tile on a phone instead of wrapping. */}
+        <p className="min-w-0 text-body-sm leading-tight font-medium break-words text-ink-muted">
+          {label}
+        </p>
         {icon ? (
           <span
             className={`flex size-8 shrink-0 items-center justify-center rounded-full ${CHIP_TONE[tone]}`}

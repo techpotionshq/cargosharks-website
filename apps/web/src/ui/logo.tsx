@@ -52,7 +52,7 @@ export function Logo({
         : 'text-ink-subtle'
 
   return (
-    <span className={['flex items-center gap-2.5', className].filter(Boolean).join(' ')}>
+    <span className={['flex max-w-full items-center gap-2.5', className].filter(Boolean).join(' ')}>
       <span
         className="shrink-0"
         // eslint-disable-next-line react/no-danger -- generated from typed brand tokens
@@ -90,9 +90,12 @@ export function Logo({
              * Wraps rather than truncates. A clipped company name is the one
              * failure mode this component must not have: "Al-Qabandi & Partn…"
              * in the sidebar of their own product would be noticed in the
-             * first thirty seconds of the demo.
+             * first thirty seconds of the demo. `break-words` for a name that
+             * is one long word: wrapping needs a space to wrap at, and at the
+             * brand preview's display size such a name ran out of its card
+             * on a phone.
              */
-            className={`font-display font-semibold text-balance ${NAME_CLASS[size]} ${nameTone}`}
+            className={`font-display font-semibold text-balance break-words ${NAME_CLASS[size]} ${nameTone}`}
             style={{
               letterSpacing: 'var(--qb-wordmark-tracking)',
               fontWeight: 'var(--qb-wordmark-weight)' as unknown as number,
