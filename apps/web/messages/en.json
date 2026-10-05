@@ -3782,7 +3782,12 @@
       "expired": "Expired",
       "superseded": "Replaced"
     },
-    "partialTotal": "{count, plural, one {Partial total: # line not priced} other {Partial total: # lines not priced}}"
+    "partialTotal": "{count, plural, one {Partial total: # line not priced} other {Partial total: # lines not priced}}",
+    "reviewTitle": "Check this reply before you rely on it",
+    "reviewUnclassified": "“{line}” has no charge type. It is kept in the total as Other charge; name it before making a rate card.",
+    "reviewLineNumber": "Line {number}",
+    "reviewRejected": "{count, plural, one {# line could not be read, so this total is short and is not ranked.} other {# lines could not be read, so this total is short and is not ranked.}}",
+    "reviewTotalMismatch": "The agent states a total of {stated}, but the lines add up to {computed}. It is not ranked until someone checks."
   },
   "renewals": {
     "title": "Renewals in flight",

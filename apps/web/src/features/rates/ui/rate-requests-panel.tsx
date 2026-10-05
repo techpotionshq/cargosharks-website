@@ -108,6 +108,48 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                     {t('laneMismatch')}: {row.laneMismatch}
                   </p>
                 ) : null}
+                {/*
+                  Said on the row, by line, because the figure beside it looks
+                  as finished as any other (R1): an EK reply ranked Cheapest at
+                  USD 1,577 with its USD 40 screening fee silently gone.
+                */}
+                {row.review ? (
+                  <div className="mt-1 text-caption text-caution" dir="auto">
+                    <p className="font-medium">{t('reviewTitle')}</p>
+                    <ul className="list-disc ps-5">
+                      {row.review.unclassified.map((u) => (
+                        <li key={`u-${u.line}`}>
+                          {t('reviewUnclassified', {
+                            line: u.description || t('reviewLineNumber', { number: u.line }),
+                          })}
+                        </li>
+                      ))}
+                      {row.review.rejected > 0 ? (
+                        <li>{t('reviewRejected', { count: row.review.rejected })}</li>
+                      ) : null}
+                      {row.review.totalMismatch ? (
+                        <li>
+                          {t('reviewTotalMismatch', {
+                            stated: formatMoney(
+                              {
+                                amount: row.review.totalMismatch.stated,
+                                currency: row.review.totalMismatch.currency,
+                              },
+                              locale,
+                            ),
+                            computed: formatMoney(
+                              {
+                                amount: row.review.totalMismatch.computed,
+                                currency: row.review.totalMismatch.currency,
+                              },
+                              locale,
+                            ),
+                          })}
+                        </li>
+                      ) : null}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
 
               <div className="ms-auto text-end">

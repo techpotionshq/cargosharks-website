@@ -206,6 +206,14 @@ export async function extractRateReply(
           unpriced: summary.unpriced,
           // Which of those make the total partial — the ranking gate (R1).
           partial: summary.partial,
+          /*
+            Lines kept as "other" for want of a charge code, and the broker's
+            own total. Stored as read; `rateReplyReview` judges them at display
+            and award time, so a reply re-summarised later is judged on its
+            new totals (live run 5, R1).
+          */
+          unclassified: extracted.unclassified,
+          ...(extracted.statedTotal ? { statedTotal: extracted.statedTotal } : {}),
         },
       })
       /*
