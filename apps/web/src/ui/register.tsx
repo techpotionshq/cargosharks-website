@@ -31,6 +31,16 @@ export interface RegisterProps {
   readonly title: ReactNode
   readonly description?: ReactNode
   readonly actions?: ReactNode
+  /**
+   * Content that belongs between the title and the list — headline figures,
+   * panels about the records rather than the records themselves.
+   *
+   * The rate-card register put its metrics and three panels *above* the
+   * component, so its title arrived halfway down the screen under figures
+   * nobody had been told the subject of. Here they follow the header, and the
+   * filter strip stays beside the table it filters.
+   */
+  readonly intro?: ReactNode
   /** Omitted where a register is short enough to read whole. */
   readonly search?: {
     readonly action: string
@@ -74,6 +84,7 @@ export function Register({
   title,
   description,
   actions,
+  intro,
   search,
   filters,
   summary,
@@ -85,6 +96,8 @@ export function Register({
   return (
     <>
       <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actions} />
+
+      {intro}
 
       {summary?.length ? (
         <dl className="mb-4 flex flex-wrap items-baseline gap-x-8 gap-y-2 border-b border-line pb-4">

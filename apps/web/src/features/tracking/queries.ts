@@ -45,7 +45,12 @@ import {
 } from '@qabandi/db'
 import type { Mode, TrackingResult } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { pilotJob, pilotPortalShipments, pilotTracking } from '@/lib/pilot/fixtures'
+import {
+  pilotAgentShipments,
+  pilotJob,
+  pilotPortalShipments,
+  pilotTracking,
+} from '@/lib/pilot/fixtures'
 import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
@@ -131,15 +136,33 @@ export async function trackShipment(
  * by id under *their* actor, and the `customer_contact` arm of the jobs policy
  * is what limits it to their company's shipments. Same projection as public
  * tracking, so the two pages can never disagree about what a customer sees.
+ *
+ * An overseas agent opens their assigned shipments through here too
+ * (`app/(agent)/agent/shipments/[id]`). Nothing is widened for them: the
+ * `agent_contact` arm of the jobs policy already admits exactly the jobs their
+ * partner is named on — the list they open from is that same read — and every
+ * child table here follows the job, with milestones and exceptions held to
+ * `customer_visible` and documents to released, current and customer-visible
+ * types. The customer's name comes back null under their actor, because
+ * `customers_scope` has no agent arm, and the view does not draw it anyway.
+ * What an agent sees is therefore at most what the customer sees, and less
+ * than the policy would let them read.
  */
 export async function trackOwnShipment(
   actor: Actor,
   jobId: string,
 ): Promise<TrackingResult | undefined> {
   if (usePilotFixtures()) {
-    // The pilot portal persona's own list, and the public lookup under one of
-    // the identifiers the fixture job carries.
-    if (!pilotPortalShipments().some((shipment) => shipment.id === jobId)) return undefined
+    // The persona's own list — the portal's, or the agency's assignments —
+    // and the public lookup under one of the identifiers the fixture job
+    // carries. The list is the fixture stand-in for the policy above.
+    const own =
+      actor.type === 'agent_contact'
+        ? actor.partnerId
+          ? pilotAgentShipments(actor.partnerId)
+          : []
+        : pilotPortalShipments()
+    if (!own.some((shipment) => shipment.id === jobId)) return undefined
     const job = pilotJob(jobId)
     const verifier =
       job?.customerReference ??

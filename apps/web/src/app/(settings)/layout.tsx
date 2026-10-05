@@ -134,7 +134,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
             </Link>
           </div>
 
-          <SidebarNav sections={sections} />
+          <SidebarNav sections={sections} moreBelowLabel={tNav('moreBelow')} />
 
           <div className="border-t border-chrome-line p-3">
             <div className="flex items-center gap-2.5 rounded-sm bg-surface-sunken/70 p-2">

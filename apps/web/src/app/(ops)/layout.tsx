@@ -33,7 +33,7 @@ import { assistantConfigured } from '@/features/assistant/queries'
 import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
-import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
+import { MobileMenu, MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
 import { FOCUS_RING } from '@/ui/control'
 import { Toaster } from '@/ui/toast'
@@ -261,7 +261,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             </Link>
           </div>
 
-          <SidebarNav sections={sections} />
+          <SidebarNav sections={sections} moreBelowLabel={t('moreBelow')} />
 
           {/*
             The two ways out of the working set: what the customer sees, and
@@ -380,16 +380,70 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             {aiConfigured ? <AssistantLauncher label={ta('title')} /> : null}
             <NotificationBell inbox={inbox} />
             <TimeZoneSwitch current={session.principal.timezone} />
-            <ThemeSwitch current={theme} />
+            {/*
+              From \`md\` up only. On a phone the three-way switch was 130px of
+              a 358px bar, and the menu button needed the room; it moves into
+              the menu sheet below, beside the other things about *you*.
+            */}
+            <span className="hidden md:contents">
+              <ThemeSwitch current={theme} />
+            </span>
             <LanguageSwitch />
+            <MobileMenu
+              sections={sections}
+              showSettings={canOpenSettings(session)}
+              labels={{
+                menu: t('menu'),
+                close: tc('close'),
+                search: tc('search'),
+                searchPlaceholder: tc('searchPlaceholder'),
+                tracking: t('tracking'),
+                settings: t('settings'),
+              }}
+              account={
+                <div className="flex flex-col gap-3">
+                  {/* The time zone stays a desk setting: see \`TimeZoneSwitch\`. */}
+                  <div className="flex items-center">
+                    <ThemeSwitch current={theme} />
+                  </div>
+                  <div className="flex items-center gap-2.5 rounded-sm bg-surface-sunken/70 p-2">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-caption font-semibold text-on-brand">
+                      {initials}
+                    </span>
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span className="truncate text-body-sm font-medium text-ink">
+                        {displayName}
+                      </span>
+                      <span className="truncate text-micro text-ink-muted">
+                        {t(`roles.${roleKey}`)} · {tc('branchCount', { count: branchCodes })}
+                      </span>
+                    </span>
+                    {/* Labelled, not an icon: on a phone this is the only way out. */}
+                    <form action={signOut} className="ms-auto shrink-0">
+                      <button
+                        type="submit"
+                        data-mobile-sign-out
+                        className="inline-flex h-10 items-center gap-1.5 rounded-sm px-3 text-body-sm font-medium text-ink-muted transition-colors hover:bg-surface hover:text-critical"
+                      >
+                        <Icon name="sign-out" size={16} />
+                        {t('signOut')}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              }
+            />
           </div>
         </header>
 
         {/*
-          The sidebar is desktop-only, so a phone would otherwise have no way
-          out of the current screen. A scrolling strip is not a compromise
-          here — an operations manager checking the board from a terminal yard
-          is a real use, and a hamburger would need JavaScript to open.
+          The sidebar is desktop-only, so a phone gets two things in its
+          place: this strip, for hopping between neighbouring screens, and the
+          menu button in the bar above, for everything — the grouped list,
+          search, settings, tracking and signing out. The strip alone was the
+          whole of phone navigation once, and it had no way out of a session.
+          The menu opens with no JavaScript (invoker commands), which was the
+          argument for not having one.
         */}
         <MobileNav sections={sections} />
 
@@ -415,20 +469,20 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           `calc`, which is wrong the first time the header wraps.
         */}
         {/*
-          The block-end padding is the assistant's footprint on a phone only.
+          No room is kept for a floating button any more.
 
-          From `md` up the launcher lives in the top bar and covers nothing, so
-          the page ends where its content does. On a phone it is still a 48px
-          button floating `bottom-4 end-4` over whatever is last on the
-          screen — on every register, the total row of a table — and five rems
-          clears it with a gap.
+          On a phone the assistant used to float `bottom-4 end-4`, and padding
+          here only cleared it at the very end of the page: while scrolling it
+          sat over the balance column of every register. It is an icon in the
+          top bar now, as it is a labelled button from `md` up, so nothing
+          floats and the page ends where its content does.
 
           `@container`: the page's grids lay out against this box, not the
           window. From `md` the sidebar takes 248px, so a window breakpoint
           promised a 768px tablet room it did not have; `@3xl:grid-cols-4`
           asks the question that was meant.
         */}
-        <main className="@container flex flex-1 flex-col px-4 pt-6 pb-20 md:px-6 md:pb-10 lg:px-8">
+        <main className="@container flex flex-1 flex-col px-4 pt-6 pb-10 md:px-6 lg:px-8">
           {children}
         </main>
       </div>
