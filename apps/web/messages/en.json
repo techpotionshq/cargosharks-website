@@ -4900,7 +4900,10 @@
     "imoInvalid": "Enter a valid IMO number: seven digits with a correct check digit.",
     "mmsiInvalid": "Enter a valid MMSI: nine digits that start with 2 to 7.",
     "notFound": "The system cannot find this job.",
-    "boardLegend": "Vessel, last known position"
+    "boardLegend": "Vessel, last known position",
+    "nameMismatch": "AIS reports MMSI {mmsi} as {ais}, not {job}. Check the MMSI: customers and agents see no position until the names agree.",
+    "nameMismatchBadge": "Different ship",
+    "noPositionShown": "No vessel position to show yet."
   },
   "fxFeed": {
     "attribution": "Indicative rates from ExchangeRate-API (fallback: currency-api), fetched {at}. Not a bank or central bank rate. Check before quoting.",

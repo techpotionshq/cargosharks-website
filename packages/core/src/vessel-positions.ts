@@ -49,6 +49,51 @@ export function vesselPositionAgeMinutes(receivedAt: Date, now: Date): number {
 }
 
 /**
+ * A vessel name reduced to what two spellings of one ship share.
+ *
+ * Upper case, punctuation to spaces, and the type prefixes a booking adds and
+ * a transponder does not ("M/V", "MV", "M.V.", "MT", "MS", "SS"). AIS names
+ * are Latin capitals with no punctuation, at most twenty characters.
+ */
+export function comparableVesselName(raw: string | null | undefined): string {
+  return (raw ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .replace(/^(M\s?V|M\s?T|M\s?S|S\s?S)\s+/, '')
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * Whether the name AIS reports for an MMSI is plainly another ship's.
+ *
+ * Live run 6: a job booked on MAERSK SALALAH was given WILSON HIRTSHALS's
+ * MMSI by a typing slip, and the customer was shown that ship off Rotterdam as
+ * "Current". The transponder's own name was on the row and nothing compared
+ * it. True only when both names are known and cannot be the same ship:
+ *
+ *   - a voyage written after the name on the job ("MAERSK SALALAH 442W") still
+ *     agrees, so the job's key may run on past the AIS key at a word break;
+ *   - an AIS name is cut at twenty characters, so a key that long agrees with
+ *     any job name it begins.
+ *
+ * Unknown on either side is not a disagreement: a fix with no static report
+ * yet, or a job with no vessel name, is judged on its MMSI alone, as before.
+ */
+export function vesselNamesDisagree(
+  jobName: string | null | undefined,
+  aisName: string | null | undefined,
+): boolean {
+  const job = comparableVesselName(jobName)
+  const ais = comparableVesselName(aisName)
+  if (job === '' || ais === '') return false
+  if (job === ais) return false
+  if (job.startsWith(`${ais} `)) return false
+  if (ais.length >= 20 && job.startsWith(ais)) return false
+  return true
+}
+
+/**
  * IMO ship identification number: seven digits, the last a check digit.
  *
  * The check is the weighted sum of the first six digits (weights 7 down to 2),
