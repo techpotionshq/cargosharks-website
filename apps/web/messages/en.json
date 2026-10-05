@@ -2204,8 +2204,9 @@
     "eyebrow": "Not found",
     "title": "That page does not exist",
     "description": "The link may be out of date, or the record may have been closed. If you reached this from inside the system, the reference may belong to a branch you do not have access to.",
-    "backToBoard": "Back to the board",
-    "backToTracking": "Track a shipment"
+    "backToTracking": "Track a shipment",
+    "backTo": "Back to {place}",
+    "signIn": "Sign in"
   },
   "errorPage": {
     "eyebrow": "Something went wrong",
@@ -4316,7 +4317,13 @@
     "validDate": "Enter a valid date.",
     "checkFormat": "Check the format.",
     "multipleOf": "Enter a multiple of {divisor}.",
-    "checkValue": "Check this value."
+    "checkValue": "Check this value.",
+    "required": "Fill in this field.",
+    "requiredChoice": "Choose an option.",
+    "requiredFile": "Choose a file.",
+    "requiredCheck": "Tick this box to continue.",
+    "dateTooEarly": "The earliest allowed date is {minimum}.",
+    "dateTooLate": "The latest allowed date is {maximum}."
   },
   "importsValidation": {
     "inField": "{field}: {problem}",

@@ -2204,8 +2204,9 @@
     "eyebrow": "غير موجود",
     "title": "هذه الصفحة غير موجودة",
     "description": "قد يكون الرابط قديماً، أو أن السجل قد أُغلق. وإذا وصلت إلى هنا من داخل النظام، فقد يكون المرجع تابعاً لفرع لا تملك صلاحية الاطلاع عليه.",
-    "backToBoard": "العودة إلى اللوحة",
-    "backToTracking": "تتبّع شحنة"
+    "backToTracking": "تتبّع شحنة",
+    "backTo": "العودة إلى {place}",
+    "signIn": "تسجيل الدخول"
   },
   "errorPage": {
     "eyebrow": "حدث خطأ",
@@ -4316,7 +4317,13 @@
     "validDate": "أدخل تاريخاً صالحاً.",
     "checkFormat": "تحقق من الصيغة.",
     "multipleOf": "أدخل مضاعفاً للعدد {divisor}.",
-    "checkValue": "تحقق من هذه القيمة."
+    "checkValue": "تحقق من هذه القيمة.",
+    "required": "املأ هذا الحقل.",
+    "requiredChoice": "اختر أحد الخيارات.",
+    "requiredFile": "اختر ملفاً.",
+    "requiredCheck": "حدّد هذا المربع للمتابعة.",
+    "dateTooEarly": "أقرب تاريخ مسموح به هو {minimum}.",
+    "dateTooLate": "أبعد تاريخ مسموح به هو {maximum}."
   },
   "importsValidation": {
     "inField": "{field}: {problem}",
