@@ -29,6 +29,8 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # The guide pipeline (docs/guide): tooling only, never deployed.
+  - 'tools/*'
 
 # Supply-chain settings, all three of which exist to slow an attack down rather
 # than to detect one. The `supply-chain` job audits what is already installed;
