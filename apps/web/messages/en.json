@@ -11,7 +11,7 @@
     "enquiries": "Enquiries",
     "jobs": "Shipments",
     "rates": "Rate cards",
-    "finance": "Overview",
+    "finance": "Receivables",
     "tracking": "Customer tracking",
     "portal": "My shipments",
     "agent": "Assigned shipments",
@@ -104,7 +104,7 @@
     "add": "Add",
     "choose": "— choose —",
     "operations": "Operations",
-    "auditImmutable": "This record is written by the database and cannot be edited or deleted by anyone, including the supplier.",
+    "auditImmutable": "The database writes this record. Nobody can edit or delete it, the support team included.",
     "customer": "Customer",
     "total": "Total",
     "currency": "Currency",
@@ -161,7 +161,7 @@
     "allResults": "All results"
   },
   "dashboard": {
-    "title": "Operations dashboard",
+    "title": "Dashboard",
     "subtitle": "Everything live across Kuwait and Dubai, oldest problem first.",
     "openEnquiries": "Open enquiries",
     "openEnquiriesHint": "{unassigned} unassigned",
@@ -315,7 +315,7 @@
     "subtitleMixed": "Priced from the rate card and by hand, buy and sell side by side."
   },
   "job": {
-    "title": "Operations board",
+    "title": "Shipments",
     "subtitle": "Live shipments, exceptions first.",
     "reference": "Reference",
     "customer": "Customer",
@@ -407,7 +407,8 @@
     "clockStopped": "Stopped {on}",
     "documentVault": "Shipment files",
     "weightValue": "{weight} kg",
-    "volumeValue": "{volume} cbm"
+    "volumeValue": "{volume} cbm",
+    "etaPassed": "Late, not yet arrived"
   },
   "mode": {
     "sea_fcl": "Sea FCL",
@@ -459,6 +460,11 @@
     "documentLanguage": {
       "en": "English",
       "ar": "Arabic"
+    },
+    "mode": "Transport",
+    "noticeHelp": {
+      "customs_hold": "Customs is holding this shipment for checks. Our customs team works to release it, and this page changes when customs releases it. You do not need to do anything unless we contact you.",
+      "vessel_delay": "The carrier has a delay. The arrival date above shows the latest estimate, and this page changes when the carrier gives a new date."
     }
   },
   "public": {
@@ -619,7 +625,7 @@
   },
   "signIn": {
     "title": "Sign in",
-    "subtitle": "Operations, finance and administration.",
+    "subtitle": "Use the email address you were invited with.",
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
@@ -644,7 +650,7 @@
       "body": "A live demo on sample data. Choose whose view to sign in as — the same system, seen from three sides.",
       "password": "Password",
       "personas": {
-        "operations": "The operations board",
+        "operations": "The dashboard",
         "customer": "The customer portal",
         "agent": "The agent view"
       }
@@ -2064,8 +2070,8 @@
         "description": "The colours, name and mark the product resolves at runtime, and the environment variable behind each one."
       },
       "support": {
-        "title": "Vendor access",
-        "description": "Who from techpotions can see this deployment, for how long, and what they opened. Access is granted here, expires on its own, and can be withdrawn at any moment."
+        "title": "Support access",
+        "description": "Who from the support team can see this system, for how long, and what they opened. You grant access here. It expires on its own, and you can withdraw it at any time."
       },
       "notifications": {
         "title": "Notification wording",
@@ -2168,12 +2174,12 @@
     "scopeBranches": "{branches}",
     "expires": "until {time}",
     "revoke": "Revoke access",
-    "pageTitle": "Vendor access",
+    "pageTitle": "Support access",
     "eyebrow": "Administration",
-    "pageDescription": "Support access is granted by you, scoped to branches, expires on its own and is recorded. Nothing below can be edited afterwards — including by us.",
+    "pageDescription": "You grant support access for named branches and a fixed period. It expires on its own, and the system records it. Nobody can change the records below, the support team included.",
     "openHeading": "Open right now",
     "emptyTitle": "No support access has ever been granted",
-    "emptyHint": "When support needs to look at your data, you grant it here — for a fixed period, to named branches, against a ticket.",
+    "emptyHint": "When the support team needs to see your data, use Grant access above. Choose a fixed period, the branches and a ticket.",
     "colEngineer": "Engineer",
     "colReason": "Reason",
     "colScope": "Access",
@@ -2185,7 +2191,8 @@
     "state_revoked": "Revoked",
     "state_expired": "Expired",
     "scopeRead": "Read only",
-    "scopeWrite": "Read and write"
+    "scopeWrite": "Read and write",
+    "emptyHintNoEngineers": "There is no support account on this system yet, so there is nobody to grant access to. When one exists, a Grant access button shows above."
   },
   "supportGrant": {
     "open": "Grant access",
@@ -2206,14 +2213,15 @@
     "branchesHint": "Leave blank for the branches you hold. Choosing fewer is always safer.",
     "escalate": "Confirm write access",
     "escalateHint": "Only needed for read and write. Type GRANT WRITE to confirm.",
-    "note": "Every session opened under this grant is recorded, and the record cannot be edited or deleted by anyone — including us."
+    "note": "The system records every session opened under this grant. Nobody can edit or delete the record, the support team included."
   },
   "notFound": {
     "eyebrow": "Not found",
     "title": "That page does not exist",
     "description": "The link may be out of date, or the record may have been closed. If you reached this from inside the system, the reference may belong to a branch you do not have access to.",
-    "backToBoard": "Back to the board",
-    "backToTracking": "Track a shipment"
+    "backToTracking": "Track a shipment",
+    "backTo": "Back to {place}",
+    "signIn": "Sign in"
   },
   "errorPage": {
     "eyebrow": "Something went wrong",
@@ -2840,8 +2848,8 @@
     "restoreNote": "It becomes selectable again everywhere it was before."
   },
   "jobActions": {
-    "setStatus": "Move it on",
-    "setStatusTitle": "Where has this shipment got to?",
+    "setStatus": "Update status",
+    "setStatusTitle": "Update the shipment status",
     "setStatusDescription": "Sets the status by hand. Holding, cancelling and closing each need their own permission.",
     "status": "Status",
     "reason": "Why",
@@ -2889,7 +2897,7 @@
     "pageTitle": "Notification wording",
     "eyebrow": "Messages",
     "pageSubtitle": "What the product says when it writes to a customer or a colleague. Change it here — no release needed.",
-    "title": "Wording for {event}",
+    "title": "Wording: {event}",
     "description": "Leave the branch empty to change it everywhere, or pick one to reword it for that entity alone.",
     "branch": "Entity",
     "allBranches": "Every entity (default)",
@@ -3059,7 +3067,7 @@
     "offsetDays": "Offset (days)",
     "offsetDaysHint": "From the previous step, for the planned date.",
     "customerVisible": "Customer sees it",
-    "customerVisibleHint": "Off keeps it to the ops board.",
+    "customerVisibleHint": "Off shows it to staff only.",
     "appliesToNew": "Applies to jobs booked from now on. Shipments already in flight keep the plan they were given.",
     "directions": {
       "import": "Import",
@@ -3576,7 +3584,24 @@
     "offHintPlain": "Not switched on. Open Configure to set it up.",
     "keyCommand": "Generate a valid key on the server with:",
     "demoNote": "This is the demo: it connects to no provider and stores no credentials. On your own instance, each integration below is set here and sealed with your deployment key.",
-    "intakeAgentLink": "Set up the intake agent for each branch"
+    "intakeAgentLink": "Set up the intake agent for each branch",
+    "schedule": {
+      "every_minute": "Every minute",
+      "every_minutes": "Every {minutes} minutes",
+      "hourly_at": "Every hour, at {minutes} past",
+      "every_hours": "{hours, plural, one {Every hour} other {Every # hours}}, at {minute} past",
+      "daily_at": "Every day at {time}"
+    },
+    "failures": {
+      "credentials": "The provider refused the credentials. Check the key or password, then save again.",
+      "not_found": "The provider did not find what the system asked for. Check the address and the account.",
+      "rate_limited": "The provider is limiting requests. The system tries again on its next run.",
+      "unreachable": "The system cannot reach the provider. Check the address, or try again later.",
+      "certificate": "The provider's security certificate is not valid. Ask the provider to fix it.",
+      "provider_down": "The provider's service has a fault. The system tries again on its next run.",
+      "other": "The last attempt failed. The provider's message is below.",
+      "detail": "Provider's message"
+    }
   },
   "assistant": {
     "title": "Assistant",
@@ -4307,7 +4332,13 @@
     "validDate": "Enter a valid date.",
     "checkFormat": "Check the format.",
     "multipleOf": "Enter a multiple of {divisor}.",
-    "checkValue": "Check this value."
+    "checkValue": "Check this value.",
+    "required": "Fill in this field.",
+    "requiredChoice": "Choose an option.",
+    "requiredFile": "Choose a file.",
+    "requiredCheck": "Tick this box to continue.",
+    "dateTooEarly": "The earliest allowed date is {minimum}.",
+    "dateTooLate": "The latest allowed date is {maximum}."
   },
   "importsValidation": {
     "inField": "{field}: {problem}",
@@ -4415,6 +4446,16 @@
     "storage_unavailable": {
       "title": "The file could not be fetched",
       "body": "The file store did not answer. Try again in a minute; if it keeps failing, tell your administrator."
+    },
+    "retry": "Try again",
+    "signIn": "Sign in",
+    "unauthenticated": {
+      "title": "Sign in to open this file",
+      "body": "Your session has ended. Sign in again, then open the link once more."
+    },
+    "unknown_kind": {
+      "title": "This document type does not exist",
+      "body": "The link asks for a kind of document the system does not produce. Go back and use the link on the page."
     }
   },
   "fxRateForm": {

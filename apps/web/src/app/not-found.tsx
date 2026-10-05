@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { getBrand } from '@/lib/brand'
+import { getSession, homeFor } from '@/lib/session'
 import { Logo } from '@/ui/logo'
 import { getLocale } from 'next-intl/server'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -21,7 +22,20 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
  * enumeration signal the policy design removes.
  */
 export default async function NotFound() {
-  const [t, tc] = await Promise.all([getTranslations('notFound'), getTranslations('common')])
+  const [t, tNav, session] = await Promise.all([
+    getTranslations('notFound'),
+    getTranslations('nav'),
+    getSession(),
+  ])
+  /*
+    The way back is to the reader's own start page, named the way the menu
+    names it, and to sign-in for somebody who is not signed in. "Back to
+    dashboard" for everyone sent a signed-out visitor to a page that bounced
+    them to sign-in, and a customer to a screen they cannot open.
+  */
+  const home = session ? homeFor(session) : null
+  const homeName =
+    home === '/portal' ? tNav('portal') : home === '/agent' ? tNav('agent') : tNav('dashboard')
   const brand = getBrand()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
@@ -47,10 +61,10 @@ export default async function NotFound() {
             "that link is old".
           */}
           <Link
-            href="/dashboard"
+            href={home ?? '/sign-in'}
             className="inline-flex h-10 items-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover"
           >
-            {t('backToBoard')}
+            {home ? t('backTo', { place: homeName }) : t('signIn')}
           </Link>
           <Link
             href="/track"
@@ -60,7 +74,8 @@ export default async function NotFound() {
           </Link>
         </div>
 
-        <p className="mt-10 text-body-sm text-ink-subtle">{tc('notFound')}</p>
+        {/* No footer line: it said "Not found" again under the eyebrow that
+            already says it. */}
       </div>
     </main>
   )

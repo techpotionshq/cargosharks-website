@@ -24,7 +24,7 @@ import { formatDate, formatNumber } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { Button, EmptyState, PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
-import { Badge, invoiceTone } from '@/ui/status'
+import { Badge, PAST_DUE_TONE, invoiceTone } from '@/ui/status'
 import { Money } from '@/ui/money'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -84,7 +84,7 @@ export default async function PortalInvoicesPage({
           label={t('overdueCount')}
           value={formatNumber(overdue, locale)}
           icon="clock"
-          tone={overdue > 0 ? 'caution' : 'muted'}
+          tone={overdue > 0 ? PAST_DUE_TONE : 'muted'}
         />
       </div>
 
@@ -114,7 +114,7 @@ export default async function PortalInvoicesPage({
                           </Badge>
                         )}
                         {late ? (
-                          <Badge tone="caution" icon="clock">
+                          <Badge tone={PAST_DUE_TONE} icon="clock">
                             {t('overdue')}
                           </Badge>
                         ) : null}

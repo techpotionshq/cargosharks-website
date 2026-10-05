@@ -16,7 +16,7 @@ import { customsCounts, listCustoms } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime, formatRelative, trimDecimal } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
-import { Badge, customsTone } from '@/ui/status'
+import { Badge, PAST_DUE_TEXT, PAST_DUE_TONE, customsTone } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Money } from '@/ui/money'
@@ -107,10 +107,7 @@ export default async function CustomsPage({
             const breached =
               !row.releasedAt && row.slaDueAt !== null && row.slaDueAt.getTime() < now
             return (
-              <TR
-                key={row.id}
-                flag={row.status === 'held' ? 'critical' : breached ? 'caution' : undefined}
-              >
+              <TR key={row.id} flag={row.status === 'held' || breached ? PAST_DUE_TONE : undefined}>
                 <TD>
                   <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                 </TD>
@@ -141,10 +138,15 @@ export default async function CustomsPage({
                 <TD priority="low" className="text-ink-muted">
                   {row.filedAt ? formatDateTime(row.filedAt, locale, timeZone) : '—'}
                 </TD>
-                <TD
-                  className={`whitespace-nowrap ${breached ? 'font-semibold text-critical' : 'text-ink-muted'}`}
-                >
-                  {row.slaDueAt ? formatRelative(row.slaDueAt, locale, now) : '—'}
+                {/*
+                  The colour is on a span, not the cell: the cell's own
+                  `text-ink` won the cascade, so "3 days ago" on a breached
+                  clearance printed in plain ink while its class said red.
+                */}
+                <TD className="whitespace-nowrap">
+                  <span className={breached ? PAST_DUE_TEXT : 'text-ink-muted'}>
+                    {row.slaDueAt ? formatRelative(row.slaDueAt, locale, now) : '—'}
+                  </span>
                 </TD>
                 <TD priority="lowest" className="text-ink-muted">
                   {(locale === 'ar' && row.brokerNameAr) || row.brokerName || '—'}

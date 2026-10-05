@@ -65,6 +65,7 @@ import {
   type StatementEntry,
 } from '@qabandi/core'
 import { named } from '@/lib/named'
+import { OWED_BILL_STATUSES } from '@qabandi/core'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
@@ -215,6 +216,13 @@ export async function listSupplierInvoices(
   )
 }
 
+/*
+  The owed states from `core`, the list `isBillOverdue` reads, so the tile and
+  the row badges on the board count the same bills. Constants, not input, so
+  written in as literals.
+*/
+const OWED = sql.raw(OWED_BILL_STATUSES.map((status) => `'${status}'`).join(', '))
+
 export interface PayablesSummary {
   readonly outstanding: number
   readonly overdue: number
@@ -238,11 +246,13 @@ export async function payablesSummary(actor: Actor): Promise<PayablesSummary> {
     const result = await tx.execute(sql`
       select
         count(*) filter (
-          where status in ('received', 'approved', 'part_paid')
+          where status in (${OWED})
         )::int as outstanding,
+        -- isBillOverdue in core: owed, past its due day, something left on it.
         count(*) filter (
-          where status in ('received', 'approved', 'part_paid')
+          where status in (${OWED})
             and due_on is not null and due_on < current_date
+            and total > amount_paid
         )::int as overdue,
         count(*) filter (where status = 'received')::int  as awaiting_approval,
         count(*) filter (where status = 'disputed')::int  as in_dispute,

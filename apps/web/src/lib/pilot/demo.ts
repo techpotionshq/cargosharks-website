@@ -36,6 +36,7 @@ import { cookies } from 'next/headers'
 import type { Session } from '@/lib/session'
 import { PILOT_AGENT_PARTNER, PILOT_PORTAL_CUSTOMER } from '@/lib/pilot/fixtures'
 import { DEFAULT_TIME_ZONE } from '@/lib/time'
+import { getBrand } from '@/lib/brand'
 
 type DemoPersonaKey = 'operations' | 'customer' | 'agent'
 
@@ -75,13 +76,13 @@ export const DEMO_PERSONAS: readonly DemoPersona[] = [
   {
     key: 'operations',
     /*
-      The pilot principal's own address, character for character — signing in
-      as this persona *is* signing in as `PILOT_SESSION` in `lib/session.ts`,
-      which is where the name and the permissions come from. Changed in one
-      place and not the other, the demo panel would advertise an address that
-      no longer matches the session it hands out.
+      The pilot principal's own address — signing in as this persona *is*
+      signing in as `PILOT_SESSION` in `lib/session.ts`, which is where the
+      name and the permissions come from. Both read it from the brand, so the
+      Al-Qabandi demo prints a Qabandi address and the CargoSharks one its
+      own; it was `operations@cargosharks.example` on both.
     */
-    email: 'operations@cargosharks.example',
+    email: getBrand().demo.operationsEmail,
     nameEn: 'Fahad Al-Rashid',
     nameAr: 'فهد الرشيد',
     orgEn: 'Operations manager',
@@ -113,12 +114,14 @@ export const DEMO_PERSONAS: readonly DemoPersona[] = [
  *
  * A demo whose credentials are not on the screen is a demo nobody gets into,
  * so there is no secret here to protect and the default is documented in
- * `.env.example`. `QABANDI_DEMO_PASSWORD` exists so a deployment can change it
+ * `.env.example`: the brand's key and `-demo`. `QABANDI_DEMO_PASSWORD` exists so a deployment can change it
  * — a demo behind a password a prospect was given in an email is still a
  * useful thing to be able to stand up.
  */
 export function demoPassword(): string {
-  return process.env.QABANDI_DEMO_PASSWORD || 'cargosharks-demo'
+  // The brand's own (`<key>-demo` unless it says otherwise): the client's
+  // sign-in screen printed the supplier's name as its password.
+  return process.env.QABANDI_DEMO_PASSWORD || getBrand().demo.password
 }
 
 /**

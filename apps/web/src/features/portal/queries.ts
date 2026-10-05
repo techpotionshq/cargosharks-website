@@ -408,7 +408,8 @@ export async function listPortalInvoices(
  * fetched, so an unpaid invoice older than the hundredth fell out of
  * "Outstanding" — money owed that the customer's own screen said was not. The
  * sum is `numeric` handed over as text, never a float; the overdue rule is
- * `isOverdue` in `status.ts`, written as SQL against the same `today`.
+ * `isInvoiceOverdue` in core (owed states only, not a credit note), which
+ * `isOverdue` in `status.ts` delegates to, written as SQL against `today`.
  */
 export async function portalInvoiceSummary(
   actor: Actor,
@@ -439,7 +440,7 @@ export async function portalInvoiceSummary(
     const overdue = await tx.execute(sql`
       select count(*)::int as n
         from invoices i
-       where ${ISSUED}
+       where i.status in ('issued', 'part_paid')
          and not i.is_credit_note
          and i.due_on < ${today}::date
          and i.total - i.amount_paid - i.amount_credited > 0

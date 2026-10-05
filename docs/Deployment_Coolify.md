@@ -240,7 +240,7 @@ that keeps a demo honest about what the product does.
 ```
 QABANDI_PILOT_FIXTURES=1
 QABANDI_DEMO_LOGIN=1
-QABANDI_DEMO_PASSWORD=…            # optional; unset it is `cargosharks-demo`
+QABANDI_DEMO_PASSWORD=…            # optional; unset it is `<brand key>-demo`
 BETTER_AUTH_SECRET=…               # still required — it keys the persona cookie
 BRAND=                             # leave unset: the default is CargoSharks
 ```
@@ -263,7 +263,7 @@ and three personas:
 
 | | Lands on | Holds |
 |---|---|---|
-| `operations@cargosharks.example` | `/dashboard` | every permission key |
+| `operations@<brand key>.example` | `/dashboard` | every permission key |
 | `customer@gulfsteel.example` | `/portal` | no branch, no role, no permission |
 | `agent@everbright.example` | `/agent` | no branch, no role, no permission |
 

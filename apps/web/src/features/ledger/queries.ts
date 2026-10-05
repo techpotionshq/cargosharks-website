@@ -20,7 +20,6 @@
 
 import 'server-only'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
-import { D } from '@qabandi/core'
 import {
   accountingExports,
   branches,
@@ -34,6 +33,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { named } from '@/lib/named'
+import { D, OWED_INVOICE_STATUSES, isInvoiceOverdue } from '@qabandi/core'
 import type { CurrencyAmount } from '@/lib/by-currency'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
@@ -161,27 +161,20 @@ export interface InvoiceListFilters {
   /**
    * Only invoices overdue on this day (`YYYY-MM-DD`).
    *
-   * `overdue` is a status *and* a date, so it is not an enum value — and the
-   * register used to read two hundred invoices and keep the overdue ones in
-   * memory, which found only the overdue invoices among the newest two
-   * hundred. The predicate is the register's own row flag (`isOverdue` on the
-   * page), written as SQL so it pages: issued, due before today, and something
-   * still owed after receipts and partial credit notes. Change one, change both.
+   * `overdue` is a state *and* a date *and* a balance, so it is not an enum
+   * value — and the register used to read two hundred invoices and keep the
+   * overdue ones in memory, which found only the overdue invoices among the
+   * newest two hundred. This is `isInvoiceOverdue` from `core` written as SQL
+   * so it pages: owed (`OWED_INVOICE_STATUSES`), not a credit note, due before
+   * today, and something still owed after receipts and partial credit notes.
    */
   readonly overdueOn?: string
 }
 
 /** The register's overdue rule over a row — the fixture side of `overdueOn`. */
 function overdueOn(row: InvoiceRow, today: string): boolean {
-  return (
-    row.status === 'issued' &&
-    row.dueOn !== null &&
-    row.dueOn < today &&
-    new D(row.total ?? 0)
-      .minus(row.amountPaid ?? 0)
-      .minus(row.amountCredited ?? 0)
-      .gt(0)
-  )
+  const balance = new D(row.total ?? 0).minus(row.amountPaid ?? 0).minus(row.amountCredited ?? 0)
+  return isInvoiceOverdue({ ...row, balance }, today)
 }
 
 /**
@@ -204,7 +197,8 @@ export async function listInvoices(
   const where = and(
     filters.status ? eq(invoices.status, filters.status as never) : undefined,
     filters.overdueOn
-      ? sql`${invoices.status} = 'issued'
+      ? sql`${invoices.status} in (${OWED})
+          and not ${invoices.isCreditNote}
           and ${invoices.dueOn} < ${filters.overdueOn}
           and ${invoices.total} - ${invoices.amountPaid} - ${invoices.amountCredited} > 0`
       : undefined,
@@ -249,6 +243,14 @@ export async function listInvoices(
  */
 export type OutstandingByCurrency = CurrencyAmount
 
+/*
+  The owed states, from the one rule in `core` that every overdue flag reads
+  (`isInvoiceOverdue`). Written into the statement as literals — they are
+  constants, not input — so the SQL counts and the row flags cannot drift to
+  two different lists again.
+*/
+const OWED = sql.raw(OWED_INVOICE_STATUSES.map((status) => `'${status}'`).join(', '))
+
 /**
  * The receivables position.
  *
@@ -271,10 +273,14 @@ export async function invoiceSummary(actor: Actor): Promise<{
   return withActor(actor, async (tx) => {
     const counts = await tx.execute(sql`
       select
-        count(*) filter (where status in ('issued', 'part_paid'))::int     as issued,
+        count(*) filter (where status in (${OWED}))::int                   as issued,
         count(*) filter (where status = 'paid')::int                         as paid,
-        count(*) filter (where status in ('issued', 'part_paid')
-                           and due_on < current_date)::int                   as overdue
+        -- isInvoiceOverdue: owed, past its due day, something left on it,
+        -- and not a credit note, which is owed to the customer.
+        count(*) filter (where status in (${OWED})
+                           and not is_credit_note
+                           and due_on < current_date
+                           and total - amount_paid - amount_credited > 0)::int as overdue
       from invoices
     `)
     const row = counts.rows[0] as unknown as
@@ -300,7 +306,7 @@ export async function invoiceSummary(actor: Actor): Promise<{
       select currency,
              sum(total - amount_paid - amount_credited)::text as amount
       from invoices
-      where status in ('issued', 'part_paid')
+      where status in (${OWED})
       group by currency
       having sum(total - amount_paid - amount_credited) <> 0
       order by sum(total - amount_paid - amount_credited) desc, currency
@@ -527,7 +533,7 @@ export async function receivablesAgeing(actor: Actor): Promise<{ byCurrency: Cur
         select coalesce(due_on, current_date) as due_on, currency,
                (total - amount_paid - amount_credited) as balance
           from invoices
-         where status in ('issued', 'part_paid')
+         where status in (${OWED})
            and total > amount_paid + amount_credited
       )
       select
@@ -617,7 +623,7 @@ export async function topDebtors(
              greatest(0, current_date - min(i.due_on))::int  as "daysOverdue"
         from invoices i
         join customers c on c.id = i.customer_id
-       where i.status in ('issued', 'part_paid')
+       where i.status in (${OWED})
          and i.total > i.amount_paid + i.amount_credited
        group by c.id, c.legal_name_en, c.legal_name_ar, i.currency
        order by sum(i.total - i.amount_paid - i.amount_credited) desc, i.currency

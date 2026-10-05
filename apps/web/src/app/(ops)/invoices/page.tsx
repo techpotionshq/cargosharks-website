@@ -21,12 +21,12 @@ import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
-import { Badge, invoiceTone } from '@/ui/status'
+import { Badge, PAST_DUE_TEXT, PAST_DUE_TONE, invoiceTone } from '@/ui/status'
 import { StandIn, TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Money } from '@/ui/money'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 import { todayIn } from '@/lib/time'
-import { dec } from '@qabandi/core'
+import { dec, isInvoiceOverdue } from '@qabandi/core'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('invoices')
@@ -78,8 +78,12 @@ export default async function InvoicesPage({
     dec(row.total ?? 0)
       .minus(dec(row.amountPaid ?? 0))
       .minus(dec(row.amountCredited ?? 0))
+  // The shared rule in `core`, so a part-paid invoice past its due day is
+  // flagged here exactly as the KPI and the customer portal flag it. This
+  // asked only for `issued`, and the register disagreed with both. The
+  // `overdueOn` filter above is the same rule written as SQL.
   const isOverdue = (row: (typeof rows)[number]) =>
-    row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balanceOf(row).gt(0)
+    isInvoiceOverdue({ ...row, balance: balanceOf(row) }, today)
 
   return (
     <Register
@@ -160,7 +164,7 @@ export default async function InvoicesPage({
             const balance = balanceOf(row)
             const overdue = isOverdue(row)
             return (
-              <TR key={row.id} flag={overdue ? 'critical' : undefined}>
+              <TR key={row.id} flag={overdue ? PAST_DUE_TONE : undefined}>
                 <TD>
                   {/*
                     A draft has no series number, and the link has to say
@@ -201,7 +205,7 @@ export default async function InvoicesPage({
                   {row.customerName ?? '—'}
                 </TD>
                 <TD>
-                  <Badge tone={overdue ? 'critical' : invoiceTone(row.status)} dot>
+                  <Badge tone={overdue ? PAST_DUE_TONE : invoiceTone(row.status)} dot>
                     {overdue ? t('statuses.overdue') : t(`statuses.${row.status}`)}
                   </Badge>
                 </TD>
@@ -224,11 +228,11 @@ export default async function InvoicesPage({
                 <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}
                 </TD>
-                <TD
-                  priority="low"
-                  className={`whitespace-nowrap ${overdue ? 'font-semibold text-critical' : 'text-ink-muted'}`}
-                >
-                  {row.dueOn ? formatDate(new Date(row.dueOn), locale, timeZone) : '—'}
+                {/* On a span: the cell's own `text-ink` won over a red class on the cell. */}
+                <TD priority="low" className="whitespace-nowrap">
+                  <span className={overdue ? PAST_DUE_TEXT : 'text-ink-muted'}>
+                    {row.dueOn ? formatDate(new Date(row.dueOn), locale, timeZone) : '—'}
+                  </span>
                 </TD>
               </TR>
             )

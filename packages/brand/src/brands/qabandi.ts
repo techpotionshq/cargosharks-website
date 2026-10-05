@@ -56,11 +56,16 @@ export const qabandiBrand = defineBrand({
   },
 
   documents: {
-    // Placeholders: the CR and customs-licence numbers are the client's to
-    // supply, and inventing plausible ones would put a false registration on
-    // every quotation the pilot prints.
-    registrationLineEn: 'Commercial Registration — · Customs Licence —',
-    registrationLineAr: 'السجل التجاري — · رخصة جمركية —',
+    // The CR and customs-licence numbers are the client's to supply, and
+    // inventing plausible ones would put a false registration on every
+    // quotation the pilot prints. Until they arrive the values are empty, and
+    // `registrationLine()` prints nothing at all rather than a label and a dash.
+    registrations: [
+      { labelEn: 'Commercial Registration', labelAr: 'السجل التجاري', value: '' },
+      { labelEn: 'Customs Licence', labelAr: 'رخصة جمركية', value: '' },
+    ],
+    registrationNoteEn: '',
+    registrationNoteAr: '',
     footerEn: 'All business is transacted under our Standard Trading Conditions.',
     footerAr: 'تخضع جميع المعاملات لشروط التعامل القياسية لدينا.',
     tradingConditionsEn:

@@ -110,8 +110,10 @@ export default async function FinancePage({
     label for a zero.
   */
   const lead = ageing.byCurrency[0]?.currency ?? invoices.outstanding[0]?.currency ?? 'KWD'
+  // With its currency: an ageing bar read "1,840.500" with nothing to say
+  // dinars or dirhams, on a page that can hold both.
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: amount, currency }, locale, { showCurrency: false })
+    formatMoney({ amount: amount, currency }, locale)
 
   const owed = ageing.byCurrency.map(({ currency, total }) => ({ currency, amount: total }))
   // A currency with nothing late is left out rather than printed as a zero.
@@ -229,7 +231,7 @@ export default async function FinancePage({
                 <section key={entry.currency} className={index > 0 ? 'mt-6' : undefined}>
                   {ageing.byCurrency.length > 1 ? (
                     <p className="ref mb-2 text-caption text-ink-subtle">
-                      {entry.currency} · {money(entry.total, entry.currency)}
+                      {money(entry.total, entry.currency)}
                     </p>
                   ) : null}
                   <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-sunken">

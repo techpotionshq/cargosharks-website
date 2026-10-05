@@ -24,6 +24,7 @@ import {
   type Tx,
 } from '@qabandi/db'
 import type { EnquiryEditLike, EnquirySummary, Mode } from '@/lib/pilot/types'
+import { OPEN_ENQUIRY_STATUSES } from '@qabandi/core'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
@@ -46,7 +47,7 @@ export interface EnquiryListFilters {
   queue pages like every other register now (`lib/paging.ts`).
 */
 
-const OPEN = ['new', 'assigned', 'rating', 'quoted']
+const OPEN: readonly string[] = OPEN_ENQUIRY_STATUSES
 
 /**
  * `locale` names the ports in the reader's language (F27). The customer

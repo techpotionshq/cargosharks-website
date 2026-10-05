@@ -31,12 +31,13 @@ import {
 } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { amountInput, formatDate, formatMoney } from '@/lib/format'
-import { dec } from '@qabandi/core'
+import { dec, isBillOverdue } from '@qabandi/core'
 import { formatByCurrency } from '@/lib/by-currency'
 import { Card } from '@/ui/card'
 import { EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
-import { Badge, type Tone } from '@/ui/status'
+import { Badge, PAST_DUE_TEXT, PAST_DUE_TONE, type Tone } from '@/ui/status'
+import { todayIn } from '@/lib/time'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { Money } from '@/ui/money'
 
@@ -61,6 +62,7 @@ export default async function PayablesPage({
   searchParams: Promise<{ status?: string; partner?: string; page?: string; paymentsPage?: string }>
 }) {
   const timeZone = await getTimeZone()
+  const today = todayIn()
 
   const session = await requireSession()
   // The ledger's own read key (QA P2-11): a session alone let every internal
@@ -153,7 +155,7 @@ export default async function PayablesPage({
           value={summary.overdue}
           hint={t('overdueHint')}
           icon="payments"
-          tone={summary.overdue > 0 ? 'caution' : 'muted'}
+          tone={summary.overdue > 0 ? PAST_DUE_TONE : 'muted'}
         />
         <StatTile
           className="@4xl:col-span-3"
@@ -194,8 +196,15 @@ export default async function PayablesPage({
               <TBody>
                 {billsPage.rows.map((row) => {
                   const variance = Number(row.varianceBase)
+                  // The rule the "Overdue" tile counts by (`core`), so every
+                  // bill in that count is marked here. The tile said one and
+                  // no row said which.
+                  const overdue = isBillOverdue(
+                    { ...row, balance: dec(row.total).minus(dec(row.amountPaid)) },
+                    today,
+                  )
                   return (
-                    <TR key={row.id}>
+                    <TR key={row.id} flag={overdue ? PAST_DUE_TONE : undefined}>
                       <TD>
                         <Link
                           href={`/payables/${row.id}`}
@@ -219,7 +228,9 @@ export default async function PayablesPage({
                           locale={locale}
                         />
                         {row.dueOn ? (
-                          <span className="block text-micro text-ink-subtle @3xl:hidden">
+                          <span
+                            className={`block text-micro @3xl:hidden ${overdue ? PAST_DUE_TEXT : 'text-ink-subtle'}`}
+                          >
                             {t('due')} {formatDate(row.dueOn, locale, timeZone)}
                           </span>
                         ) : null}
@@ -241,8 +252,11 @@ export default async function PayablesPage({
                           locale={locale}
                         />
                       </TD>
-                      <TD priority="low" align="end" numeric className="text-ink-muted">
-                        {row.dueOn ? formatDate(row.dueOn, locale, timeZone) : '—'}
+                      {/* On a span: the cell's own `text-ink` wins over a class on it. */}
+                      <TD priority="low" align="end" numeric>
+                        <span className={overdue ? PAST_DUE_TEXT : 'text-ink-muted'}>
+                          {row.dueOn ? formatDate(row.dueOn, locale, timeZone) : '—'}
+                        </span>
                       </TD>
                       <TD align="end">
                         <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
@@ -251,6 +265,7 @@ export default async function PayablesPage({
                               {t('unmatched', { n: row.unmatchedCount })}
                             </Badge>
                           ) : null}
+                          {overdue ? <Badge tone={PAST_DUE_TONE}>{t('overdue')}</Badge> : null}
                           <Badge tone={STATUS_TONE[row.status] ?? 'muted'}>
                             {t(`statuses.${row.status}` as 'statuses.received')}
                           </Badge>
