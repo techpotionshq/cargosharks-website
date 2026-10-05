@@ -889,29 +889,54 @@ export function turnDueAt(
  * `20GP` and the like, and the accept path checks the code exists. A bare "40"
  * is *not* guessed into 40GP: a forty-foot box is general purpose or high cube
  * and the price differs, so the question stays open for a person.
+ *
+ * A twenty-foot box is the exception, and only when it is written as a size
+ * ("20'", "20ft", "٢٠ قدم"): there is no high cube twenty in ordinary trade, so
+ * a twenty with no kind named is a dry box. The clarifying question itself
+ * offers "20'" as an answer (`FIELD_LABELS.containerType`), and a customer who
+ * answered with our own words was asked the same question again.
  */
 export function containerTypeCode(raw: string): string | null {
-  const text = foldArabic(raw.toUpperCase())
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+  const upper = foldArabic(raw.toUpperCase()).replace(/[٠-٩]/g, (d) =>
+    String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)),
+  )
+  const twentyFoot = /(?<!\d)20\s*(FEET|FOOT|FT|['’"]|قدم)/.test(upper)
+  const text = upper
     .replace(/(FEET|FOOT|FT|['’"]|قدم)/g, ' ')
+    // "hi-cube", "high-cube", "open-top" fold to the words the kinds test for.
+    .replace(/HI(GH)?[\s-]*CUBE/g, 'HC')
+    .replace(/OPEN[\s-]*TOP/g, 'OT')
+    .replace(/FLAT[\s-]*RACK/g, 'FR')
+    .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
-  const size = /\b(20|40|45)\b|^(20|40|45)/.exec(text)?.[0]?.trim()
+  /*
+    The size is any 20, 40 or 45 that is not part of a longer number. This was
+    `\b(20|40|45)\b`, which needs a word boundary on both sides, and there is
+    none in "40HC" or "2x40HC": the digit touches a letter. So "need 40HC",
+    "2x40HC" and "1 x 20GP" all read as no container type, and the intake
+    agent asked a customer who had just named one. A size written against its
+    kind wins over a stray one elsewhere, so "20 pallets in a 40HC" is a 40.
+  */
+  const size = (/(?<!\d)(20|40|45) ?(?=HC|HQ|RF|RH|OT|FR|GP|DV|DC)/.exec(text) ??
+    /(?<!\d)(20|40|45)(?!\d)/.exec(text))?.[1]
   if (!size) return null
-  const rest = text.replace(size, ' ')
+  const rest = text.replace(new RegExp(`(?<!\\d)${size}(?!\\d)`), ' ')
 
-  const kind = /\b(HC|HQ|HIGH ?CUBE)\b|عالي/.test(rest)
+  const kind = /\b(HC|HQ)\b|عالي|هاي ?كيوب/.test(rest)
     ? 'HC'
     : /\b(RF|REEFER|RH)\b|مبرد/.test(rest)
       ? 'RF'
-      : /\b(OT|OPEN ?TOP)\b/.test(rest)
+      : /\bOT\b/.test(rest)
         ? 'OT'
-        : /\b(FR|FLAT ?RACK)\b/.test(rest)
+        : /\bFR\b/.test(rest)
           ? 'FR'
           : /\b(GP|DV|DC|DRY|STANDARD|ST|GENERAL)\b|عادي/.test(rest)
             ? 'GP'
-            : null
+            : size === '20' && twentyFoot
+              ? 'GP'
+              : null
   if (!kind) return null
   return `${size}${kind}`
 }
@@ -924,6 +949,9 @@ export function statesContainerKind(text: string): boolean {
   const folded = foldArabic(text.toUpperCase())
   return (
     /\d\s*['’]?\s*(HC|HQ|GP|DV|DC|RF|RH|OT|FR)\b/.test(folded) ||
+    // A twenty written as a size names its kind; see `containerTypeCode`.
+    /(?<![\d٠-٩])(20|٢٠)\s*(['’]|FT\b|FOOT|FEET|قدم)/.test(folded) ||
+    /HI(GH)?[\s-]*CUBE/.test(folded) ||
     /\b(HC|HQ|HIGH ?CUBE|REEFER|DRY|STANDARD|GENERAL PURPOSE|OPEN ?TOP|FLAT ?RACK)\b/.test(
       folded,
     ) ||

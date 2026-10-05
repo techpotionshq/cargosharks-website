@@ -43,6 +43,7 @@
 
 import {
   D,
+  INTAKE_FIELD_PHRASES,
   SEED_CURRENCIES,
   allocate,
   isBillOverdue,
@@ -57,6 +58,7 @@ import {
   // carry a `number` for display. Both are wanted here, so this one is named.
   type Money as CoreMoney,
 } from '@qabandi/core'
+import { resolveBrand } from '@qabandi/brand'
 import { pickName } from '@/lib/named'
 import { sumByCurrency } from '@/lib/by-currency'
 import type { ReferenceOptions } from '@/lib/options'
@@ -1303,6 +1305,20 @@ function pilotJobByReference(
   return seed ? jobDetail(seed, now, locale) : undefined
 }
 
+/**
+ * The brand's document prefix, for the house bill numbers the demo prints.
+ *
+ * It was a literal `AQP`, which made every CargoSharks demo bill read as
+ * Al-Qabandi's. Read lazily rather than at module scope for the reason
+ * `apps/service/src/ai/prompts.ts` gives: a `resolveBrand()` evaluated while
+ * this file is imported can run before the environment is loaded. Still
+ * deterministic: one deployment wears one brand.
+ */
+let cachedDocumentPrefix: string | undefined
+function documentPrefix(): string {
+  return (cachedDocumentPrefix ??= resolveBrand().documents.documentPrefix)
+}
+
 function jobDetail(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobDetail {
   const summary = jobSummary(seed, now, locale)
   const ar = locale === 'ar'
@@ -1347,7 +1363,7 @@ function jobDetail(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobD
       seed.mode === 'air'
         ? `176-${String(seed.seq * 7).padStart(8, '0')}`
         : `${CARRIERS[seed.seq % CARRIERS.length]!.replace(/[^A-Z]/g, '').slice(0, 4) || 'ONEY'}KWI${seed.seq}00`,
-    houseBillNumber: `AQP${seed.branch}${String(seed.seq).padStart(6, '0')}`,
+    houseBillNumber: `${documentPrefix()}${seed.branch}${String(seed.seq).padStart(6, '0')}`,
     // Every third sea import is telex-released, which is about the Gulf ratio.
     houseBillSurrenderedAt:
       seed.mode !== 'air' && seed.direction === 'import' && seed.seq % 3 === 0
@@ -1931,6 +1947,25 @@ const ENQUIRY_SEEDS: readonly EnquirySeed[] = [
   },
 ]
 
+/**
+ * The reference an enquiry on the fixture board is shown under.
+ *
+ * One function because it was five copies of the same template literal, and
+ * the intake agent's reply was a sixth that had drifted: it quoted
+ * `KWI-ENQ-2026-00418`, the application's numbering for an enquiry that does
+ * not exist on the board, beside a header reading `ENQ-KWI-2026-0318`. Every
+ * place the demo prints an enquiry's reference, including words a customer was
+ * sent, now reads it from here.
+ *
+ * The fixture format is not the database's (`nextReference` in
+ * `features/enquiries/form-actions.ts` writes `KWI-ENQ-2026-00318`); see the
+ * note on `branchCode` in `features/enquiries/queries.ts` for what that has
+ * already cost. Changing it is a demo-script change, so it is left as is here.
+ */
+function enquiryReference(branch: string, seq: number, year: number): string {
+  return `ENQ-${branch}-${year}-${String(seq).padStart(4, '0')}`
+}
+
 /** `locale` names the ports, as `listEnquiries` does (F27). */
 export function pilotEnquiries(now = Date.now(), locale: 'en' | 'ar' = 'en'): EnquirySummary[] {
   const year = new Date(now).getFullYear()
@@ -1939,7 +1974,7 @@ export function pilotEnquiries(now = Date.now(), locale: 'en' | 'ar' = 'en'): En
     const createdAt = hours(now, -seed.age)
     return {
       id: `enq-${seed.seq}`,
-      reference: `ENQ-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
+      reference: enquiryReference(seed.branch, seed.seq, year),
       branchCode: seed.branch,
       status: seed.status,
       channel: seed.channel,
@@ -2002,7 +2037,7 @@ export function pilotQuote(
 
   return {
     status: seed.status,
-    enquiryReference: `ENQ-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
+    enquiryReference: enquiryReference(seed.branch, seed.seq, year),
     customerName: pickName(locale, customer.en, customer.ar),
     // Read right to left in Arabic, so the origin ends up on the right.
     lane: ar ? `${origin.ar} ← ${destination.ar}` : `${origin.en} → ${destination.en}`,
@@ -2668,7 +2703,7 @@ export function pilotQuotes(
     const sentAt = new Date(createdAt.getTime() + (seed.respondedAfter ?? 1) * HOUR)
     const sell = new D(seed.sell!)
     const cost = sell.times(new D(100).minus(new D(seed.margin ?? 0))).dividedBy(100)
-    const enquiryReference = `ENQ-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`
+    const enquiryRef = enquiryReference(seed.branch, seed.seq, year)
     const decided = seed.status === 'won' || seed.status === 'lost'
 
     const current: QuoteRow = {
@@ -2699,7 +2734,7 @@ export function pilotQuotes(
       sentAt,
       decidedAt: decided ? hours(now, -Math.round(seed.age / 3)) : null,
       customerName: pickName(locale, customer.en, customer.ar),
-      enquiryReference,
+      enquiryReference: enquiryRef,
       preparedBy: seed.owner === null ? null : ownerName(seed.owner, locale),
       branchCode: seed.branch,
     }
@@ -5141,7 +5176,7 @@ export function pilotBranches(): BranchRow[] {
       invoiceSeries: home.code,
       invoiceSeriesNext: isKuwait ? 4120 : 2055,
       taxRegistration: isKuwait ? null : '100412233900003',
-      houseBillSeries: `AQP${home.code}`,
+      houseBillSeries: `${documentPrefix()}${home.code}`,
       arAccountCode: '1200',
       apAccountCode: '2100',
       taxAccountCode: isKuwait ? null : '2200',
@@ -7190,7 +7225,7 @@ export function pilotQuoteDetail(
     id: row.id,
     reference: row.reference,
     enquiryId: `enq-${seed.seq}`,
-    enquiryReference: `ENQ-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
+    enquiryReference: enquiryReference(seed.branch, seed.seq, year),
     branchId: branch(seed.branch).id,
     branchCode: row.branchCode,
     customerId: customerId(seed.customer),
@@ -8829,6 +8864,25 @@ const PROPOSAL_SEEDS: readonly ProposalSeed[] = [
     evidence: '2 x 40’HC of steel coils',
     targetWasEmpty: true,
   },
+  /*
+    The boxes, read off the same line. Missing until the intake agent was
+    found asking this customer for the container type: neither the agent nor
+    the suggestions showed the "2 x 40’HC" it had been sent.
+  */
+  {
+    field: 'containerCount',
+    value: '2',
+    confidence: '0.9200',
+    evidence: 'we have 2 x 40’HC of steel coils to move',
+    targetWasEmpty: true,
+  },
+  {
+    field: 'containerType',
+    value: '40HC',
+    confidence: '0.9000',
+    evidence: '2 x 40’HC of steel coils',
+    targetWasEmpty: true,
+  },
   {
     field: 'grossWeightKg',
     value: '38400',
@@ -9612,11 +9666,21 @@ export function pilotRenewals(): RenewalView[] {
  *
  * Mid-conversation, because that is the state worth showing: the customer wrote
  * four WhatsApp messages, the agent read them in one turn and asked once for
- * the container type, and is waiting. The earlier turn — a greeting it did not
- * answer — is on the list too, so the panel shows silence as a decision with a
- * reason rather than as nothing.
+ * the one thing still missing, and is waiting. The earlier turn — a greeting it
+ * did not answer — is on the list too, so the panel shows silence as a
+ * decision with a reason rather than as nothing.
+ *
+ * What it asks for is the number of packages, a requirement the first office
+ * adds for FCL (`pilotIntakeSettings`). It used to ask for the container type,
+ * two messages after the customer wrote "2 × 40'HC": a demo of the agent not
+ * reading. The reference is the enquiry's own, because the panel is served on
+ * every enquiry and the reply used to quote one fixed number on all of them.
  */
-export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
+export function pilotEnquiryIntake(enquiryId?: string, now = Date.now()): EnquiryIntakeLike {
+  const seed =
+    ENQUIRY_SEEDS.find((s) => `enq-${s.seq}` === enquiryId) ??
+    ENQUIRY_SEEDS.find((s) => s.seq === PROPOSAL_ENQUIRY)!
+  const reference = enquiryReference(seed.branch, seed.seq, new Date(now).getFullYear())
   return {
     conversationId: 'intake-demo',
     branchId: BRANCHES[0]!.id,
@@ -9624,7 +9688,7 @@ export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
     state: 'awaiting_customer',
     agentEnabled: true,
     locale: 'en',
-    missing: ['containerType'],
+    missing: ['pieces'],
     turnDueAt: null,
     turns: 2,
     modelCalls: 1,
@@ -9636,10 +9700,11 @@ export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
         at: new Date(now - 1000 * 60 * 14),
         action: 'clarify',
         reason: 'clarified',
-        missing: ['containerType'],
+        missing: ['pieces'],
         messagesRead: 3,
         modelCalled: true,
-        replyBody: `Thank you — to prepare your quotation (KWI-ENQ-2026-00418) we still need the container type (20', 40' or 40' high cube). — ${BRANCHES[0]!.en}`,
+        // The `intake.clarify` WhatsApp template, filled as the turn worker fills it.
+        replyBody: `Thank you — to prepare your quotation (${reference}) we still need ${INTAKE_FIELD_PHRASES.pieces.en}. — ${BRANCHES[0]!.en}`,
         sendError: null,
       },
       {
@@ -9665,7 +9730,10 @@ export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
  * a visitor opens tells the same story. Read-only: the reply box refuses in
  * fixture mode like every other write.
  */
-export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationLike {
+export function pilotEnquiryConversation(
+  enquiryId?: string,
+  now = Date.now(),
+): EnquiryConversationLike {
   const minutesAgo = (m: number) => new Date(now - 1000 * 60 * m)
   const customer = '+965 6555 0142'
   const office = '+965 2200 1234'
@@ -9708,7 +9776,7 @@ export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationL
         at: minutesAgo(14),
         fromAddress: office,
         subject: null,
-        body: pilotEnquiryIntake(now).recent[0]!.replyBody ?? '',
+        body: pilotEnquiryIntake(enquiryId, now).recent[0]!.replyBody ?? '',
         author: 'agent',
         authorName: null,
         attachments: [],
@@ -9779,6 +9847,11 @@ export function pilotIntakeSettings(): IntakeSettingsRowLike[] {
     { mode: 'sea_lcl', key: 'weightOrVolume', fields: ['grossWeightKg', 'volumeCbm'] },
     { mode: 'air', key: 'weightOrVolume', fields: ['grossWeightKg', 'volumeCbm'] },
   ]
+  /*
+    The first office also wants the package count on FCL, which is why the
+    demo agent asks a customer who has named the boxes for a packing list.
+  */
+  const firstOffice = [...requirements, { mode: 'sea_fcl', key: 'pieces', fields: ['pieces'] }]
   return BRANCHES.slice(0, 2).map((home, index) => ({
     branchId: home.id,
     branchCode: home.code,
@@ -9791,8 +9864,8 @@ export function pilotIntakeSettings(): IntakeSettingsRowLike[] {
     clarifyCooldownHours: 6,
     clarifyCap: 2,
     humanTakeoverHours: 12,
-    ownRequirements: false,
-    requirements,
+    ownRequirements: index === 0,
+    requirements: index === 0 ? firstOffice : requirements,
   }))
 }
 

@@ -56,6 +56,7 @@ export const qabandiBrand = defineBrand({
   },
 
   documents: {
+    documentPrefix: 'AQP',
     // The CR and customs-licence numbers are the client's to supply, and
     // inventing plausible ones would put a false registration on every
     // quotation the pilot prints. Until they arrive the values are empty, and

@@ -22,7 +22,7 @@ export async function enquiryIntake(
   actor: Actor,
   enquiryId: string,
 ): Promise<EnquiryIntakeLike | null> {
-  if (usePilotFixtures()) return pilotEnquiryIntake()
+  if (usePilotFixtures()) return pilotEnquiryIntake(enquiryId)
   if (!enquiryId) return null
 
   return withActor(actor, async (tx) => {

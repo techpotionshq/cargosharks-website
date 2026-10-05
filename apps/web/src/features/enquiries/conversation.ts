@@ -45,7 +45,7 @@ export async function enquiryConversation(
   enquiryId: string,
   locale: 'en' | 'ar' = 'en',
 ): Promise<EnquiryConversationLike | null> {
-  if (usePilotFixtures()) return pilotEnquiryConversation()
+  if (usePilotFixtures()) return pilotEnquiryConversation(enquiryId)
   if (!enquiryId) return null
 
   return withActor(actor, async (tx) => {

@@ -461,8 +461,58 @@ describe('container types as people write them', () => {
     expect(containerTypeCode(raw)).toBe(code)
   })
 
-  it.each(['40', 'container', 'two boxes'])('%j is not guessed', (raw) => {
-    expect(containerTypeCode(raw)).toBeNull()
+  it.each(['40', 'container', 'two boxes', '40ft', '20', '20 pallets', '2026', '120HC'])(
+    '%j is not guessed',
+    (raw) => {
+      expect(containerTypeCode(raw)).toBeNull()
+    },
+  )
+
+  /*
+    The demo enquiry's customer wrote "2 × 40'HC" and was still asked for the
+    container type. These are the spellings a Gulf desk actually receives,
+    including the ones where the size touches a letter ("2x40HC", "need
+    40HC"), which a word-boundary match could not see.
+  */
+  it.each([
+    ["40'HC", '40HC'],
+    ['40’HC', '40HC'],
+    ['40 HC', '40HC'],
+    ['40HQ', '40HC'],
+    ["40'HQ", '40HC'],
+    ["40' high cube", '40HC'],
+    ['40ft high-cube', '40HC'],
+    ['40 hi-cube', '40HC'],
+    ['40-HC', '40HC'],
+    ['45HC', '45HC'],
+    ["45' HC", '45HC'],
+    ['20GP', '20GP'],
+    ['20DV', '20GP'],
+    ["20'", '20GP'],
+    ['20ft', '20GP'],
+    ['20 foot', '20GP'],
+    ['٢٠ قدم', '20GP'],
+    ['2x40HC', '40HC'],
+    ['2 X 40HC', '40HC'],
+    ['1 x 20GP', '20GP'],
+    ['need 40HC', '40HC'],
+    ['two 40HC', '40HC'],
+    ['40HC x 2', '40HC'],
+    ["2 × 40'HC of steel coils", '40HC'],
+    ['20 pallets in a 40HC', '40HC'],
+    ['40RF', '40RF'],
+    ['20 open-top', '20OT'],
+  ])('%j as written is %s', (raw, code) => {
+    expect(containerTypeCode(raw)).toBe(code)
+  })
+
+  it('treats a twenty written as a size as naming its kind, and a forty not', () => {
+    expect(statesContainerKind("1 x 20'")).toBe(true)
+    expect(statesContainerKind('٢٠ قدم')).toBe(true)
+    expect(statesContainerKind("2 × 40'HC of steel coils")).toBe(true)
+    expect(statesContainerKind('40ft hi-cube')).toBe(true)
+    expect(statesContainerKind("2 x 40'")).toBe(false)
+    expect(statesContainerKind('120 ft of fencing')).toBe(false)
   })
 
   it('is proposed as a code, and dropped off a non-FCL enquiry', () => {

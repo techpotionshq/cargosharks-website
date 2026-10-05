@@ -206,6 +206,20 @@ export interface BrandRegistration {
 }
 
 export interface BrandDocuments {
+  /**
+   * The letters a document number starts with: the `AQP` in `AQPKWI000412`.
+   *
+   * A token rather than `identity.shortName` because the two answer different
+   * questions. The short name is drawn in a 32px tile, so it is two or three
+   * letters chosen to look right there; a document prefix is printed on bills
+   * a carrier, a bank and a customs officer all read, and is chosen to be
+   * unambiguous among the operator's own series. It was hard-coded as `AQP`
+   * in the demo fixtures, so every CargoSharks house bill read as
+   * Al-Qabandi's. A real branch's series is still a row an administrator
+   * edits (`branches.house_bill_series`); this is the default the demo and a
+   * new branch are shown.
+   */
+  readonly documentPrefix: string
   /** Printed under the letterhead, each only when it has a value. */
   readonly registrations: readonly BrandRegistration[]
   /**
