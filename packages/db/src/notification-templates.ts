@@ -106,7 +106,7 @@ Hello {{recipientName}}
 
 Enquiry {{reference}} has been received and has no owner yet.
 
-Open it in Qabandi to assign it and start the response clock.
+Open it to assign it and start the response clock.
 
 {{senderName}}
 `,
@@ -120,7 +120,7 @@ Open it in Qabandi to assign it and start the response clock.
 
 تم استلام الاستفسار {{reference}} ولم يُسنَد إلى مسؤول بعد.
 
-افتحه في نظام قبندي لإسناده وبدء احتساب زمن الاستجابة.
+افتحه لإسناده وبدء احتساب زمن الاستجابة.
 
 {{senderName}}
 `,
@@ -323,7 +323,7 @@ Supplier invoice {{reference}} from {{partnerName}}, on job {{jobReference}}, ha
 
 The largest is {{worstDescription}}, over by {{worstVariance}} {{currency}}.
 
-Review it in Qabandi before it is approved for payment.
+Review it before it is approved for payment.
 
 {{senderName}}
 `,
@@ -341,7 +341,7 @@ Review it in Qabandi before it is approved for payment.
 
 أكبرها {{worstDescription}}، بزيادة قدرها {{worstVariance}} {{currency}}.
 
-يرجى مراجعتها في نظام قبندي قبل اعتمادها للدفع.
+يرجى مراجعتها قبل اعتمادها للدفع.
 
 {{senderName}}
 `,
@@ -713,7 +713,7 @@ Hello {{recipientName}}
 
 Total: {{total}} {{currency}}
 
-Open the quotation in Qabandi to book the shipment.
+Open the quotation to book the shipment.
 
 {{senderName}}
 `,
@@ -729,7 +729,7 @@ Open the quotation in Qabandi to book the shipment.
 
 الإجمالي: {{total}} {{currency}}
 
-افتح عرض السعر في نظام قبندي لحجز الشحنة.
+افتح عرض السعر لحجز الشحنة.
 
 {{senderName}}
 `,

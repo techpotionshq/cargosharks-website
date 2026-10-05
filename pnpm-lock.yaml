@@ -220,6 +220,9 @@ importers:
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
+      '@qabandi/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@qabandi/core':
         specifier: workspace:*
         version: link:../core
