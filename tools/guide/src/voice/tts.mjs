@@ -11,7 +11,7 @@
 // Each line is cached by a hash of its text, voice, model and prompt, so a
 // rebuild only ever pays for lines whose words changed.
 import { readFileSync, writeFileSync } from 'node:fs'
-import { cached, has } from '../cache.mjs'
+import { cached, entry, has } from '../cache.mjs'
 import { hash, log } from '../util.mjs'
 
 export const MODEL = process.env.GUIDE_TTS_MODEL ?? 'openai/gpt-audio-mini'
@@ -22,6 +22,14 @@ const SYSTEM =
 
 export const lineKey = (text) => hash({ text, voice: VOICE, model: MODEL, prompt: PROMPT_VERSION })
 export const haveLine = (text) => has('voice', lineKey(text), '.wav')
+/** The record of a line's read-back check, if one was kept. */
+export const lineRecord = (text) => {
+  try {
+    return JSON.parse(readFileSync(entry('voice', lineKey(text), '.json'), 'utf8'))
+  } catch {
+    return null
+  }
+}
 
 /**
  * The API key, read only when a line actually has to be spoken. From the
@@ -122,6 +130,11 @@ export async function voiceLine(text, { allowGenerate = true } = {}) {
         const { pcm, transcript } = await speak(text)
         if (norm(transcript) === norm(text) && pcm.length > 4800) {
           writeFileSync(tmp, wav(pcm))
+          // What the model said it read, kept beside the line as the record of the check.
+          writeFileSync(
+            entry('voice', key, '.json'),
+            JSON.stringify({ text, transcript, attempt, model: MODEL, voice: VOICE }),
+          )
           log(`voice: ${(pcm.length / 48000).toFixed(2)}s  ${text}`)
           return
         }
@@ -144,6 +157,8 @@ export async function importTakes(dir) {
       try {
         const bytes = readFileSync(f)
         await cached('voice', lineKey(text), '.wav', (tmp) => writeFileSync(tmp, bytes))
+        // Earlier takes were checked word for word by the script that made them.
+        writeFileSync(entry('voice', lineKey(text), '.json'), JSON.stringify({ text, imported: f }))
         n++
         break
       } catch {}

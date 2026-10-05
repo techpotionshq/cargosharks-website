@@ -338,7 +338,7 @@ export async function buildShort(spec, specFile, stack, opts = {}) {
   const total = duration(joined)
   const music = await musicFor(spec.music ?? spec.id, total)
   const audio = join(work, 'audio.wav')
-  soundtrack({
+  const spans = soundtrack({
     total,
     music,
     out: audio,
@@ -393,6 +393,26 @@ ${timeline.map((c, i) => `| ${i + 1} | ${c.id} | ${clock(c.start)} | ${clock(c.e
 Intro card 0:00.0 to 0:${INTRO.toFixed(1).padStart(4, '0')} ("${expand(spec.title).text}"), end card the last ${END} seconds.
 `,
   )
+  if (opts.voice) {
+    // Where each line was placed against its caption, for anyone checking the sync.
+    const { lineRecord } = await import('../voice/tts.mjs')
+    writeFileSync(
+      join(outDir, `${spec.id}-voice.json`),
+      JSON.stringify(
+        timeline.map((c, i) => ({
+          step: c.id,
+          text: c.text,
+          captionStart: c.start,
+          captionEnd: c.end,
+          voiceStart: spans[i]?.[0],
+          voiceEnd: spans[i]?.[1],
+          check: lineRecord(c.text),
+        })),
+        null,
+        1,
+      ),
+    )
+  }
   const report = checkReport(meta, timeline)
   writeFileSync(join(outDir, `${spec.id}-check.txt`), report.text)
   if (opts.sheet) contactSheet(file, join(outDir, `${spec.id}-sheet`))
