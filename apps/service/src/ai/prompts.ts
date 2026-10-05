@@ -139,7 +139,8 @@ export const INVOICE_USER_PROMPT =
  *     first-class field the model must set, rather than an empty reply we guess
  *     the meaning of.
  */
-export const RATE_EXTRACT_PROMPT_VERSION = 'rate-extract@2'
+// @3: `description` on every line and the broker's `statedTotal` (R1).
+export const RATE_EXTRACT_PROMPT_VERSION = 'rate-extract@3'
 
 export function rateExtractSystemPrompt(vocabulary: {
   chargeCodes: readonly string[]
@@ -156,6 +157,8 @@ export function rateExtractSystemPrompt(vocabulary: {
     '1. TRANSCRIBE, DO NOT CALCULATE. Report every rate exactly as the broker wrote',
     '   it. Report each amount as a string, keeping the decimal places shown. Kuwaiti',
     '   dinar carries three. Do not add thousands separators and do not total the lines.',
+    '   If the broker writes a total for the whole quote, copy it into `statedTotal`',
+    '   exactly as written; if they write none, leave it null. Never compute it.',
     '',
     '2. If the broker DECLINED to quote — no space, lane not served, "sorry", silence',
     '   dressed as a reply — set `declined` to true and put their reason in',
@@ -180,7 +183,9 @@ export function rateExtractSystemPrompt(vocabulary: {
       ? [
           '6. For each line, if it clearly corresponds to one of the charge codes below,',
           '   return that code exactly in `chargeType`. Otherwise return null. Never invent',
-          '   a code — an unmatched charge is one a person will classify.',
+          '   a code — an unmatched charge is one a person will classify. Report every',
+          '   priced line, matched or not, and put the charge as the broker named it in',
+          '   `description` on every line.',
           '',
           `   ${vocabulary.chargeCodes.join(', ')}`,
         ].join('\n')

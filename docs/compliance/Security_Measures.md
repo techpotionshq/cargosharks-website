@@ -139,7 +139,7 @@ everything above.
 ## How the numbers are produced
 
 Counted against a freshly migrated and seeded database (migrations through
-`0066`), 2026-10-05:
+`0069`), 2026-10-05:
 
 ```sql
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace

@@ -691,6 +691,33 @@ export function isSelfConsistent(
 }
 
 /**
+ * Whether the only thing between this reading and `isSelfConsistent` is a
+ * total the page did not print (R2, live run 5).
+ *
+ * EK's bill came back with three correct lines at confidence 0.95 and
+ * `total: null` — its "Total due" was laid out over three lines — and was
+ * refused as "not confident enough", which it was not. Every other test
+ * passes: the header read, the lines validated, each line's own arithmetic
+ * holds, the model was sure. What is missing is the second figure that would
+ * catch a dropped line, and that is a check a person can make against the PDF
+ * in seconds. So such a bill may be captured with its total summed from the
+ * lines, flagged so it cannot be approved until somebody confirms the figure;
+ * it is never treated as consistent.
+ */
+export function onlyTheTotalIsMissing(
+  extracted: ExtractedInvoice,
+  spec: CurrencySpec,
+  confidenceThreshold: number,
+): boolean {
+  if (extracted.headerIssues.length > 0) return false
+  if (!extracted.lines.ok) return false
+  if (extracted.lines.rows.length < 2) return false
+  if (extracted.confidence < confidenceThreshold) return false
+  if (extracted.header.subtotal !== undefined || extracted.header.total !== undefined) return false
+  return reconcileInvoice(extracted, spec).length === 0
+}
+
+/**
  * The header total, or the sum of the lines where the page printed none.
  *
  * Every caller wants this and none of them should decide it: a supplier
@@ -1111,6 +1138,7 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
     'currency',
     'validFrom',
     'validTo',
+    'statedTotal',
     'lines',
     'confidence',
   ],
@@ -1145,6 +1173,17 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
       description: 'Destination the model read, for cross-check only.',
     },
     mode: { type: ['string', 'null'], description: 'Mode the model read, for cross-check only.' },
+    /*
+      The broker's own total, where they wrote one, transcribed and never
+      computed. It is not used as the figure: the lines are. It is the second
+      reading that catches a line the model dropped or misread (R1), the same
+      reason an invoice's printed total is checked against its lines.
+    */
+    statedTotal: {
+      type: ['string', 'null'],
+      description:
+        'The total the broker states for the whole quote, in the header currency, as printed. Null if they state none. Never add the lines up yourself.',
+    },
     lines: {
       type: 'array',
       items: {
@@ -1152,6 +1191,7 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
         additionalProperties: false,
         required: [
           'chargeType',
+          'description',
           'basis',
           'rate',
           'currency',
@@ -1163,6 +1203,11 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
           chargeType: {
             type: ['string', 'null'],
             description: 'Our charge type key, from the list shown, or null if it is not one.',
+          },
+          description: {
+            type: ['string', 'null'],
+            description:
+              'The charge as the broker named it, verbatim, e.g. "Screening and handling".',
           },
           basis: {
             type: 'string',
@@ -1189,6 +1234,7 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
 /** The raw shape of one extracted rate line, before anything is checked. */
 export interface RawRateLine {
   readonly chargeType?: unknown
+  readonly description?: unknown
   readonly basis?: unknown
   readonly rate?: unknown
   readonly currency?: unknown
@@ -1203,6 +1249,7 @@ export interface RawExtractedRateReply {
   readonly currency?: unknown
   readonly validFrom?: unknown
   readonly validTo?: unknown
+  readonly statedTotal?: unknown
   readonly origin?: unknown
   readonly destination?: unknown
   readonly mode?: unknown
@@ -1425,7 +1472,39 @@ export interface ExtractedRateReply {
   readonly lines: ImportReport<RateRowValues>
   readonly confidence: number
   readonly headerIssues: readonly string[]
+  /**
+   * Priced lines the model could not match to a charge type, kept under
+   * `UNCLASSIFIED_CHARGE` so their money stays in the total (R1). Each names
+   * the line as the broker wrote it, for the review note a person reads.
+   */
+  readonly unclassified: readonly UnclassifiedRateLine[]
+  /** The broker's own total, as transcribed, where they wrote one. */
+  readonly statedTotal?: string
 }
+
+/** A priced line kept as "other" because nobody has classified it yet. */
+export interface UnclassifiedRateLine {
+  /** The reply's own line, 1-based (the grid's row is one more: headings). */
+  readonly line: number
+  /** The broker's name for it, or what the model put in `chargeType`, or empty. */
+  readonly description: string
+}
+
+/**
+ * The charge type a priced line falls back to when the model cannot name one.
+ *
+ * A reply's line with a rate and a basis is money the agent will bill. It was
+ * rejected for want of a charge code, the total was summed from what was left,
+ * and an EK reply of USD 1,617 ranked "Cheapest" at 1,577 with its USD 40
+ * screening fee gone and nothing on screen to say so (R1). A wrong label is a
+ * person's thirty-second fix; a missing amount under-costs the job. So the line
+ * is kept under this seed row and the reply is flagged for review naming it.
+ *
+ * A seed row, not code: an administrator renames it like any other. Where a
+ * deployment does not hold it the line is rejected as before, and the reply is
+ * still flagged and left out of the ranking (`rateReplyReview`).
+ */
+export const UNCLASSIFIED_CHARGE = 'other'
 
 /**
  * Read a broker's rate reply into rows we can price and promote.
@@ -1497,16 +1576,33 @@ export function readExtractedRateReply(
   const cell = (value: unknown): string =>
     value === null || value === undefined ? '' : String(value)
 
+  /*
+    A priced line with no charge code we hold is kept, not dropped (R1). Only
+    the code is substituted: the rate, basis and currency are still validated
+    as written, so a line that is not money at all is still refused.
+  */
+  const known = lookups.chargeTypes ?? new Set<string>()
+  const canFallBack = known.has(UNCLASSIFIED_CHARGE.toUpperCase())
+  const unclassified: UnclassifiedRateLine[] = []
+  const chargeFor = (line: RawRateLine, index: number): string => {
+    const written = cell(line.chargeType).trim()
+    if (written !== '' && known.has(written.toUpperCase())) return written
+    if (!canFallBack) return written
+    const named = typeof line.description === 'string' ? line.description.trim() : ''
+    unclassified.push({ line: index + 1, description: (named || written).slice(0, 200) })
+    return UNCLASSIFIED_CHARGE
+  }
+
   const grid: string[][] = [
     [...RATE_ROW_HEADERS],
-    ...rawLines.map((line) => [
+    ...rawLines.map((line, index) => [
       lane.mode,
       lane.originCode,
       lane.destinationCode,
       cell(line.currency) || (headerCurrency ?? ''),
       validFrom,
       validTo,
-      cell(line.chargeType),
+      chargeFor(line, index),
       cell(line.basis),
       cell(line.rate),
       cell(line.minimum),
@@ -1519,6 +1615,20 @@ export function readExtractedRateReply(
 
   const lines = validateImport<RateRowValues>(grid, rateReplyDescriptor, { lookups })
 
+  // Kept only for the lines that validated: a fallback line refused for its
+  // rate is already an issue, and naming it twice would say two things.
+  // The grid numbers its rows as a sheet does, headings on 1; the reply's own
+  // line 1 is row 2 there.
+  const validLines = new Set(lines.rows.map((row) => row.line))
+  const kept = unclassified.filter((u) => validLines.has(u.line + 1))
+
+  const statedTotal =
+    typeof raw.statedTotal === 'string' && raw.statedTotal.trim() !== ''
+      ? raw.statedTotal.trim()
+      : typeof raw.statedTotal === 'number' && Number.isFinite(raw.statedTotal)
+        ? String(raw.statedTotal)
+        : undefined
+
   return {
     declined,
     ...(declinedReason ? { declinedReason } : {}),
@@ -1527,7 +1637,117 @@ export function readExtractedRateReply(
     lines,
     confidence: replyConfidence,
     headerIssues,
+    unclassified: kept,
+    ...(statedTotal ? { statedTotal } : {}),
   }
+}
+
+/**
+ * Why a stored reply needs a person before it is ranked or awarded — R1.
+ *
+ * Read from `rate_requests.response` at display time rather than stored, so a
+ * re-summarised reply (a container count entered later) is judged on its new
+ * totals with no second copy of the verdict to fall out of step.
+ *
+ *   - `unclassified`: lines kept as "other". The total is whole, so the reply
+ *     still ranks, but somebody should name the charge before it is a card.
+ *   - `rejected`: lines that did not validate at all. The total is short by
+ *     them, so the reply is not ranked or awarded.
+ *   - `totalMismatch`: the broker's own total disagrees with the lines. One of
+ *     the two readings is wrong and nothing here can say which, so the reply
+ *     is not ranked or awarded until a person has looked.
+ *
+ * `ranked` is whether the figure can stand in a comparison; `needed` whether a
+ * person must look at all. Older replies with none of these fields read clean.
+ */
+export interface RateReplyReview {
+  readonly needed: boolean
+  readonly ranked: boolean
+  readonly unclassified: readonly UnclassifiedRateLine[]
+  readonly rejected: number
+  readonly totalMismatch: {
+    readonly currency: string
+    readonly stated: string
+    readonly computed: string
+  } | null
+}
+
+export function rateReplyReview(response: unknown): RateReplyReview {
+  const r = (response ?? {}) as {
+    ok?: unknown
+    issues?: unknown
+    unclassified?: unknown
+    statedTotal?: unknown
+    currency?: unknown
+    totals?: unknown
+  }
+
+  const unclassified = Array.isArray(r.unclassified)
+    ? (r.unclassified as unknown[]).flatMap((u) => {
+        const v = u as { line?: unknown; description?: unknown }
+        return typeof v?.line === 'number'
+          ? [{ line: v.line, description: typeof v.description === 'string' ? v.description : '' }]
+          : []
+      })
+    : []
+
+  // Rows refused by the validator. `ok: false` with no issue list (an older
+  // row) still counts, as one, so the reply is never ranked on a short total.
+  const issueLines = Array.isArray(r.issues)
+    ? new Set((r.issues as { line?: unknown }[]).map((i) => i?.line)).size
+    : 0
+  const rejected = issueLines > 0 ? issueLines : r.ok === false ? 1 : 0
+
+  const totalMismatch = statedTotalMismatch(r.statedTotal, r.currency, r.totals)
+
+  return {
+    needed: unclassified.length > 0 || rejected > 0 || totalMismatch !== null,
+    ranked: rejected === 0 && totalMismatch === null,
+    unclassified,
+    rejected,
+    totalMismatch,
+  }
+}
+
+/**
+ * The broker's total against ours, at the precision the broker wrote.
+ *
+ * "1,617.00" against 1617.000000 is the same figure; a stated total is
+ * compared after rounding the computed one to the stated number of places so a
+ * printed total is not flagged for omitting fils it never showed. Compared only
+ * where the reply is in one currency and that currency is the header's: a
+ * mixed-currency reply has no single total to check, and a header-less one may
+ * have stated it in anything.
+ */
+function statedTotalMismatch(
+  stated: unknown,
+  headerCurrency: unknown,
+  totals: unknown,
+): RateReplyReview['totalMismatch'] {
+  if (typeof stated !== 'string' || stated.trim() === '') return null
+  if (!Array.isArray(totals) || totals.length !== 1) return null
+  const only = totals[0] as { currency?: unknown; amount?: unknown }
+  if (typeof only?.currency !== 'string' || typeof only.amount !== 'string') return null
+  if (typeof headerCurrency === 'string' && headerCurrency.toUpperCase() !== only.currency) {
+    return null
+  }
+
+  const cleaned = normaliseDigits(stated).replace(/[,\s]/g, '')
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null
+  const places = cleaned.includes('.') ? cleaned.split('.')[1]!.length : 0
+  const statedValue = dec(cleaned)
+  const computed = dec(only.amount).toDecimalPlaces(places)
+  if (statedValue.equals(computed)) return null
+  return {
+    currency: only.currency,
+    stated: statedValue.toFixed(),
+    computed: dec(only.amount).toFixed(),
+  }
+}
+
+/** Whether a stored reply may be ranked against rivals or awarded unattended. */
+export function replyIsRankable(response: unknown): boolean {
+  return rateReplyReview(response).ranked
 }
 
 function asCode(value: unknown): string | undefined {

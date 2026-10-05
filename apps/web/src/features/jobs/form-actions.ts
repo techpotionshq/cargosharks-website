@@ -338,8 +338,15 @@ export const saveJob = refuseForbidden(async function saveJob(
           A cleared estimate is not news to send. The payload would read "ETA
           changed to —", which tells the customer nothing except that somebody
           emptied a field.
+
+          Nor is the first one (R14, live run 5). Setting the ETA on a new job
+          emailed the customer "the estimated arrival has moved. Previously:
+          —", beside the booking mail. Nothing moved: an estimate was given
+          for the first time. There is no "ETA set" template, and `job.eta_changed`
+          says "moved", so the first estimate sends nothing; the customer sees
+          it on the portal, and the next change is news.
         */
-        if (row.eta && before.eta?.getTime() !== row.eta.getTime()) {
+        if (row.eta && before.eta && before.eta.getTime() !== row.eta.getTime()) {
           await tx.insert(notificationOutbox).values({
             branchId: before.branchId,
             eventKey: 'job.eta_changed',
@@ -350,13 +357,9 @@ export const saveJob = refuseForbidden(async function saveJob(
               // Formatted here rather than in the template, because a template
               // is a string with holes in it and cannot format a date. The date
               // only, since an arrival estimate accurate to the minute is a
-              // precision the shipping line does not have.
-              //
-              // A missing date is a dash, not the words "not set": this payload is
-              // built once and merged into the English *and* the Arabic template,
-              // so words here would be English inside an Arabic message. The
-              // recipient's language is only known at dispatch.
-              previousEta: before.eta ? dayIn(before.eta, timeZone) : '—',
+              // precision the shipping line does not have. Both dates are
+              // present: a first estimate never reaches here (above).
+              previousEta: dayIn(before.eta, timeZone),
               eta: dayIn(row.eta, timeZone),
             },
           })

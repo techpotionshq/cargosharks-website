@@ -1,5 +1,5 @@
 /**
- * Vessel positions under row-level security — `0066_vessel_positions_policy`.
+ * Vessel positions under row-level security — `0069_vessel_positions_policy`.
  *
  * The table is a `systemTable` (no audit trigger, for the reason in its schema
  * file), so the registry-walking tests in `rls.test.ts` do not reach it. This

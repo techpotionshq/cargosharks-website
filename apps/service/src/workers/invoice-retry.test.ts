@@ -1,11 +1,13 @@
 /**
- * "Read as a bill" after a refusal (D1).
+ * "Read as a bill" after a refusal (D1, R2), and a bill with no printed total.
  *
  * The automatic read on arrival is answered from the ledger on every later
  * read of the same scan, which is right for a reading that worked and wrong
  * for one that was refused: the person pressing "Read as a bill" was shown the
- * same refusal each time and no model was asked. A retry now asks afresh when
- * the cached answer does not read as a bill, and only then.
+ * same refusal each time and no model was asked. D1 made a retry ask afresh
+ * only when the cached answer did not parse; live run 5's EK bill parsed and
+ * lacked only its total, so "Read as a bill" still never asked (R2). A retry
+ * now always asks the model again.
  *
  * The model and the file store are replaced; the asset and the bill are real.
  */
@@ -26,9 +28,9 @@ vi.mock('../adapters/index', () => ({
   fileStore: async () => ({ get: async () => Buffer.from('%PDF-1.4 a bill') }),
 }))
 
-const bill = (invoiceDate: string) =>
+const bill = (invoiceDate: string, invoiceNumber = NUMBER) =>
   JSON.stringify({
-    invoiceNumber: NUMBER,
+    invoiceNumber,
     invoiceDate,
     dueOn: null,
     currency: 'KWD',
@@ -53,6 +55,8 @@ const bill = (invoiceDate: string) =>
   afresh gets the date as the bill prints it, which the parser now reads.
 */
 const calls: boolean[] = []
+/** What the model answers; a test may replace it for its own scan. */
+const model = vi.hoisted(() => ({ answer: null as null | ((reuse: boolean) => string) }))
 vi.mock('../ai/ledger', () => ({
   invoke: async (_context: unknown, _request: unknown, options?: { reuse?: boolean }) => {
     const reuse = options?.reuse === true
@@ -60,10 +64,57 @@ vi.mock('../ai/ledger', () => ({
     return {
       invocationId: randomUUID(),
       reused: reuse,
-      response: { text: bill(reuse ? 'early in the month' : '03 Oct 2026') },
+      response: {
+        text: model.answer
+          ? model.answer(reuse)
+          : bill(reuse ? 'early in the month' : '03 Oct 2026'),
+      },
     }
   },
 }))
+
+/*
+  EK's bill as the model read it in live run 5: three correct lines, the date,
+  confidence 0.95, and `total: null` because "Total due" was laid out over
+  three lines of the PDF. In KWD here, so no exchange rate is needed to write.
+*/
+const noTotal = (invoiceNumber: string, confidence = 0.95) =>
+  JSON.stringify({
+    invoiceNumber,
+    invoiceDate: '03 Oct 2026',
+    dueOn: null,
+    currency: 'KWD',
+    subtotal: null,
+    taxAmount: null,
+    total: null,
+    lines: [
+      {
+        description: 'Air freight',
+        quantity: '380',
+        unitPrice: '1.100',
+        amount: '418.000',
+        taxAmount: '0',
+        chargeType: 'AIR_FREIGHT',
+      },
+      {
+        description: 'Fuel surcharge',
+        quantity: '380',
+        unitPrice: '0.170',
+        amount: '64.600',
+        taxAmount: '0',
+        chargeType: 'FUEL_SURCHARGE',
+      },
+      {
+        description: 'Screening and handling',
+        quantity: '1',
+        unitPrice: null,
+        amount: '12.300',
+        taxAmount: '0',
+        chargeType: null,
+      },
+    ],
+    confidence,
+  })
 
 const { assets, branches, partners, principals, supplierInvoices, withActor, workingCalendars } =
   await import('@qabandi/db')
@@ -127,6 +178,7 @@ describe.skipIf(!enabled)('a person retrying a refused bill', () => {
 
   beforeEach(() => {
     calls.length = 0
+    model.answer = null
   })
 
   it('the automatic read keeps the cached answer, and is refused on it', async () => {
@@ -136,9 +188,9 @@ describe.skipIf(!enabled)('a person retrying a refused bill', () => {
     expect(auto.supplierInvoiceId).toBeUndefined()
   })
 
-  it('a retry asks again when the cached answer did not read, and files the bill', async () => {
+  it('a retry asks the model again, never the ledger, and files the bill', async () => {
     const retried = await read(true)
-    expect(calls).toEqual([true, false])
+    expect(calls).toEqual([false])
     expect(retried.refusalCode).toBeUndefined()
     expect(retried.extracted.header.invoiceDate).toBe('2026-10-03')
 
@@ -149,5 +201,42 @@ describe.skipIf(!enabled)('a person retrying a refused bill', () => {
         .where(eq(supplierInvoices.id, retried.supplierInvoiceId!)),
     )
     expect(row?.invoiceDate).toBe('2026-10-03')
+  })
+
+  /*
+    R2. Complete lines and no printed total: captured with the lines' sum,
+    and flagged so it cannot be approved until a person confirms the figure.
+    It is never called consistent.
+  */
+  it('captures a bill with no printed total, flagged for a person to confirm', async () => {
+    const number = `RTY-${RUN}-EK`
+    model.answer = () => noTotal(number)
+
+    const read1 = await read(false)
+
+    expect(read1.refusalCode).toBeUndefined()
+    expect(read1.consistent).toBe(false)
+    expect(read1.totalFromLines).toBe(true)
+    const [row] = await withActor(actor, (tx) =>
+      tx
+        .select({
+          status: supplierInvoices.status,
+          total: supplierInvoices.total,
+          totalUnconfirmed: supplierInvoices.totalUnconfirmed,
+        })
+        .from(supplierInvoices)
+        .where(eq(supplierInvoices.id, read1.supplierInvoiceId!)),
+    )
+    // Never past `received`: approval is a person's, and asks about the total.
+    expect(row).toEqual({ status: 'received', total: '494.900000', totalUnconfirmed: true })
+  })
+
+  it('still refuses a bill with no total when the model was unsure', async () => {
+    model.answer = () => noTotal(`RTY-${RUN}-LOW`, 0.5)
+
+    const unsure = await read(false)
+
+    expect(unsure.refusalCode).toBe('low_confidence')
+    expect(unsure.supplierInvoiceId).toBeUndefined()
   })
 })

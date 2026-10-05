@@ -453,15 +453,36 @@
     {
       "idx": 65,
       "version": "7",
-      "when": 1791189077051,
-      "tag": "0065_vessel_positions",
+      "when": 1791185946385,
+      "tag": "0065_other_charge_type",
       "breakpoints": true
     },
     {
       "idx": 66,
       "version": "7",
-      "when": 1791189083107,
-      "tag": "0066_vessel_positions_policy",
+      "when": 1791186292738,
+      "tag": "0066_rate_card_supersede",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791186659281,
+      "tag": "0067_supplier_invoice_total_unconfirmed",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1791190294889,
+      "tag": "0068_vessel_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1791190296952,
+      "tag": "0069_vessel_positions_policy",
       "breakpoints": true
     }
   ]
