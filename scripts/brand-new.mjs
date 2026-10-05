@@ -317,6 +317,7 @@ export const ${camel(options.key)}Brand = defineBrand({
   },
 
   documents: {
+    documentPrefix: ${quote((options.short ?? initials(options.nameEn)).toUpperCase())},
     // The client's to supply. Inventing plausible numbers would put a false
     // registration on every quotation this deployment prints; an empty value
     // prints nothing, label included.

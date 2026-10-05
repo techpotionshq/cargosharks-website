@@ -206,6 +206,20 @@ export interface BrandRegistration {
 }
 
 export interface BrandDocuments {
+  /**
+   * The letters a document number starts with: the `AQP` in `AQPKWI000412`.
+   *
+   * A token rather than `identity.shortName` because the two answer different
+   * questions. The short name is drawn in a 32px tile, so it is two or three
+   * letters chosen to look right there; a document prefix is printed on bills
+   * a carrier, a bank and a customs officer all read, and is chosen to be
+   * unambiguous among the operator's own series. It was hard-coded as `AQP`
+   * in the demo fixtures, so every CargoSharks house bill read as
+   * Al-Qabandi's. A real branch's series is still a row an administrator
+   * edits (`branches.house_bill_series`); this is the default the demo and a
+   * new branch are shown.
+   */
+  readonly documentPrefix: string
   /** Printed under the letterhead, each only when it has a value. */
   readonly registrations: readonly BrandRegistration[]
   /**
@@ -236,6 +250,24 @@ export interface BrandDemo {
   readonly operationsEmail: string
   /** The shared password when `QABANDI_DEMO_PASSWORD` is unset. */
   readonly password: string
+  /*
+    The rest is what the hosted demo's own records say about the operator:
+    its two legal entities, the domain its staff and branch mailboxes are on,
+    and the name its mail goes out under. The pilot fixtures printed
+    Al-Qabandi's for all of it, so the CargoSharks demo listed Al-Qabandi's
+    companies on every branch picker, letterhead and user row. Defaults are
+    derived from the identity (`defineBrand`), so a new brand shows its own.
+  */
+  /** The home legal entity, the demo's Kuwait branch. */
+  readonly homeEntityEn: string
+  readonly homeEntityAr: string
+  /** The second entity, the demo's Dubai branch. */
+  readonly regionalEntityEn: string
+  readonly regionalEntityAr: string
+  /** The demo staff's and branches' mail domain. Defaults to the website's host. */
+  readonly mailDomain: string
+  /** The display name outbound mail is sent under. */
+  readonly senderName: string
 }
 
 export interface Brand {

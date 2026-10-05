@@ -284,7 +284,7 @@ const SHIPMENTS = [
     pieces: 420,
     containers: 2,
     mbl: 'MAEU241188345',
-    hbl: 'QBD-HBL-24001',
+    hbl: 'HBL-24001',
   },
   {
     ref: 'KWI-JOB-0002',
@@ -309,7 +309,7 @@ const SHIPMENTS = [
     pieces: 980,
     containers: 1,
     mbl: 'MSCU2410099',
-    hbl: 'QBD-HBL-24002',
+    hbl: 'HBL-24002',
     // Landed nine days ago against five free days, so four chargeable
     // days have accrued — this is the row the demurrage tile is counting.
     demurrage: { freeDays: 5, startedDaysAgo: 9, perDiem: '28.000' },
@@ -335,7 +335,7 @@ const SHIPMENTS = [
     volume: '14.000',
     pieces: 96,
     mbl: '176-88214590',
-    hbl: 'QBD-HBL-24003',
+    hbl: 'HBL-24003',
     customs: { status: 'held', inspection: true, duty: '1840.500' },
     exception: {
       code: 'inspection_hold',
@@ -365,7 +365,7 @@ const SHIPMENTS = [
     volume: '31.000',
     pieces: 310,
     mbl: 'CMAU9911234',
-    hbl: 'QBD-HBL-24004',
+    hbl: 'HBL-24004',
   },
   {
     /*
@@ -397,7 +397,7 @@ const SHIPMENTS = [
     volume: '19.000',
     pieces: 180,
     mbl: 'CMAU9911234',
-    hbl: 'QBD-HBL-24008',
+    hbl: 'HBL-24008',
   },
   {
     ref: 'KWI-JOB-0005',
@@ -423,7 +423,7 @@ const SHIPMENTS = [
     pieces: 18,
     containers: 3,
     mbl: 'HLCU2409981',
-    hbl: 'QBD-HBL-24005',
+    hbl: 'HBL-24005',
     customs: { status: 'released', duty: '4210.000' },
     invoice: { total: '8940.500', paid: '5000.000', dueDays: -4 },
   },
@@ -500,7 +500,7 @@ const SHIPMENTS = [
     pieces: 540,
     containers: 4,
     mbl: 'MSCU2410455',
-    hbl: 'QBD-HBL-24008',
+    hbl: 'HBL-24008',
   },
   {
     ref: 'DXB-JOB-0002',
@@ -1460,6 +1460,13 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     cancelled: 1,
   }
 
+  /*
+    The house bill prefix is the brand's. It was a literal `QBD-` in every
+    spec below, so a CargoSharks instance, or the next client's, printed
+    Al-Qabandi's letters on every bill of lading the demo produced.
+  */
+  const { documentPrefix } = resolveBrand().documents
+
   for (const spec of SHIPMENTS) {
     const [existing] = await tx
       .select({ id: jobs.id })
@@ -1487,7 +1494,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         commodityId: goods.get(spec.goods)!,
         incoterm: spec.incoterm,
         masterBillNumber: 'mbl' in spec ? spec.mbl : null,
-        houseBillNumber: 'hbl' in spec ? spec.hbl : null,
+        houseBillNumber: 'hbl' in spec ? `${documentPrefix}-${spec.hbl}` : null,
         vesselName: 'vessel' in spec ? spec.vessel : null,
         voyageNumber: 'voyage' in spec ? spec.voyage : null,
         flightNumber: 'flight' in spec ? spec.flight : null,

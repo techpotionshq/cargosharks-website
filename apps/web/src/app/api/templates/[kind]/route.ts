@@ -25,6 +25,7 @@
 
 import { NextResponse } from 'next/server'
 import { templateCsv } from '@qabandi/core/import'
+import { getBrand } from '@/lib/brand'
 import { getSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { importKind, isImportKind } from '@/features/imports/descriptors'
@@ -47,10 +48,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
   }
 
+  // Named from the brand's key, not a literal: the file lands in someone's
+  // Downloads folder and was called `qabandi-...` on every deployment,
+  // including CargoSharks' own demo.
+  const filename = `${getBrand().identity.key}-${kind}-template.csv`
+
   return new NextResponse(`﻿${templateCsv(entry.descriptor)}`, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="qabandi-${kind}-template.csv"`,
+      'Content-Disposition': `attachment; filename="${filename}"`,
       'Cache-Control': 'private, no-store',
     },
   })

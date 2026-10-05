@@ -73,6 +73,9 @@ export const cargosharksBrand = defineBrand({
   },
 
   documents: {
+    // CargoSharks Freight. Not `CS`, the short name: two letters collide with
+    // too many carriers' and container owners' codes on a bill.
+    documentPrefix: 'CSF',
     // Deliberately empty of registration numbers. A demo tenant that prints a
     // plausible-looking commercial registration on a quotation is putting a
     // false registration into the world, and somebody will screenshot it.

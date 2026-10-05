@@ -33,7 +33,10 @@ export interface BrandSpec {
   readonly identity: BrandIdentity
   readonly contact: BrandContact
   readonly documents: BrandDocuments
-  /** Defaults to `operations@<key>.example` and `<key>-demo`. */
+  /**
+   * Defaults to `operations@<key>.example`, `<key>-demo`, and entities, a mail
+   * domain and a sender derived from the identity and the website.
+   */
   readonly demo?: Partial<BrandDemo>
   /** The corporate colour — the mark, primary actions, brand moments. */
   readonly primary: RampSpec
@@ -102,6 +105,15 @@ const DEFAULT_LOGO: BrandLogo = {
   favicon: '⚓',
 }
 
+/** `https://www.acme.com/x` → `acme.com`, or the RFC 2606 domain if it is not a URL. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return 'example.com'
+  }
+}
+
 export function defineBrand(spec: BrandSpec): Brand {
   const primary = ramp(spec.primary)
   const accent = ramp(spec.accent)
@@ -124,6 +136,14 @@ export function defineBrand(spec: BrandSpec): Brand {
     demo: {
       operationsEmail: `operations@${spec.identity.key}.example`,
       password: `${spec.identity.key}-demo`,
+      homeEntityEn: spec.identity.legalNameEn,
+      homeEntityAr: spec.identity.legalNameAr,
+      // Dubai is an entity the brand does not declare, so it is named the way
+      // `seed-demo.ts` names it: the trading name and a free-zone form.
+      regionalEntityEn: `${spec.identity.nameEn} Logistics FZE`,
+      regionalEntityAr: `${spec.identity.nameAr} للخدمات اللوجستية`,
+      mailDomain: hostOf(spec.contact.websiteUrl),
+      senderName: spec.identity.nameEn,
       ...spec.demo,
     },
     logo: { ...DEFAULT_LOGO, ...spec.logo },
