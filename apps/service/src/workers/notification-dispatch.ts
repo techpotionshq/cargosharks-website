@@ -51,7 +51,9 @@ import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import {
   branches,
   customerContacts,
+  enquiries,
   invoices,
+  jobs,
   notificationChannelSettings,
   notificationDeliveries,
   notificationOutbox,
@@ -59,6 +61,7 @@ import {
   principalBranchRoles,
   principals,
   quotes,
+  roles,
   systemActor,
   withActor,
 } from '@qabandi/db'
@@ -69,6 +72,9 @@ import {
   noticeSubject,
   notificationEvent,
   renderTemplate,
+  staffAudience,
+  staffEmailMuted,
+  staffRouting,
 } from '@qabandi/core'
 import type { NotificationChannel } from '../ports/index'
 
@@ -160,6 +166,11 @@ interface Recipient {
   readonly name: string
   readonly locale: 'en' | 'ar'
   readonly optOuts: readonly string[]
+  /**
+   * Staff only: this person turned email off for the event's group (R12).
+   * The bell still gets its row; every other channel is suppressed.
+   */
+  readonly emailMuted?: boolean
 }
 
 async function expand(
@@ -190,6 +201,8 @@ async function expand(
         branchId: notificationOutbox.branchId,
         eventKey: notificationOutbox.eventKey,
         customerId: notificationOutbox.customerId,
+        enquiryId: notificationOutbox.enquiryId,
+        jobId: notificationOutbox.jobId,
         payload: notificationOutbox.payload,
         timeZone: branches.timeZone,
         quietEnabled: branches.quietHoursEnabled,
@@ -245,7 +258,7 @@ async function expand(
       const recipients =
         declared.audience === 'customer'
           ? await customerRecipients(tx, event.customerId)
-          : await internalRecipients(tx, event.branchId)
+          : await internalRecipients(tx, event)
 
       /*
         Quiet hours are a customer courtesy, not a rule about staff.
@@ -300,6 +313,28 @@ async function expand(
             fall through and do get one.
           */
           if (channel === 'in_app' && declared.audience === 'customer') continue
+
+          /*
+            A member of staff who turned this group's email off — R12.
+
+            Recorded as `suppressed`, the same vocabulary as a customer's
+            opt-out, so "why did I not get the mail" has an answer in the log.
+            In-app is never muted: the bell is how somebody who silenced their
+            inbox still finds out.
+          */
+          if (channel !== 'in_app' && recipient.emailMuted) {
+            await tx.insert(notificationDeliveries).values({
+              outboxId: event.id,
+              principalId: recipient.principalId,
+              channel: channel as 'email',
+              locale: recipient.locale,
+              toAddress: recipient.email,
+              status: 'suppressed' as const,
+              suppressedReason: 'opted out',
+            })
+            suppressed++
+            continue
+          }
 
           /*
             Switched off — FR-NT-03.
@@ -456,48 +491,115 @@ async function customerRecipients(tx: any, customerId: string | null): Promise<R
 }
 
 /**
- * Internal staff *of the event's branch*.
+ * The staff of the event's branch whom the event concerns — R12.
  *
- * The branch narrowing is the point. Before this, an event that named no
+ * The branch narrowing is the first half. Before it, an event that named no
  * customer resolved its audience to every active principal in the database —
  * the `undefined` filter simply vanished inside `and()` — so an SLA breach in
  * Kuwait would have emailed Dubai staff, every agent contact, and every portal
  * user of every unrelated customer. A branch is a legal entity here (§5.3),
  * not a folder.
+ *
+ * The second half is who *in* the branch, and that used to be everyone: one
+ * enquiry with 49 staff was 98 deliveries (run 5). `staffAudience` in core
+ * holds the rule — the record's owner, else the roles responsible, else the
+ * administrators, else everyone — and this only reads what it needs: each
+ * person's role in this branch, and the owner of the enquiry or job the event
+ * names.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function internalRecipients(tx: any, branchId: string): Promise<Recipient[]> {
+async function internalRecipients(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  event: {
+    readonly branchId: string
+    readonly eventKey: string
+    readonly enquiryId: string | null
+    readonly jobId: string | null
+  },
+): Promise<Recipient[]> {
   const rows = await tx
-    .selectDistinct({
+    .select({
       principalId: principals.id,
       email: principals.email,
       nameEn: principals.nameEn,
       nameAr: principals.nameAr,
       locale: principals.locale,
+      optOuts: principals.notificationEmailOptOuts,
+      roleKey: roles.key,
     })
     .from(principals)
     .innerJoin(principalBranchRoles, eq(principalBranchRoles.principalId, principals.id))
+    .innerJoin(roles, eq(roles.id, principalBranchRoles.roleId))
     .where(
       and(
         eq(principals.type, 'internal'),
         eq(principals.isActive, true),
-        eq(principalBranchRoles.branchId, branchId),
+        eq(principalBranchRoles.branchId, event.branchId),
         eq(principalBranchRoles.isActive, true),
       ),
     )
 
-  return rows.map((row: Record<string, unknown>) => {
+  const told = new Set(
+    staffAudience(
+      event.eventKey,
+      rows.map((row: { principalId: string; roleKey: string }) => ({
+        principalId: row.principalId,
+        roleKey: row.roleKey,
+      })),
+      await ownerOf(tx, event),
+    ),
+  )
+
+  // One recipient per person: `principal_branch_roles` is one row per branch,
+  // and the query is narrowed to one branch, but the guard costs nothing.
+  const byPrincipal = new Map<string, Recipient>()
+  for (const row of rows as Record<string, unknown>[]) {
+    const principalId = row.principalId as string
+    if (!told.has(principalId) || byPrincipal.has(principalId)) continue
     const locale = row.locale as 'en' | 'ar'
-    return {
-      principalId: row.principalId as string,
+    const optOuts = (row.optOuts as string[] | null) ?? []
+    byPrincipal.set(principalId, {
+      principalId,
       email: row.email as string,
       name: (locale === 'ar' ? (row.nameAr as string | null) : null) ?? (row.nameEn as string),
       locale,
-      // Staff do not opt out of operational alarms; FR-NT-04's opt-outs are a
-      // customer preference and live on `customer_contacts`.
+      // FR-NT-04's per-event opt-outs are a customer preference. Staff choose
+      // by group, and only for email (`emailMuted`).
       optOuts: [],
-    }
-  })
+      emailMuted: staffEmailMuted(event.eventKey, optOuts),
+    })
+  }
+  return [...byPrincipal.values()]
+}
+
+/** The owner of the record the event names — the enquiry first, then the job. */
+async function ownerOf(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  event: {
+    readonly eventKey: string
+    readonly enquiryId: string | null
+    readonly jobId: string | null
+  },
+): Promise<string | null> {
+  const routing = staffRouting(event.eventKey)
+  if (routing?.owner === 'enquiry' && event.enquiryId) {
+    const [row] = await tx
+      .select({ ownerId: enquiries.ownerId })
+      .from(enquiries)
+      .where(eq(enquiries.id, event.enquiryId))
+      .limit(1)
+    return (row?.ownerId as string | null) ?? null
+  }
+  if (routing?.owner === 'job' && event.jobId) {
+    const [row] = await tx
+      .select({ ownerId: jobs.ownerId })
+      .from(jobs)
+      .where(eq(jobs.id, event.jobId))
+      .limit(1)
+    return (row?.ownerId as string | null) ?? null
+  }
+  return null
 }
 
 /**

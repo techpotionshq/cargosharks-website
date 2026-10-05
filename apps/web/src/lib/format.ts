@@ -266,6 +266,32 @@ export function formatNumber(value: number, locale: Locale): string {
   return new Intl.NumberFormat(intlLocale(locale)).format(value)
 }
 
+/**
+ * A weight or a volume as a person reads it — R13, live run 5.
+ *
+ * The columns are `numeric(19,6)`, so the cargo table printed
+ * "48000.000000 · 110.000000". Kilograms to at most two places, because a
+ * weighbridge reading has no more and "48,000" is how a booking states it;
+ * cubic metres always to three, because that is the trade's precision for a
+ * W/M and an LCL rate is struck on it. The decimal string goes straight to
+ * `Intl.NumberFormat`, which formats a string at full precision, so no float
+ * stands in between. Western digits in both languages, as everywhere here.
+ */
+export function formatMeasure(
+  value: string | number | null | undefined,
+  unit: 'kg' | 'cbm',
+  locale: Locale,
+): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const places = unit === 'kg' ? { min: 0, max: 2 } : { min: 3, max: 3 }
+  const formatter = new Intl.NumberFormat(intlLocale(locale), {
+    minimumFractionDigits: places.min,
+    maximumFractionDigits: places.max,
+  })
+  // Typed for a number; formats a decimal string exactly (ES2023).
+  return formatter.format(value as unknown as number)
+}
+
 export function formatDate(
   value: Date | string | number | null | undefined,
   locale: Locale,

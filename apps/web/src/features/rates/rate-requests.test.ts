@@ -159,6 +159,69 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
   })
 
   /*
+    R1, live run 5: EK's USD 40 screening line came back with no charge type
+    and was dropped, so the reply ranked Cheapest at 1,577 instead of 1,617
+    with no warning. The line is now kept as "other": the reply ranks on its
+    whole figure and carries a review note naming the line.
+  */
+  it('ranks a reply with a line kept as "other" on its full total, and flags it', async () => {
+    const enquiryId = await makeEnquiry()
+    await reply(
+      enquiryId,
+      'parsed',
+      { total: '1617.000', currency: 'KWD' },
+      {
+        issues: [],
+        totals: [{ currency: 'KWD', amount: '1617.000' }],
+        unclassified: [{ line: 3, description: 'Screening and handling' }],
+      },
+    )
+    await reply(enquiryId, 'parsed', { total: '1700.000', currency: 'KWD' })
+
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+    const ek = view!.requests.find((r) => Number(r.quotedTotal) === 1617)!
+    expect(ek.isCheapest).toBe(true)
+    expect(ek.canPromote).toBe(true)
+    expect(ek.review?.unclassified).toEqual([{ line: 3, description: 'Screening and handling' }])
+    // The clean rival carries no note at all.
+    expect(view!.requests.find((r) => Number(r.quotedTotal) === 1700)!.review).toBeNull()
+  })
+
+  it('keeps a short or doubtful total out of the cheapest', async () => {
+    const enquiryId = await makeEnquiry()
+    // Lines that did not read: the total is short by them.
+    await reply(
+      enquiryId,
+      'parsed',
+      { total: '1577.000', currency: 'KWD' },
+      { ok: false, issues: [{ line: 4, field: 'chargeCode', message: 'Charge: Required' }] },
+    )
+    // The broker's own total says the lines are missing something.
+    await reply(
+      enquiryId,
+      'parsed',
+      { total: '1500.000', currency: 'KWD' },
+      { currency: 'KWD', statedTotal: '1617.000', totals: [{ currency: 'KWD', amount: '1500' }] },
+    )
+    await reply(enquiryId, 'parsed', { total: '1700.000', currency: 'KWD' })
+
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+    const short = view!.requests.find((r) => Number(r.quotedTotal) === 1577)!
+    expect(short.isCheapest).toBe(false)
+    expect(short.review).toMatchObject({ ranked: false, rejected: 1 })
+    const doubtful = view!.requests.find((r) => Number(r.quotedTotal) === 1500)!
+    expect(doubtful.isCheapest).toBe(false)
+    expect(doubtful.review?.totalMismatch).toEqual({
+      currency: 'KWD',
+      stated: '1617',
+      computed: '1500',
+    })
+    expect(view!.requests.find((r) => r.isCheapest)?.quotedTotal).toBe('1700.000000')
+  })
+
+  /*
     An accepted reply and a decline are both answers (F65). The panel read
     "0 awaiting, 0 answered" above an accepted row; an expired request is
     neither, because nobody replied and nobody is waiting.

@@ -31,6 +31,7 @@ import {
   notificationDeliveries,
   notificationOutbox,
   notificationTemplates,
+  principals,
   withActor,
   type Actor,
 } from '@qabandi/db'
@@ -47,6 +48,11 @@ export interface Inbox {
   readonly items: readonly InboxItem[]
   /** Every unread item, not only the ones shown — this is the badge. */
   readonly unread: number
+  /**
+   * The groups this person turned email off for (R12). Read with the inbox
+   * because the switches live in the same panel, so it costs no extra trip.
+   */
+  readonly emailOptOuts: readonly string[]
 }
 
 /** Enough to fill the panel; the count above is the honest number. */
@@ -73,11 +79,12 @@ const ARRIVED = ['sent', 'delivered', 'read'] as const
 export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox> {
   if (usePilotFixtures()) {
     const items = pilotNotifications(locale)
-    return { items, unread: items.filter((item) => !item.read).length }
+    // The demo has no `principals` row to keep a preference on.
+    return { items, unread: items.filter((item) => !item.read).length, emailOptOuts: [] }
   }
 
   return withActor(actor, async (tx) => {
-    const [rows, [counted]] = await Promise.all([
+    const [rows, [counted], [me]] = await Promise.all([
       tx
         .select({
           id: notificationDeliveries.id,
@@ -118,6 +125,12 @@ export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox
             isNull(notificationDeliveries.readAt),
           ),
         ),
+
+      tx
+        .select({ optOuts: principals.notificationEmailOptOuts })
+        .from(principals)
+        .where(eq(principals.id, actor.principalId))
+        .limit(1),
     ])
 
     const items = rows.map((row): InboxItem => {
@@ -136,7 +149,7 @@ export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox
       }
     })
 
-    return { items, unread: counted?.unread ?? 0 }
+    return { items, unread: counted?.unread ?? 0, emailOptOuts: me?.optOuts ?? [] }
   })
 }
 
@@ -187,5 +200,25 @@ export async function markAllRead(actor: Actor): Promise<void> {
           isNull(notificationDeliveries.readAt),
         ),
       )
+  })
+}
+
+/**
+ * Keep the email groups this person has turned off — R12.
+ *
+ * The person's own row only, which `principals_scope` permits for self-service
+ * preferences exactly as it does the language and time zone
+ * (`lib/preferences.ts`); the identity guard on `principals` does not look at
+ * this column. Every group not listed keeps sending, so a group added later
+ * starts on for everybody.
+ */
+export async function setEmailOptOuts(actor: Actor, groups: readonly string[]): Promise<void> {
+  if (usePilotFixtures()) return
+
+  await withActor(actor, async (tx) => {
+    await tx
+      .update(principals)
+      .set({ notificationEmailOptOuts: [...groups], updatedAt: new Date() })
+      .where(eq(principals.id, actor.principalId))
   })
 }

@@ -875,6 +875,8 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         invocationId: result.invocationId,
         consistent: result.consistent,
         supplierInvoiceId: result.supplierInvoiceId ?? null,
+        // The total is the lines' sum and awaits a person's confirmation (R2).
+        totalFromLines: result.totalFromLines === true,
         refusal: result.refusal ?? null,
         /*
           The refusal again as a code and the values its sentence names — what

@@ -224,6 +224,23 @@ describe.skipIf(!enabled)('booking a shipment', () => {
       expect(await etaEventsFor(job.id)).toBe(before + 1)
     })
 
+    /*
+      R14, live run 5: the first ETA on a new job emailed the customer "the
+      estimated arrival has moved. Previously: —". A first estimate has not
+      moved; nothing is sent, and the next change is.
+    */
+    it('raises no arrival notice for the first estimate', async () => {
+      await saveJob({}, booking({ eta: '' }))
+      const job = await latestJob()
+      expect(job.eta).toBeNull()
+
+      await saveJob({}, booking({ jobId: job.id, eta: '2026-11-13T08:00' }))
+      expect(await etaEventsFor(job.id)).toBe(0)
+
+      await saveJob({}, booking({ jobId: job.id, eta: '2026-11-20T08:00' }))
+      expect(await etaEventsFor(job.id)).toBe(1)
+    })
+
     /**
      * Documented rather than endorsed: saving against a shipment the actor
      * cannot see throws `not_found` and the catch only maps unique violations,

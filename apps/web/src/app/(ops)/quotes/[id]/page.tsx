@@ -189,7 +189,31 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         <Notice tone="caution" icon="alert" className="mb-4">
           <p className="font-medium">{t('reviewTitle')}</p>
           <ul className="mt-1 list-disc ps-5">
-            {quote.review.concerns.map((concern) => {
+            {quote.review.concerns.map((concern, index) => {
+              /*
+                Costed from a card older than a reply on this enquiry (R3):
+                live run 5 quoted KWD 165.501 from RTMAG's old card beside
+                RTMAG's newer KWD 172.494 reply, and nothing here said so.
+              */
+              if (concern.kind === 'newer_reply') {
+                const partner =
+                  locale === 'ar' ? (concern.partnerAr ?? concern.partnerEn) : concern.partnerEn
+                const on = formatDate(concern.respondedOn, locale, timeZone)
+                return (
+                  <li key={`${concern.kind}-${index}`}>
+                    {concern.quotedTotal && concern.quotedCurrency
+                      ? t('reviewNewerReply', {
+                          partner,
+                          on,
+                          total: formatMoney(
+                            { amount: concern.quotedTotal, currency: concern.quotedCurrency },
+                            locale,
+                          ),
+                        })
+                      : t('reviewNewerReplyNoTotal', { partner, on })}
+                  </li>
+                )
+              }
               const charge = quote.reviewNames?.[concern.chargeTypeKey] ?? concern.chargeTypeKey
               return (
                 <li key={`${concern.kind}-${concern.chargeTypeKey}`}>

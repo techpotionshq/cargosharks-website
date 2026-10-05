@@ -248,6 +248,30 @@ describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
     expect((await requestRow(wrongLane)).status).toBe('parsed')
   })
 
+  /*
+    R1: a reply a person must check is never awarded by the machine, even
+    alone and even cheapest: a line kept as "other" for want of a charge
+    type, or a stated total the lines do not reach.
+  */
+  it('never awards a reply that is flagged for review', async () => {
+    const id = await makeEnquiry()
+    const unclassified = await parsedReply(id, '100.000', undefined, undefined, {
+      unclassified: [{ line: 2, description: 'Screening and handling' }],
+    })
+    const mismatched = await parsedReply(id, '200.000', undefined, undefined, {
+      currency: 'KWD',
+      statedTotal: '260.000',
+      totals: [{ currency: 'KWD', amount: '200' }],
+    })
+    const clean = await parsedReply(id, '900.000')
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(unclassified)).status).toBe('parsed')
+    expect((await requestRow(mismatched)).status).toBe('parsed')
+    expect((await requestRow(clean)).status).toBe('accepted')
+  })
+
   it('does nothing on its inert default', async () => {
     const id = await makeEnquiry()
     const reply = await parsedReply(id, '500.000')

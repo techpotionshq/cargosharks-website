@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   __resetThrottle,
-  clearSignInAttempts,
-  recordSignInAttempt,
+  checkSignInAddress,
+  checkTwoFactorAddress,
+  clearSignInFailuresInMemory,
+  clearTwoFactorFailures,
+  readTwoFactorLock,
+  recordTwoFactorFailureInMemory,
+  readEmailLock,
+  recordSignInFailureInMemory,
   recordTrackingLookup,
   recordTrackingMiss,
 } from './throttle'
@@ -10,52 +16,85 @@ import {
 const IP = '203.0.113.7'
 const OTHER = '203.0.113.8'
 
-/** The window and limit are private; these mirror them. */
-const LIMIT = 10
+/** The window and limits are private; these mirror them. */
+const ADDRESS_FAILURES = 50
 const WINDOW_MS = 15 * 60 * 1000
+const ACCOUNT_FAILURES = 5
 
 beforeEach(() => {
   __resetThrottle()
 })
 
-describe('spending the budget', () => {
-  it('allows the limit and refuses the one after it', () => {
+describe('the per-address failure budget', () => {
+  it('allows the limit of failures and refuses after it', () => {
     const now = 1_000_000
-
-    for (let i = 0; i < LIMIT; i += 1) {
-      expect(recordSignInAttempt(IP, now + i).allowed).toBe(true)
+    for (let i = 0; i < ADDRESS_FAILURES; i += 1) {
+      expect(checkSignInAddress(IP, now + i).allowed).toBe(true)
+      recordSignInFailureInMemory(IP, `m${i}@b.test`, now + i)
     }
-
-    const refused = recordSignInAttempt(IP, now + LIMIT)
+    const refused = checkSignInAddress(IP, now + ADDRESS_FAILURES)
     expect(refused.allowed).toBe(false)
     expect(refused.minutesRemaining).toBeGreaterThan(0)
   })
 
   it('keeps addresses apart', () => {
     const now = 1_000_000
-    for (let i = 0; i < LIMIT + 1; i += 1) recordSignInAttempt(IP, now + i)
-
-    // The neighbour on a different address is unaffected.
-    expect(recordSignInAttempt(OTHER, now).allowed).toBe(true)
+    for (let i = 0; i < ADDRESS_FAILURES; i += 1) recordSignInFailureInMemory(IP, null, now)
+    expect(checkSignInAddress(OTHER, now).allowed).toBe(true)
   })
 
   it('opens a fresh window once the old one has run out', () => {
     const now = 1_000_000
-    for (let i = 0; i < LIMIT + 1; i += 1) recordSignInAttempt(IP, now + i)
-    expect(recordSignInAttempt(IP, now + LIMIT + 1).allowed).toBe(false)
-
-    expect(recordSignInAttempt(IP, now + WINDOW_MS + 1).allowed).toBe(true)
+    for (let i = 0; i < ADDRESS_FAILURES; i += 1) recordSignInFailureInMemory(IP, null, now)
+    expect(checkSignInAddress(IP, now + 1).allowed).toBe(false)
+    expect(checkSignInAddress(IP, now + WINDOW_MS + 1).allowed).toBe(true)
   })
 
   /*
-    Counting every attempt rather than only the failures is the point: an
-    attacker walking a list of addresses to see which exist never causes a
-    failed password check against a real account.
+    R11: checking the budget spends nothing. Only a failure does, so a whole
+    office signing in correctly from one address is never refused.
   */
-  it('counts attempts, not failures — the caller does not get to say', () => {
+  it('is not spent by checking it, however many people sign in', () => {
+    for (let i = 0; i < 500; i += 1) expect(checkSignInAddress(IP, 1_000_000).allowed).toBe(true)
+  })
+
+  it('is not refunded when somebody signs in', () => {
     const now = 1_000_000
-    for (let i = 0; i < LIMIT; i += 1) recordSignInAttempt(IP, now)
-    expect(recordSignInAttempt(IP, now).allowed).toBe(false)
+    for (let i = 0; i < ADDRESS_FAILURES; i += 1)
+      recordSignInFailureInMemory(IP, `m${i}@b.test`, now)
+    clearSignInFailuresInMemory('m0@b.test')
+    expect(checkSignInAddress(IP, now).allowed).toBe(false)
+  })
+})
+
+describe('the per-account lock in memory', () => {
+  it('locks any address at the fifth failure, whether or not it has an account', () => {
+    const now = 1_000_000
+    for (let i = 0; i < ACCOUNT_FAILURES - 1; i += 1) {
+      recordSignInFailureInMemory(`198.51.100.${i}`, 'nobody@b.test', now)
+      expect(readEmailLock('nobody@b.test', now).allowed).toBe(true)
+    }
+    recordSignInFailureInMemory('198.51.100.9', 'nobody@b.test', now)
+    const lock = readEmailLock('nobody@b.test', now)
+    expect(lock).toEqual({ allowed: false, minutesRemaining: 15 })
+    // Somebody else's address is untouched.
+    expect(readEmailLock('other@b.test', now).allowed).toBe(true)
+  })
+
+  it('lifts by itself after fifteen minutes', () => {
+    const now = 1_000_000
+    for (let i = 0; i < ACCOUNT_FAILURES; i += 1) recordSignInFailureInMemory(IP, 'a@b.test', now)
+    expect(readEmailLock('a@b.test', now + WINDOW_MS + 1).allowed).toBe(true)
+  })
+
+  it('forgets the run after a correct password', () => {
+    const now = 1_000_000
+    for (let i = 0; i < ACCOUNT_FAILURES - 1; i += 1) {
+      recordSignInFailureInMemory(IP, 'a@b.test', now)
+    }
+    clearSignInFailuresInMemory('a@b.test')
+    recordSignInFailureInMemory(IP, 'a@b.test', now)
+    expect(readEmailLock('a@b.test', now).allowed).toBe(true)
   })
 })
 
@@ -63,58 +102,34 @@ describe('the address we could not read', () => {
   /*
     Fails open, deliberately. A missing `x-forwarded-for` means a proxy that is
     misconfigured, and failing closed there would lock every operator out of
-    the product at once — with the persistent account lock still behind it.
+    the product at once — with the per-account lock still behind it.
   */
   it('lets a null address through every time', () => {
-    for (let i = 0; i < LIMIT * 3; i += 1) {
-      expect(recordSignInAttempt(null, 1_000_000).allowed).toBe(true)
+    for (let i = 0; i < ADDRESS_FAILURES * 3; i += 1) {
+      recordSignInFailureInMemory(null, null, 1_000_000)
+      expect(checkSignInAddress(null, 1_000_000).allowed).toBe(true)
     }
   })
 
-  it('does not throw when clearing one', () => {
-    expect(() => clearSignInAttempts(null)).not.toThrow()
+  it('does not throw when clearing a missing email', () => {
+    expect(() => clearSignInFailuresInMemory(null)).not.toThrow()
   })
 })
 
-describe('clearing after a success', () => {
-  /*
-    The shared-office case. Ten people behind one NAT address would otherwise
-    spend a common budget on ordinary Sunday-morning sign-ins and lock the
-    eleventh out of a working product.
-  */
-  it('returns the full budget to an address that signed in', () => {
-    const now = 1_000_000
-    for (let i = 0; i < LIMIT; i += 1) recordSignInAttempt(IP, now + i)
-
-    clearSignInAttempts(IP)
-
-    for (let i = 0; i < LIMIT; i += 1) {
-      expect(recordSignInAttempt(IP, now + LIMIT + i).allowed).toBe(true)
-    }
-  })
-})
-
-describe('the ceiling on tracked addresses', () => {
+describe('the ceiling on tracked keys', () => {
   /*
     The keys arrive from unauthenticated requests and IPv6 hands an attacker
-    effectively unlimited ones, so the map has to be bounded or the throttle
+    effectively unlimited ones, so the maps have to be bounded or the throttle
     becomes the memory exhaustion it exists to prevent.
-
-    Asserted by behaviour rather than by reading the map: a run far past the
-    cap must still answer, and must still refuse the address that is over its
-    own budget.
   */
-  it('survives far more addresses than it tracks', () => {
+  it('survives far more addresses and emails than it tracks', () => {
     const now = 1_000_000
     for (let i = 0; i < 12_000; i += 1) {
-      expect(recordSignInAttempt(`198.51.100.${i}`, now).allowed).toBe(true)
+      recordSignInFailureInMemory(`198.51.100.${i}`, `flood${i}@b.test`, now)
     }
-
-    // A fresh address is still served correctly after the flood.
-    for (let i = 0; i < LIMIT; i += 1) {
-      expect(recordSignInAttempt(IP, now).allowed).toBe(true)
-    }
-    expect(recordSignInAttempt(IP, now).allowed).toBe(false)
+    for (let i = 0; i < ADDRESS_FAILURES; i += 1) recordSignInFailureInMemory(IP, 'a@b.test', now)
+    expect(checkSignInAddress(IP, now).allowed).toBe(false)
+    expect(readEmailLock('a@b.test', now).allowed).toBe(false)
   })
 })
 
@@ -155,5 +170,33 @@ describe('the tracking budgets', () => {
     const now = 1_000_000
     for (let i = 0; i < 30; i += 1) recordTrackingLookup(IP, `R${i}`, `V${i}`, now)
     expect(recordTrackingLookup(IP, 'R99', 'V99', now).allowed).toBe(false)
+  })
+})
+
+/* The TOTP step, on the password step's terms. */
+describe('the two-factor budgets', () => {
+  it('locks one user at the fifth wrong code, and nobody else', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 4; i += 1) recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    expect(readTwoFactorLock('user-a', now).allowed).toBe(true)
+    recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    expect(readTwoFactorLock('user-a', now)).toEqual({ allowed: false, minutesRemaining: 15 })
+    expect(readTwoFactorLock('user-b', now).allowed).toBe(true)
+    expect(checkTwoFactorAddress(IP, now).allowed).toBe(true)
+  })
+
+  it('forgets the run after a correct code', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 4; i += 1) recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    clearTwoFactorFailures('user-a')
+    recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    expect(readTwoFactorLock('user-a', now).allowed).toBe(true)
+  })
+
+  it('refuses an address after fifty wrong codes, whoever they were for', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 50; i += 1) recordTwoFactorFailureInMemory(IP, `user-${i}`, now)
+    expect(checkTwoFactorAddress(IP, now).allowed).toBe(false)
+    expect(checkTwoFactorAddress(OTHER, now).allowed).toBe(true)
   })
 })

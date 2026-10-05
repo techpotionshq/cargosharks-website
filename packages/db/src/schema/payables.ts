@@ -72,6 +72,17 @@ export const supplierInvoices = pgTable(
     subtotal: amount('subtotal').notNull().default('0'),
     taxAmount: amount('tax_amount').notNull().default('0'),
     total: amount('total').notNull().default('0'),
+    /**
+     * The total was summed from the lines because the page printed none, and
+     * nobody has confirmed it yet (R2, live run 5).
+     *
+     * EK's bill was refused outright when the model read three good lines and
+     * no total, and finance keyed it by hand. Now it is captured with the sum
+     * of its lines, and this stays true until the person approving it says
+     * the figure matches the PDF: approval refuses without that. A missed
+     * line would make the sum short, which is exactly what a person checks.
+     */
+    totalUnconfirmed: boolean('total_unconfirmed').notNull().default(false),
     amountPaid: amount('amount_paid').notNull().default('0'),
     /**
      * The rate to base, taken when the bill was captured.

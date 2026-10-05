@@ -128,6 +128,7 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
                 billId={bill.id}
                 action="approve"
                 needsReview={!bill.summary.clean}
+                unconfirmedTotal={bill.totalUnconfirmed ? money(bill.total, bill.currency) : null}
               />
             ) : null}
             <MoreMenu label={tc('more')}>
@@ -181,6 +182,16 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
             </Field>
           </dl>
 
+          {/*
+            Read with no printed total (R2): said on the bill itself, not only
+            in the approval dialog, so whoever opens it knows the headline
+            figure is ours until somebody checks it against the PDF.
+          */}
+          {bill.totalUnconfirmed ? (
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-caution">
+              {t('totalFromLines', { total: money(bill.total, bill.currency) })}
+            </p>
+          ) : null}
           {bill.varianceAcceptedReason ? (
             <p className="mt-4 border-t border-line pt-3 text-body-sm text-ink-muted">
               <span className="font-medium text-ink">{t('varianceAccepted')}</span>{' '}
