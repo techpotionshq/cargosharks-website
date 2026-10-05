@@ -20,10 +20,23 @@
  * records a way to re-check.
  */
 
+import { solutionNav, solutionPath } from '@/content/solution-nav'
+
 export type Lang = 'en' | 'ar'
 
 /** One string per language. The type is the parity check. */
 export type Bi = { en: string; ar: string }
+
+function solutionLinks(group: 'market' | 'job') {
+  return solutionNav
+    .filter((entry) => entry.group === group)
+    .map((entry) => ({
+      href: solutionPath(entry.slug, 'en'),
+      hrefAr: solutionPath(entry.slug, 'ar'),
+      label: entry.label,
+      blurb: entry.blurb,
+    }))
+}
 
 export const DEMO_URL = 'https://demo.cargosharks.com'
 export const CONTACT_EMAIL = 'hello@cargosharks.com'
@@ -60,7 +73,11 @@ export const nav: {
    * to reach for here the way the captures need one.
    */
   image?: { src: string; alt: Bi }
-  columns?: { heading: Bi; links: { href: string; label: Bi; blurb: Bi }[] }[]
+  /**
+   * `hrefAr` is the Arabic twin of a link, where the page has one. The
+   * header sends an Arabic reader there and an English reader to `href`.
+   */
+  columns?: { heading: Bi; links: { href: string; hrefAr?: string; label: Bi; blurb: Bi }[] }[]
 }[] = [
   {
     id: 'product',
@@ -126,6 +143,37 @@ export const nav: {
             },
           },
         ],
+      },
+    ],
+  },
+  {
+    /*
+      The landing pages, by market and by job, read from `solution-nav.ts` so a
+      new page is one row there (and its content in `solutions.ts`) and appears here, in the sitemap and in the
+      related links at once. Every one has an Arabic twin, which is why this is
+      the one group whose links carry `hrefAr`.
+    */
+    id: 'solutions',
+    label: { en: 'Solutions', ar: 'الحلول' },
+    image: {
+      src: '/pic/photos/ship-aerial.webp',
+      alt: {
+        en: 'A container ship at sea, seen from above',
+        ar: 'سفينة حاويات في البحر، من الأعلى',
+      },
+    },
+    intro: {
+      en: 'The product, by the market you work in and the job in front of you. Each page says what it does not do as well as what it does.',
+      ar: 'المنتج حسب السوق الذي تعملون فيه والمهمة التي أمامكم. كل صفحة تقول ما لا يفعله كما تقول ما يفعله.',
+    },
+    columns: [
+      {
+        heading: { en: 'By market', ar: 'حسب السوق' },
+        links: solutionLinks('market'),
+      },
+      {
+        heading: { en: 'By job', ar: 'حسب المهمة' },
+        links: solutionLinks('job'),
       },
     ],
   },

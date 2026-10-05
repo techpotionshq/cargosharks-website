@@ -16,9 +16,18 @@ import { CONTACT_EMAIL, footer, type Lang, languageSwitch } from '@/content/copy
  * Dark, because the close above it is dark and a light footer under a dark
  * close would read as a second page beginning.
  */
-export function Footer({ lang, mark }: { lang: Lang; mark: ReactNode }) {
+export function Footer({
+  lang,
+  mark,
+  alternate,
+}: {
+  lang: Lang
+  mark: ReactNode
+  /** This page's twin in the other language; the other home page when absent. */
+  alternate?: string
+}) {
   const brand = resolveBrand()
-  const other = languageSwitch[lang]
+  const other = { ...languageSwitch[lang], ...(alternate ? { href: alternate } : {}) }
   const year = brand.identity.established
 
   return (

@@ -170,8 +170,8 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
         <Title
           lang={lang}
           text={{
-            en: 'One pallet — 120 × 100 × 100 cm, 180 kg on the scale',
-            ar: 'منصة واحدة — 120 × 100 × 100 سم، 180 كجم على الميزان',
+            en: 'One pallet: 120 × 100 × 100 cm, 180 kg on the scale',
+            ar: 'منصة واحدة: 120 × 100 × 100 سم، 180 كجم على الميزان',
           }}
         />
 
@@ -208,7 +208,7 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
             className="fig-rule"
           />
           <text x="960" y={y(PALLET.grossKg) - 12} textAnchor="end" className="cmp-note">
-            {lang === 'ar' ? '180 كجم — ما يقوله الميزان' : '180 kg — what the scale says'}
+            {lang === 'ar' ? '180 كجم: ما يقوله الميزان' : '180 kg: what the scale says'}
           </text>
 
           {RULES.map((rule, index) => {
@@ -272,8 +272,8 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'الطرد نفسه والوزن نفسه، وخمسة أرقام مختلفة على الفاتورة: 200 كجم جواً مقابل 1,200 كجم بحراً مجمّعاً — ستة أضعاف على منصة لم يتغيّر وزنها. والقواسم إعدادات يغيّرها المسؤول لا أرقام مثبّتة في البرنامج: نقل ناقلٍ من القاسم 6000 إلى 5000 تعديلٌ لا إصدار جديد.'
-          : 'Same pallet, same weight, five different numbers on the invoice: 200 kg by air against 1,200 by sea LCL — a six-fold spread on a box whose weight never changed. The divisors are settings an administrator can change, not numbers baked into the software: moving an airline from a 6,000 divisor to a 5,000 one is an edit, not a new release.'}
+          ? 'الطرد نفسه والوزن نفسه، وخمسة أرقام مختلفة على الفاتورة: 200 كجم جواً مقابل 1,200 كجم بحراً مجمّعاً، ستة أضعاف على منصة لم يتغيّر وزنها. والقواسم إعدادات يغيّرها المسؤول لا أرقام مثبّتة في البرنامج: نقل ناقلٍ من القاسم 6000 إلى 5000 تعديلٌ لا إصدار جديد.'
+          : 'Same pallet, same weight, five different numbers on the invoice: 200 kg by air against 1,200 by sea LCL, a six-fold spread on a box whose weight never changed. The divisors are settings an administrator can change, not numbers baked into the software: moving an airline from a 6,000 divisor to a 5,000 one is an edit, not a new release.'}
       </figcaption>
     </figure>
   )
@@ -646,8 +646,8 @@ export function DutyMatrix({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'الصفّان الفارغان ليسا سهواً: المبيعات تسعّر وتغلق الاستفسارات ولا تصدر فاتورة قط، والمخلّص الجمركي يقدّم البيانات ولا يفتح شحنة. مدير العمليات لا يصدر الفواتير ولا يعتمد فواتير المورّدين — وهذا هو الفصل الذي يسأل عنه المدقق أولاً. أما مسؤول النظام فيحمل كل مفتاح بحكم التصميم، بما فيها ما يُضاف لاحقاً، حتى لا تُشحن عملية جديدة بلا من يبلغها.'
-          : 'The two empty rows are not an oversight: Sales prices and closes enquiries and never issues an invoice, and a Customs Broker files declarations and never books a job. The Operations Manager issues nothing and approves no supplier bill — which is the separation an auditor asks about first. Administrator holds every key by design, including keys added later, so that a new transition cannot ship unreachable.'}
+          ? 'الصفّان الفارغان ليسا سهواً: المبيعات تسعّر وتغلق الاستفسارات ولا تصدر فاتورة قط، والمخلّص الجمركي يقدّم البيانات ولا يفتح شحنة. مدير العمليات لا يصدر الفواتير ولا يعتمد فواتير المورّدين، وهذا هو الفصل الذي يسأل عنه المدقق أولاً. أما مسؤول النظام فيحمل كل مفتاح بحكم التصميم، بما فيها ما يُضاف لاحقاً، حتى لا تُشحن عملية جديدة بلا من يبلغها.'
+          : 'The two empty rows are not an oversight: Sales prices and closes enquiries and never issues an invoice, and a Customs Broker files declarations and never books a job. The Operations Manager issues nothing and approves no supplier bill, which is the separation an auditor asks about first. Administrator holds every key by design, including keys added later, so that a new transition cannot ship unreachable.'}
       </figcaption>
     </figure>
   )
@@ -838,8 +838,8 @@ export function MilestoneStrips({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'كل قالب يبدأ بتأكيد الحجز وينتهي بالتسليم — عدا الاستيراد بحاوية كاملة، الذي ينتهي بإعادة الحاوية الفارغة، وهي المرحلة التي يقف عندها عدّاد التأخير. تسعة صفوف للبحري وخمسة للبري، ولذلك لا «قائمة تحقّق للشحنة» واحدة: ستكون إمّا أطول من اللازم على الطريق أو أقصر من اللازم على الماء. مرّروا المؤشّر على أي نقطة لاسمها.'
-          : 'Every template opens at booking confirmed and ends at delivered — except the FCL import, which ends at empty returned, the milestone the detention clock stops on. Nine steps by sea and five by road, which is why there is no single “shipment checklist”: it would be too long for the road or too short for the water. Hover any dot for its name.'}
+          ? 'كل قالب يبدأ بتأكيد الحجز وينتهي بالتسليم، عدا الاستيراد بحاوية كاملة، الذي ينتهي بإعادة الحاوية الفارغة، وهي المرحلة التي يقف عندها عدّاد التأخير. تسعة صفوف للبحري وخمسة للبري، ولذلك لا «قائمة تحقّق للشحنة» واحدة: ستكون إمّا أطول من اللازم على الطريق أو أقصر من اللازم على الماء. مرّروا المؤشّر على أي نقطة لاسمها.'
+          : 'Every template opens at booking confirmed and ends at delivered, except the FCL import, which ends at empty returned, the milestone the detention clock stops on. Nine steps by sea and five by road, which is why there is no single “shipment checklist”: it would be too long for the road or too short for the water. Hover any dot for its name.'}
       </figcaption>
     </figure>
   )
@@ -1054,8 +1054,8 @@ export function MinorUnits({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'الدينار الكويتي والبحريني والريال العُماني تحمل ثلاث خانات؛ والثماني الأخرى خانتان. هذا هو الفرق الذي لا يظهر أبداً في السوق التي بُني فيها نظامٌ للدولار ثم كُيِّف: تقريبٌ عام إلى خانتين يُفسد كل مبلغ كويتي يمرّ عليه. افتحوا أي فاتورة في النسخة التجريبية — عدّ الخانات أسرع فحص على هذه الصفحة.'
-          : 'The Kuwaiti and Bahraini dinar and the Omani rial carry three; the other eight carry two. This is the difference that never shows up in the home market of a system built for dollars and adapted afterwards: a global rounding to two corrupts every Kuwaiti amount it touches. Open any invoice in the demo — counting the decimal places is the fastest check on this page.'}
+          ? 'الدينار الكويتي والبحريني والريال العُماني تحمل ثلاث خانات؛ والثماني الأخرى خانتان. هذا هو الفرق الذي لا يظهر أبداً في السوق التي بُني فيها نظامٌ للدولار ثم كُيِّف: تقريبٌ عام إلى خانتين يُفسد كل مبلغ كويتي يمرّ عليه. افتحوا أي فاتورة في النسخة التجريبية: عدّ الخانات أسرع فحص على هذه الصفحة.'
+          : 'The Kuwaiti and Bahraini dinar and the Omani rial carry three; the other eight carry two. This is the difference that never shows up in the home market of a system built for dollars and adapted afterwards: a global rounding to two corrupts every Kuwaiti amount it touches. Open any invoice in the demo: counting the decimal places is the fastest check on this page.'}
       </figcaption>
     </figure>
   )

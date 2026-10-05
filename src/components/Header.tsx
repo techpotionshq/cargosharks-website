@@ -69,8 +69,14 @@ function NavPill({ reduced }: { reduced: boolean | null }) {
 export function Header({
   lang,
   mark,
+  alternate,
 }: {
   lang: Lang
+  /**
+   * This page's twin in the other language. Without one the switch goes to
+   * the other home page, which is the only Arabic entry point most pages have.
+   */
+  alternate?: string
   /**
    * The lockup, rendered by the caller.
    *
@@ -86,7 +92,7 @@ export function Header({
   const [panel, setPanel] = useState<string | null>(null)
   const pathname = usePathname()
   const reduced = useReducedMotion()
-  const other = languageSwitch[lang]
+  const other = { ...languageSwitch[lang], ...(alternate ? { href: alternate } : {}) }
 
   /**
    * The sheet closes on Escape and locks the page behind it.
@@ -225,8 +231,12 @@ export function Header({
             {mark}
           </a>
 
+          {/* `lg`, not `md`: with six items (Solutions arrived) the bar needs
+              about 1,000px, and between 768 and 1,023 the labels wrapped and
+              the language switch hung out of the bar. Below `lg` the sheet
+              carries the whole tree, which is what it is for. */}
           <nav
-            className="hidden items-center gap-1 md:flex"
+            className="hidden items-center gap-1 lg:flex"
             onMouseLeave={() => {
               setHovered(null)
               releasePanel()
@@ -337,7 +347,7 @@ export function Header({
                     ? 'فتح القائمة'
                     : 'Open menu'
               }
-              className="flex size-9 border-void-line text-on-void-dim items-center justify-center rounded-lg border transition-transform md:hidden"
+              className="flex size-9 border-void-line text-on-void-dim items-center justify-center rounded-lg border transition-transform lg:hidden"
             >
               {/* Keyed so the two glyphs quarter-turn into each other rather
                   than swapping between frames. */}
@@ -397,7 +407,7 @@ export function Header({
               // gap as well, which welded the panel to the bar and squared off
               // the corners of both. The wrapper is transparent; the panel
               // inside it is the object.
-              className="pointer-events-auto mx-auto mt-0 hidden max-w-[64rem] pt-2 md:block"
+              className="pointer-events-auto mx-auto mt-0 hidden max-w-[64rem] pt-2 lg:block"
             >
               <div className="bar grid gap-8 overflow-hidden rounded-xl border p-7 shadow-xl backdrop-blur-xl lg:grid-cols-12 lg:gap-10 lg:p-9">
                 {/*
@@ -446,7 +456,7 @@ export function Header({
                         {column.links.map((link) => (
                           <li key={link.href}>
                             <a
-                              href={link.href}
+                              href={lang === 'ar' && link.hrefAr ? link.hrefAr : link.href}
                               onClick={() => setPanel(null)}
                               className="bar-hover -mx-3 block rounded-lg px-3 py-2.5 transition-colors duration-150"
                             >
@@ -478,7 +488,7 @@ export function Header({
               transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
               // `overflow-hidden` is what makes a height animation possible at
               // all: without it the children paint outside the collapsing box.
-              className="bar pointer-events-auto mx-auto mt-2 max-w-[64rem] overflow-hidden rounded-xl border backdrop-blur-xl md:hidden"
+              className="bar pointer-events-auto mx-auto mt-2 max-w-[64rem] overflow-hidden rounded-xl border backdrop-blur-xl lg:hidden"
             >
               {/*
                 On a phone the panel is not a panel — everything is open at
@@ -508,11 +518,17 @@ export function Header({
                       .map((link) => (
                         <a
                           key={link.href}
-                          href={link.href}
+                          href={lang === 'ar' && link.hrefAr ? link.hrefAr : link.href}
                           onClick={() => setOpen(false)}
-                          aria-current={here(link.href) ? 'page' : undefined}
+                          aria-current={
+                            here(lang === 'ar' && link.hrefAr ? link.hrefAr : link.href)
+                              ? 'page'
+                              : undefined
+                          }
                           className={`mt-1 block rounded-lg px-3 py-2.5 ${
-                            here(link.href) ? 'bar-pill' : ''
+                            here(lang === 'ar' && link.hrefAr ? link.hrefAr : link.href)
+                              ? 'bar-pill'
+                              : ''
                           }`}
                         >
                           <span className="block text-on-void text-[0.95rem] font-medium">

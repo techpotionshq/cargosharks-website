@@ -21,16 +21,29 @@ import '@/app/pages.css'
  * this site cannot reach into each other — `globals.css` owns the app's own
  * routes and this one owns the imported markup, and both define `.shell`.
  */
-export function DocPage({ lang, children }: { lang: Lang; children: ReactNode }) {
+export function DocPage({
+  lang,
+  alternate,
+  children,
+}: {
+  lang: Lang
+  /**
+   * This page's twin in the other language, where it has one. The header and
+   * footer switches go there instead of to the other home page, which is all
+   * a page without a twin can offer.
+   */
+  alternate?: string
+  children: ReactNode
+}) {
   return (
     <>
       {/* The same bar as the home page, and the same lockup. `Site` passes the
           identical pair; the two callers must agree, because it is one bar. */}
-      <Header lang={lang} mark={<Wordmark tone="onDark" height={24} />} />
+      <Header lang={lang} alternate={alternate} mark={<Wordmark tone="onDark" height={24} />} />
       <main id="top" className="doc-page">
         {children}
       </main>
-      <Footer lang={lang} mark={<Wordmark tone="onDark" height={26} />} />
+      <Footer lang={lang} alternate={alternate} mark={<Wordmark tone="onDark" height={26} />} />
       <ToTop />
     </>
   )

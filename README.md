@@ -55,6 +55,8 @@ src/app/pages.css            the stylesheet for the imported documents
 src/components/              sections, header, footer, the counter
 src/components/Calculator.tsx     the free-time calculator, the one thing you operate
 src/content/copy.ts          every word of the home page, both languages
+src/content/solutions.ts     the ten landing pages by market and by job, both languages
+src/content/solution-nav.ts  their slugs and menu labels, kept small for the header bundle
 src/content/pages/           the five imported documents
 src/lib/fonts.ts             Manrope, IBM Plex Mono, IBM Plex Sans Arabic
 public/cargosharks-logo/     the supplied mark — do not edit, it is the source
@@ -71,6 +73,7 @@ public/pic/photos/           stock photography (Unsplash licence, commercial use
 | `/` and `/ar/` | the home page, eight blocks, ~9,200px |
 | `/what-we-do/` | the product explained standalone, for arrivals from search |
 | `/compare/` | how we are different, and who we are not for |
+| `/<slug>/` and `/ar/<slug>/` | ten landing pages for search, by market and by job, each with an Arabic twin, `hreflang`, an FAQ marked up as `FAQPage` and a limits section (`solutions.ts`) |
 | `/privacy/` `/terms/` `/dpa/` | **unreviewed drafts** — see below |
 | `/not-found/` `/server-error/` | copied to `404.html` and `500.html` at build |
 
@@ -115,7 +118,9 @@ switch, the bilingual toggle — takes `.arabic`, and if it is a block, an
 block narrower than its parent resolves its auto margins in its own direction
 and pins itself to the far right of the viewport.
 
-Only the home page has an Arabic twin. The six document routes do not, which is
+The home page and the ten landing pages in `solutions.ts` have Arabic twins;
+those declare `hreflang` alternates and their language switch goes to the twin
+(`DocPage`'s `alternate`). The six document routes do not, which is
 why none of them declares an `hreflang` alternate; their language switch points
 at `/ar/`, because that is the only Arabic entry point there is, and no Arabic
 entry point at all is the worse answer on the site whose argument is that Arabic

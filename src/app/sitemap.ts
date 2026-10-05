@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { comparisons } from '@/content/comparisons'
+import { solutionNav, solutionPath } from '@/content/solution-nav'
 import { SITE_URL } from '@/components/StructuredData'
 
 /**
@@ -14,6 +15,9 @@ import { SITE_URL } from '@/components/StructuredData'
  * The comparison pages come from `comparisons.ts`, which is the same array the
  * routes and the mega menu read, so a fifth comparison is one row and it appears
  * in all three.
+ *
+ * The landing pages come from `solution-nav.ts` on the same principle: the
+ * list the header panel is built from is the list submitted here.
  *
  * The seven remaining routes are written down because they genuinely are a
  * hand-made list — Next's own route table is not readable at build time from
@@ -75,5 +79,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }))
 
-  return [home, ...pages, ...compare]
+  // The landing pages, both languages. Each entry carries the pair as
+  // `hreflang` alternates, the same arrangement as the home page, so `/x/` and
+  // `/ar/x/` are one page in two languages rather than two pages competing.
+  const landing = solutionNav.flatMap((item) => {
+    const languages = {
+      en: `${SITE_URL}${solutionPath(item.slug, 'en')}`,
+      ar: `${SITE_URL}${solutionPath(item.slug, 'ar')}`,
+    }
+    return (['en', 'ar'] as const).map((lang) => ({
+      url: languages[lang],
+      lastModified: BUILT,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+      alternates: { languages },
+    }))
+  })
+
+  return [home, ...pages, ...compare, ...landing]
 }

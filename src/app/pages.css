@@ -824,7 +824,12 @@
   }
 }
 
-/* --- generic cards ------------------------------------------------------- */
+/* --- generic cards -------------------------------------------------------
+   The two breakpoints below were written `.grid--3` with no `.doc-page` in
+   front when the stylesheet was converted, which made them lose to the scoped
+   rule above on specificity: the grid stayed three columns wide on a phone and
+   pushed the page sideways. Scoped like everything else, they apply. The FAQ
+   breakpoints further down had the same fault. */
 .doc-page .grid {
   display: grid;
   gap: clamp(16px, 2vw, 24px);
@@ -836,13 +841,13 @@
   grid-template-columns: repeat(2, 1fr);
 }
 @media (max-width: 960px) {
-  .grid--3 {
+  .doc-page .grid--3 {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 @media (max-width: 680px) {
-  .grid--3,
-  .grid--2 {
+  .doc-page .grid--3,
+  .doc-page .grid--2 {
     grid-template-columns: 1fr;
   }
 }
@@ -2147,7 +2152,7 @@
   align-items: start;
 }
 @media (min-width: 1000px) {
-  .faq-wrap {
+  .doc-page .faq-wrap {
     grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.35fr);
   }
 }
@@ -2157,7 +2162,7 @@
   inset-block-start: 104px;
 }
 @media (max-width: 999px) {
-  .faq-wrap .section-head {
+  .doc-page .faq-wrap .section-head {
     position: static;
   }
 }
@@ -3481,6 +3486,22 @@
   margin-top: 9px;
 }
 
+/* --- the landing pages' related links --------------------------------------
+   A `.card` that is a link. `.doc-page a` already inherits colour; what a card
+   needs on top is to be a block, lose the underline, and keep its heading in
+   the ink colour rather than the link's. */
+.doc-page a.card {
+  display: block;
+  text-decoration: none;
+}
+.doc-page a.card h3 {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+.doc-page a.card:hover h3 {
+  color: var(--blue);
+}
+
 /* --- a call to action at the foot of a page --------------------------------- */
 .doc-page .tail {
   background: var(--navy-900);
@@ -4171,6 +4192,11 @@
    whole table reads as empty. */
 .doc-page .fig-tablewrap {
   margin-top: clamp(6px, 1vw, 12px);
+  /* The containing block for the matrix's visually-hidden labels. They are
+     `position: absolute`, and with no positioned ancestor inside the scroller
+     they were placed against the page instead, outside the clip, which gave a
+     390px screen 260px of sideways scroll on every page carrying the matrix. */
+  position: relative;
 }
 .doc-page .fig-matrix {
   width: 100%;
