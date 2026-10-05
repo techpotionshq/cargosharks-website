@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
+    "@qabandi/brand": "workspace:*",
     "@qabandi/core": "workspace:*",
     "better-auth": "^1.6.29",
     "dotenv": "^17.4.2",

@@ -162,4 +162,18 @@ describe('notification templates', () => {
       expect(t.body, `${t.eventKey} (${t.locale})`).toContain('{{senderName}}')
     }
   })
+
+  it('never names the product', () => {
+    // These rows ship to every brand's instance, so "Open it in Qabandi"
+    // reached CargoSharks' staff under CargoSharks' name. The product is
+    // whatever the deployment's brand calls it, these rows cannot know that,
+    // and no sentence in them needs it.
+    const productName = /qabandi|cargo\s*sharks|قبندي|كارجو\s*شاركس/i
+    for (const t of NOTIFICATION_TEMPLATES) {
+      expect(
+        productName.exec(`${t.subject}\n${t.body}`)?.[0] ?? null,
+        `${t.eventKey} (${t.channel}, ${t.locale})`,
+      ).toBeNull()
+    }
+  })
 })

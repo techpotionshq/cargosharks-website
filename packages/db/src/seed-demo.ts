@@ -45,6 +45,7 @@
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { resolveBrand } from '@qabandi/brand'
 import { D, money, netPosition, todayIn } from '@qabandi/core'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
@@ -945,14 +946,28 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     .where(eq(workingCalendars.key, 'uae'))
     .limit(1)
 
+  /*
+    Named after the deployment's brand, because `{{senderName}}` signs every
+    notification with the branch's legal name and the letterhead prints it.
+    These were Al-Qabandi's two entities on every instance, so a CargoSharks
+    demo — or the next client's — emailed and invoiced as Al-Qabandi. Kuwait
+    takes the brand's legal name; Dubai is a second entity the brand does not
+    declare, so it is derived from the trading name.
+
+    `onConflictDoNothing` on `code` means an instance seeded before this keeps
+    its names: branches survive `--reset` as real configuration, and renaming
+    one is an administrator's decision, not a reseed's.
+  */
+  const { identity } = resolveBrand()
+
   if (calendarRow) {
     await tx
       .insert(branches)
       .values([
         {
           code: 'KWI',
-          legalNameEn: 'Al-Qabandi & Partners Co.',
-          legalNameAr: 'شركة القبندي وشركاه',
+          legalNameEn: identity.legalNameEn,
+          legalNameAr: identity.legalNameAr,
           country: 'KW',
           baseCurrency: 'KWD',
           invoiceSeries: 'KWI',
@@ -961,8 +976,8 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         },
         {
           code: 'DXB',
-          legalNameEn: 'Al-Qabandi Logistics FZE',
-          legalNameAr: 'القبندي للخدمات اللوجستية',
+          legalNameEn: `${identity.nameEn} Logistics FZE`,
+          legalNameAr: `${identity.nameAr} للخدمات اللوجستية`,
           country: 'AE',
           baseCurrency: 'AED',
           invoiceSeries: 'DXB',
