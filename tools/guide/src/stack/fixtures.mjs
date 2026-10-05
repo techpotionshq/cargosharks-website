@@ -6,7 +6,7 @@
 // data is the same on every build, and the demo sign-in, so the portal and the
 // agent pages can be shown as the customer and the agent see them.
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -58,6 +58,8 @@ export async function start() {
     // the dev server recompiling a route.
     BETTER_AUTH_SECRET: randomBytes(32).toString('base64'),
   }
+  // Sessions signed by the previous stack's secret are worthless now.
+  rmSync(join(RUN, 'sessions'), { recursive: true, force: true })
   log(`starting the fixture stack on ${BASE} (now = ${GUIDE_NOW}, brand = ${BRAND_KEY})`)
   const out = openSync(join(dir(), 'web.log'), 'w')
   const child = spawn(

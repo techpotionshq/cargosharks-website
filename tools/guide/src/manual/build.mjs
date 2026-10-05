@@ -92,12 +92,12 @@ export function sections(locale = 'en') {
   const dir = join(GUIDE, 'manual', locale)
   if (!existsSync(dir)) return []
   return readdirSync(dir)
-    .filter((f) => /^\d+-.*\.md$/.test(f))
+    .filter((f) => /^\d+[a-z]?-.*\.md$/.test(f))
     .sort()
     .map((f) => {
       const file = join(dir, f)
       const { meta, body } = frontMatter(readFileSync(file, 'utf8'))
-      return { file, id: f.replace(/^\d+-|\.md$/g, ''), meta, body }
+      return { file, id: f.replace(/^\d+[a-z]?-|\.md$/g, ''), meta, body }
     })
 }
 

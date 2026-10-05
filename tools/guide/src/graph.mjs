@@ -131,7 +131,12 @@ export function closure(files) {
     if (!/\.(tsx?|mjs|js)$/.test(f)) continue
     stack.push(...importsOf(f))
   }
-  return [...seen].map(rel).sort()
+  // The message catalogues are read through `namespaces()` below, key by key.
+  // As whole files they would make every screen depend on every string.
+  return [...seen]
+    .map(rel)
+    .filter((f) => !/^apps\/web\/messages\//.test(f))
+    .sort()
 }
 
 const NS = /(?:use|get)Translations\(\s*(?:['"]([\w.]+)['"]|\{[^}]*?namespace:\s*['"]([\w.]+)['"])/g

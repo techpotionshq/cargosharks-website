@@ -1,7 +1,7 @@
 ---
 title: Getting around
 routes: [/sign-in, /dashboard, /track]
-messages: [signIn.subtitle, nav.finance, nav.moreBelow, nav.menu]
+messages: [signIn.subtitle, nav.finance, nav.moreBelow, nav.menu, notifications.emailTitle]
 components: [apps/web/src/ui/nav.tsx, apps/web/src/ui/preferences.tsx]
 ---
 
@@ -52,9 +52,11 @@ You only see what your role allows. A button you are not allowed to use is not s
 
 ## Search and notifications
 
-Type in the search box at the top of any screen and press Enter. If exactly one shipment matches, it opens straight away. The bell shows a number when there is something new.
+Type in the search box at the top of any screen and press Enter. If exactly one shipment matches, it opens straight away. Long lists (enquiries, shipments, invoices and every other register) come a page at a time, with the page controls and the total at the foot.
 
-![**Notifications.** New enquiries, overdue replies and other events, newest first.](shot:/dashboard?click=summary[aria-label^="{app:notifications.title}"]&crop=details[open] > div)
+The bell shows a number when there is something new. Alerts always arrive in the bell. Under **{app:notifications.emailTitle}** at the foot of the panel, untick a group to stop its emails, and press [{app:notifications.emailSave}]{.ui}. The choice is yours alone.
+
+![**Notifications.** New enquiries, overdue replies and other events, newest first, with **{app:notifications.emailTitle}** at the foot.](shot:/dashboard?click=summary[aria-label^="{app:notifications.title}"]&click=details[open] >> text={app:notifications.emailTitle}&crop=details[open] > div)
 
 ## Arabic, right to left
 
