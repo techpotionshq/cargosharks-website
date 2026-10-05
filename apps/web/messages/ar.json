@@ -3043,7 +3043,9 @@
       "payment": {
         "received": "استُلمت دفعة من العميل وخُصمت من إحدى فواتيره."
       }
-    }
+    },
+    "forbidden": "لا يمكنك تعديل صياغة الإشعارات",
+    "forbiddenHint": "دورك لا يتضمن صلاحية admin.reference.write."
   },
   "milestoneForm": {
     "open": "إضافة مرحلة",
@@ -3184,7 +3186,9 @@
     "disabledReasons": {
       "switchedOff": "أوقفه أحد المسؤولين",
       "noDeliverySince": "لم يُسلَّم شيء منذ {day}"
-    }
+    },
+    "forbidden": "لا يمكنك إدارة مفاتيح الواجهة البرمجية",
+    "forbiddenHint": "دورك لا يتضمن صلاحية admin.api_keys.write."
   },
   "chargeableForm": {
     "open": "إضافة قاعدة",
@@ -3806,7 +3810,19 @@
   "notifications": {
     "title": "الإشعارات",
     "empty": "لا جديد لديك.",
-    "markAllRead": "تعليم الكل كمقروء"
+    "markAllRead": "تعليم الكل كمقروء",
+    "emailTitle": "راسلني بالبريد بشأن",
+    "emailHint": "تصلك التنبيهات هنا دائماً. ألغِ تحديد مجموعة لإيقاف رسائلها البريدية.",
+    "emailSave": "حفظ",
+    "groups": {
+      "enquiries": "الاستفسارات الجديدة والمتأخرة",
+      "quotes": "ردود العملاء على عروض الأسعار",
+      "operations": "استثناءات الشحنات والمهلة المجانية",
+      "rates": "بطاقات الأسعار وردود الوكلاء",
+      "suppliers": "بريد الموردين",
+      "finance": "فروقات فواتير الموردين",
+      "admin": "الإدارة"
+    }
   },
   "enquiryAutomation": {
     "label": "الأتمتة",

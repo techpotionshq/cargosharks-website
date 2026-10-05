@@ -65,8 +65,17 @@ describe('before a sign-in', () => {
     await expect(guardBefore(signInRequest('a@b.test'))).resolves.toBeUndefined()
   })
 
-  it('spends the per-address budget on every attempt, and then refuses', async () => {
-    for (let i = 0; i < 10; i += 1) await guardBefore(signInRequest(`a${i}@b.test`))
+  /** One wrong password, as the hooks see it end to end. */
+  const failOnce = async (email: string, forwardedFor = '203.0.113.9') => {
+    await guardBefore(signInRequest(email, forwardedFor))
+    await recordAfter({
+      ...signInRequest(email, forwardedFor),
+      context: { returned: new APIError('UNAUTHORIZED', { message: 'Invalid email or password' }) },
+    })
+  }
+
+  it('refuses an address once it has spent its failure budget', async () => {
+    for (let i = 0; i < 50; i += 1) await failOnce(`a${i}@b.test`)
 
     lockout.readLockout.mockClear()
     expect((await refusal(guardBefore(signInRequest('a@b.test'))))?.code).toBe(
@@ -77,12 +86,60 @@ describe('before a sign-in', () => {
 
   /** A15: a header the caller wrote does not buy a fresh budget. */
   it('cannot be reset by prefixing a forged address', async () => {
-    for (let i = 0; i < 10; i += 1) {
-      await guardBefore(signInRequest('a@b.test', `10.0.0.${i}, 203.0.113.9`))
-    }
+    for (let i = 0; i < 50; i += 1) await failOnce(`a${i}@b.test`, `10.0.0.${i}, 203.0.113.9`)
     expect(
       (await refusal(guardBefore(signInRequest('a@b.test', '10.9.9.9, 203.0.113.9'))))?.code,
     ).toBe(AUTH_REFUSAL.signInThrottled)
+  })
+
+  /*
+    R11: run 5 put forty people behind one address and refused thirty-seven.
+    Fifty colleagues behind one office NAT, each with the right password, all
+    get through.
+  */
+  it('lets fifty different people at one address sign in', async () => {
+    for (let i = 0; i < 50; i += 1) {
+      const request = signInRequest(`staff${i}@b.test`)
+      await expect(guardBefore(request)).resolves.toBeUndefined()
+      await recordAfter({ ...request, context: { returned: { token: `t${i}` } } })
+    }
+  })
+
+  it('throttles eleven wrong passwords on one account', async () => {
+    const outcomes: (string | null)[] = []
+    for (let i = 0; i < 11; i += 1) {
+      const refused = await refusal(guardBefore(signInRequest('owner@b.test')))
+      outcomes.push(refused?.code ?? null)
+      if (!refused) {
+        await recordAfter({
+          ...signInRequest('owner@b.test'),
+          context: { returned: new APIError('UNAUTHORIZED', { message: 'no' }) },
+        })
+      }
+    }
+    // Five guesses reach the password check; every attempt after that is refused.
+    expect(outcomes.slice(0, 5)).toEqual([null, null, null, null, null])
+    expect(outcomes.slice(5).every((code) => code === AUTH_REFUSAL.accountLocked)).toBe(true)
+  })
+
+  /*
+    Uniform answers: the stored lock only exists for real accounts, so the
+    one in memory must refuse an unknown address at the same attempt with the
+    same code, or the lock message tells a stranger which addresses are ours.
+  */
+  it('answers an unknown address exactly as it answers a real one', async () => {
+    const answers = async (email: string) => {
+      const seen: (ReturnType<typeof refusalOf> | null)[] = []
+      for (let i = 0; i < 7; i += 1) {
+        const refused = await refusal(guardBefore(signInRequest(email, `198.51.100.${i}`)))
+        seen.push(refused)
+        if (!refused) await failOnce(email, `198.51.100.${i}`)
+      }
+      return seen
+    }
+    // The stored lock says nothing for either: an unknown address has no row,
+    // and the real one is behind by a process restart.
+    expect(await answers('nobody@b.test')).toEqual(await answers('owner@b.test'))
   })
 
   it('leaves every other endpoint alone', async () => {
@@ -111,13 +168,23 @@ describe('after a sign-in', () => {
     expect(lockout.recordSignInFailure).not.toHaveBeenCalled()
   })
 
-  it('clears the run, and the address budget, once the password was right', async () => {
-    for (let i = 0; i < 9; i += 1) await guardBefore(signInRequest('a@b.test'))
+  it('clears the run once the password was right', async () => {
+    for (let i = 0; i < 4; i += 1) {
+      await guardBefore(signInRequest('a@b.test'))
+      await recordAfter({
+        ...signInRequest('a@b.test'),
+        context: { returned: new APIError('UNAUTHORIZED', { message: 'no' }) },
+      })
+    }
     await recordAfter({ ...signInRequest('a@b.test'), context: { returned: { token: 't' } } })
 
     expect(lockout.clearSignInFailures).toHaveBeenCalledWith('a@b.test')
-    // The full ten again, which proves the budget was returned.
-    for (let i = 0; i < 10; i += 1) await guardBefore(signInRequest('a@b.test'))
+    // A fifth mistake after the success does not lock: the run started again.
+    await recordAfter({
+      ...signInRequest('a@b.test'),
+      context: { returned: new APIError('UNAUTHORIZED', { message: 'no' }) },
+    })
+    await expect(guardBefore(signInRequest('a@b.test'))).resolves.toBeUndefined()
   })
 
   it('never turns a failure to count into a failure to answer', async () => {

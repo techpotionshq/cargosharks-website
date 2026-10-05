@@ -47,6 +47,7 @@ import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import QRCode from 'qrcode'
 import { auth } from '@/lib/auth'
+import { AUTH_REFUSAL, refusalOf } from '@/lib/auth-guard'
 import { applySetCookie } from './cookies'
 import { demoReadOnlyMessage } from '@/lib/pilot/read-only'
 
@@ -98,7 +99,10 @@ export async function verifyChallenge(
           headers: await headers(),
           asResponse: true,
         })
-  } catch {
+  } catch (error) {
+    // A lock or throttle the guard raised has its own sentence (below).
+    const refused = await refusalSentence(error)
+    if (refused) return { error: refused }
     /*
       One message for a wrong code, an expired window, a code already spent and
       a challenge cookie that has gone stale.
@@ -112,7 +116,9 @@ export async function verifyChallenge(
     return { error: t('errorInvalid') }
   }
 
-  if (!response.ok) return { error: t('errorInvalid') }
+  if (!response.ok) {
+    return { error: (await refusalSentence(await jsonOf(response))) ?? t('errorInvalid') }
+  }
 
   await carryCookies(response)
   redirect('/dashboard')
@@ -218,11 +224,13 @@ export async function completeEnrolment(
       headers: await headers(),
       asResponse: true,
     })
-  } catch {
-    return { error: t('errorInvalid') }
+  } catch (error) {
+    return { error: (await refusalSentence(error)) ?? t('errorInvalid') }
   }
 
-  if (!response.ok) return { error: t('errorInvalid') }
+  if (!response.ok) {
+    return { error: (await refusalSentence(await jsonOf(response))) ?? t('errorInvalid') }
+  }
 
   /*
     Verifying rotates the session — the library issues a new one and deletes
@@ -265,4 +273,34 @@ function backupCode(raw: FormDataEntryValue | null): string | null {
 async function carryCookies(response: Response): Promise<void> {
   const store = await cookies()
   for (const header of response.headers.getSetCookie()) applySetCookie(store, header)
+}
+
+/**
+ * The sentence for a lock or throttle the guard raised on the TOTP check, or
+ * null for anything else.
+ *
+ * Five wrong codes lock that user for fifteen minutes (`lib/throttle.ts`).
+ * Said in the words the password step uses for its lock, so a person meets one
+ * sentence for one situation whichever step tripped it. Telling them is safe
+ * here: whoever reached this step already had the password, and "wrong code"
+ * on a correct code for fifteen minutes reads as a broken authenticator, which
+ * is a support call and a reason to switch the factor off.
+ */
+async function refusalSentence(value: unknown): Promise<string | null> {
+  const refusal = refusalOf(value)
+  if (!refusal) return null
+  const t = await getTranslations('signIn')
+  const minutes = refusal.minutesRemaining
+  if (refusal.code === AUTH_REFUSAL.accountLocked) return t('errorLocked', { minutes })
+  if (refusal.code === AUTH_REFUSAL.signInThrottled) return t('errorThrottled', { minutes })
+  return null
+}
+
+/** A response's JSON body, or null for one that is not JSON. Cloned, so the body survives. */
+async function jsonOf(response: Response): Promise<unknown> {
+  try {
+    return await response.clone().json()
+  } catch {
+    return null
+  }
 }

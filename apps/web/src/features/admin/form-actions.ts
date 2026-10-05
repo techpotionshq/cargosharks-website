@@ -44,6 +44,7 @@ import {
 import { requireSession, type Session } from '@/lib/session'
 import { assertCan, assertCanIn, branchesWhere } from '@/lib/permissions'
 import { invitedNotice, sendSignInLink, type SignInLinkResult } from './sign-in-link'
+import { endSessionsOf } from './sessions'
 import {
   echo,
   fail,
@@ -212,6 +213,9 @@ export const saveUser = refuseForbidden(async function saveUser(
             updatedAt: new Date(),
           })
           .where(eq(principals.id, principalId))
+        // Unticking "Can sign in" here is the same suspension as the button,
+        // and ends the sessions for the same reason (O4).
+        if (!data.isActive) await endSessionsOf(tx, principalId)
       } else {
         /*
           The id is asked for *before* the insert, not returned by it.
@@ -435,6 +439,9 @@ export const setUserActive = refuseForbidden(async function setUserActive(
       .update(principals)
       .set({ isActive, updatedAt: new Date() })
       .where(eq(principals.id, principalId))
+    // Suspension ends the sessions as well, or re-enabling the account
+    // revives every old cookie (O4, `sessions.ts`).
+    if (!isActive) await endSessionsOf(tx, principalId)
   })
 
   revalidatePath('/settings/users')

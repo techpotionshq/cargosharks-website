@@ -3043,7 +3043,9 @@
       "payment": {
         "received": "A customer’s payment has been received and set against an invoice."
       }
-    }
+    },
+    "forbidden": "You cannot edit notification wording",
+    "forbiddenHint": "Your role does not include admin.reference.write."
   },
   "milestoneForm": {
     "open": "Add a step",
@@ -3184,7 +3186,9 @@
     "disabledReasons": {
       "switchedOff": "Switched off by an administrator",
       "noDeliverySince": "Nothing delivered since {day}"
-    }
+    },
+    "forbidden": "You cannot manage API keys",
+    "forbiddenHint": "Your role does not include admin.api_keys.write."
   },
   "chargeableForm": {
     "open": "Add a rule",
@@ -3806,7 +3810,19 @@
   "notifications": {
     "title": "Notifications",
     "empty": "You're all caught up.",
-    "markAllRead": "Mark all read"
+    "markAllRead": "Mark all read",
+    "emailTitle": "Email me about",
+    "emailHint": "Alerts always arrive here. Untick a group to stop its emails.",
+    "emailSave": "Save",
+    "groups": {
+      "enquiries": "New and overdue enquiries",
+      "quotes": "Customer answers to quotations",
+      "operations": "Shipment exceptions and free time",
+      "rates": "Rate cards and agent replies",
+      "suppliers": "Supplier mail",
+      "finance": "Supplier invoice variances",
+      "admin": "Administration"
+    }
   },
   "enquiryAutomation": {
     "label": "Automation",
