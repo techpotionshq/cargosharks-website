@@ -28,6 +28,37 @@ describe('the rate label on the quotation screen', () => {
     ).toBe('USD→KWD 0.30918 · ExchangeRate-API · 05 Oct, 00:02 UTC')
   })
 
+  it('dates an older rate by its own day, not by when the row was written', () => {
+    expect(
+      fxRateLabel(
+        {
+          from: 'USD',
+          to: 'KWD',
+          rate: '0.307',
+          source: 'seed-demo',
+          effectiveOn: '2026-01-01',
+          takenAt: '2026-10-05T09:46:00.000Z',
+        },
+        t,
+        'en',
+      ),
+    ).toBe('USD→KWD 0.307 · seed-demo · 01 Jan 2026')
+    expect(
+      fxRateLabel(
+        {
+          from: 'USD',
+          to: 'KWD',
+          rate: '0.30918',
+          source: 'er-api',
+          effectiveOn: '2026-10-05',
+          takenAt: '2026-10-05T00:02:31.000Z',
+        },
+        t,
+        'en',
+      ),
+    ).toBe('USD→KWD 0.30918 · ExchangeRate-API · 05 Oct, 00:02 UTC')
+  })
+
   it('says a hand-entered rate was entered by hand', () => {
     expect(
       fxRateLabel(

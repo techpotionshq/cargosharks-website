@@ -8,7 +8,7 @@
  * three JSX fragments that drift.
  */
 
-import { formatDateTime, trimDecimal } from './format'
+import { formatDate, formatDateTime, trimDecimal } from './format'
 
 /** What the label needs from `getTranslations('fxFeed')`. */
 export interface FxTranslate {
@@ -25,8 +25,12 @@ export function fxSourceName(source: string | null | undefined, t: FxTranslate):
 /**
  * One converted rate, for the quotation screen.
  *
- * The time is in UTC and says so: the providers publish on UTC days, so the
- * label matches the provider's own page when somebody checks it.
+ * Dated by the day the rate is for, not the moment the row was written. Run
+ * 6 priced in October on the demo's January rate and the label read "Demo
+ * data · 05 Oct, 09:46 UTC", the morning the row was seeded, while the
+ * customer's footnote said 01 Jan 2026. The time is added, in UTC, only when
+ * the row was written on that same day, which is a feed fetching that day's
+ * rates: the providers publish on UTC days, so it matches their own page.
  */
 export function fxRateLabel(
   rate: {
@@ -34,6 +38,7 @@ export function fxRateLabel(
     readonly to: string
     readonly rate: string
     readonly source: string | null
+    readonly effectiveOn?: string | null
     readonly takenAt: string | null
   },
   t: FxTranslate,
@@ -42,6 +47,18 @@ export function fxRateLabel(
   const parts = [`${rate.from}→${rate.to} ${trimDecimal(rate.rate) ?? rate.rate}`]
   const name = fxSourceName(rate.source, t)
   if (name) parts.push(name)
-  if (rate.takenAt) parts.push(`${formatDateTime(rate.takenAt, locale, 'UTC')} UTC`)
+  const day =
+    rate.effectiveOn && /^\d{4}-\d{2}-\d{2}$/.test(rate.effectiveOn) ? rate.effectiveOn : null
+  if (day) {
+    const sameDay = rate.takenAt?.slice(0, 10) === day
+    parts.push(
+      sameDay
+        ? `${formatDateTime(rate.takenAt, locale, 'UTC')} UTC`
+        : formatDate(`${day}T12:00:00Z`, locale, 'UTC'),
+    )
+  } else if (rate.takenAt) {
+    // A quotation priced before the snapshot kept the rate's day.
+    parts.push(`${formatDateTime(rate.takenAt, locale, 'UTC')} UTC`)
+  }
   return parts.join(' · ')
 }

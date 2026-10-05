@@ -98,7 +98,16 @@ function convertedAt(snapshot: Record<string, unknown>): QuoteFxView[] {
     const to = text(r.to)
     const rate = text(r.rate)
     if (!from || !to || !rate || from === to) return []
-    return [{ from, to, rate, source: text(r.source), takenAt: text(r.takenAt) }]
+    return [
+      {
+        from,
+        to,
+        rate,
+        source: text(r.source),
+        effectiveOn: text(r.effectiveOn),
+        takenAt: text(r.takenAt),
+      },
+    ]
   })
 }
 
