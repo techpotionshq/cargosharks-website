@@ -191,6 +191,19 @@ export default async function PortalQuotePage({ params }: { params: Promise<{ id
               />
             </span>
           </div>
+          {/*
+            One neutral line, only when a line was converted. No provider is
+            named and no disclaimer added: this is the customer's document, and
+            what they need is the day the rate was taken.
+          */}
+          {quote.convertedOn ? (
+            <p
+              className="border-t border-line px-5 py-3 text-caption text-ink-muted"
+              data-testid="fx-conversion-note"
+            >
+              {t('conversionNote', { on: formatDate(quote.convertedOn, locale) })}
+            </p>
+          ) : null}
         </Panel>
 
         <div className="flex flex-col gap-4 @4xl:col-span-4">

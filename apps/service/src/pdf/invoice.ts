@@ -57,6 +57,12 @@ export interface InvoiceView {
   readonly amountCredited?: string
   readonly notes: string | null
   /**
+   * The day a line was converted from another currency at — a quotation
+   * priced off a foreign card and billed here — or null. Optional so a view
+   * built before it existed renders with no footnote.
+   */
+  readonly convertedOn?: string | null
+  /**
    * The invoice's own language, which a download that asks for none renders
    * in. Optional so a view built without it renders in English, as before.
    */
@@ -149,6 +155,11 @@ const STRINGS = {
     credits: 'Credits invoice',
     dated: 'dated',
     creditTotal: 'Total credit',
+    /*
+      One sentence, not the quotation's two: the quotation warns that the
+      invoice may be converted later, and this is that invoice.
+    */
+    converted: (on: string) => `Amounts in other currencies were converted at the rate on ${on}.`,
   },
   ar: {
     title: 'فاتورة ضريبية',
@@ -173,6 +184,7 @@ const STRINGS = {
     credits: 'إشعار دائن للفاتورة',
     dated: 'بتاريخ',
     creditTotal: 'إجمالي الإشعار الدائن',
+    converted: (on: string) => `حُوِّلت المبالغ بالعملات الأخرى بسعر الصرف في ${on}.`,
   },
 } as const
 
@@ -283,6 +295,7 @@ ${documentBrandCss()}
   tfoot .grand td { border-top: 1.5px solid var(--ink); font-weight: 600; font-size: 11pt; }
   .draft { position: fixed; inset-block-start: 40%; inset-inline: 0; text-align: center;
            font-size: 34pt; color: var(--brand-wash); font-weight: 700; transform: rotate(-18deg); }
+  .fx-note { margin-top: 3mm; font-size: 8pt; color: var(--muted); }
   .notes { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 9pt; }
 </style>
@@ -326,5 +339,11 @@ ${draft}
 </table>
 
 ${noteHtml}
+${
+  // Neutral, and only when a line was converted — no provider is named here.
+  invoice.convertedOn
+    ? `<p class="fx-note">${esc(t.converted(formatDate(invoice.convertedOn, locale)))}</p>`
+    : ''
+}
 </html>`
 }
