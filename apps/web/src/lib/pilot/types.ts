@@ -308,6 +308,8 @@ export interface QuoteFxView {
   readonly rate: string
   /** `manual`, `er-api`, `currency-api`, `http`, `seed-demo`. */
   readonly source: string | null
+  /** The day the rate is for, which is what was priced at. */
+  readonly effectiveOn?: string | null
   readonly takenAt: string | null
 }
 

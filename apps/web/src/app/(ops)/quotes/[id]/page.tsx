@@ -214,6 +214,22 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   </li>
                 )
               }
+              /*
+                Converted at a rate more than a week old (run 6): a USD card
+                was priced in October on the demo's January rate, and only the
+                customer's footnote said so.
+              */
+              if (concern.kind === 'stale_rate') {
+                return (
+                  <li key={`${concern.kind}-${concern.currency}`}>
+                    {t('reviewStaleRate', {
+                      currency: concern.currency,
+                      on: formatDate(concern.effectiveOn, locale, timeZone),
+                      days: concern.ageDays,
+                    })}
+                  </li>
+                )
+              }
               const charge = quote.reviewNames?.[concern.chargeTypeKey] ?? concern.chargeTypeKey
               return (
                 <li key={`${concern.kind}-${concern.chargeTypeKey}`}>
