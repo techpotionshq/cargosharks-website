@@ -16,31 +16,57 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { LOCALE_COOKIE, collectPageErrors } from './support/harness'
+import { LOCALE_COOKIE, MODE, collectPageErrors } from './support/harness'
 
 /** The pager's range line: "51–100 of 105". */
 const range = (page: import('@playwright/test').Page) => page.locator('[data-pager-range]').first()
+
+/** Rows per page — `PAGE_SIZE` in `lib/paging.ts`. */
+const SIZE = 50
+
+/**
+ * The register's total, read off its own pager.
+ *
+ * These tests run against the pilot fixtures (105 documents) and, in CI's
+ * full mode, against the seeded database (a handful). Pinning 105 made the
+ * walk a test of one dataset rather than of paging, and it failed on the
+ * other; the arithmetic below holds for any total.
+ */
+async function totalOf(page: import('@playwright/test').Page): Promise<number> {
+  const text = (await range(page).innerText()).trim()
+  const total = Number(/of (\d+)$/.exec(text)?.[1])
+  expect(Number.isInteger(total)).toBe(true)
+  return total
+}
 
 test.describe('register paging', () => {
   test('walks the documents register to its last page', async ({ page }) => {
     const errors = collectPageErrors(page)
     await page.goto('/documents', { waitUntil: 'domcontentloaded' })
 
-    await expect(range(page)).toHaveText(/^1–50 of 105$/)
-    await expect(page.locator('table tbody tr')).toHaveCount(50)
+    const total = await totalOf(page)
+    const pages = Math.max(1, Math.ceil(total / SIZE))
+    await expect(range(page)).toHaveText(new RegExp(`^1–${Math.min(SIZE, total)} of ${total}$`))
+    await expect(page.locator('table tbody tr')).toHaveCount(Math.min(SIZE, total))
 
-    await page.getByRole('link', { name: 'Next' }).first().click()
-    await expect(page).toHaveURL(/\/documents\?page=2$/)
-    await expect(range(page)).toHaveText(/^51–100 of 105$/)
-
-    await page.getByRole('link', { name: 'Next' }).first().click()
-    await expect(range(page)).toHaveText(/^101–105 of 105$/)
-    await expect(page.locator('table tbody tr')).toHaveCount(5)
+    for (let n = 2; n <= pages; n++) {
+      await page.getByRole('link', { name: 'Next' }).first().click()
+      await expect(page).toHaveURL(new RegExp(`/documents\\?page=${n}$`))
+      const from = (n - 1) * SIZE + 1
+      const to = Math.min(n * SIZE, total)
+      await expect(range(page)).toHaveText(new RegExp(`^${from}–${to} of ${total}$`))
+      await expect(page.locator('table tbody tr')).toHaveCount(to - from + 1)
+    }
     // The last page offers no further page.
     await expect(page.locator('a[rel="next"]')).toHaveCount(0)
 
-    await page.getByRole('link', { name: 'Previous' }).first().click()
-    await expect(range(page)).toHaveText(/^51–100 of 105$/)
+    if (pages > 1) {
+      await page.getByRole('link', { name: 'Previous' }).first().click()
+      const from = (pages - 2) * SIZE + 1
+      await expect(range(page)).toHaveText(
+        new RegExp(`^${from}–${(pages - 1) * SIZE} of ${total}$`),
+      )
+    }
     expect(errors).toEqual([])
   })
 
@@ -57,7 +83,6 @@ test.describe('register paging', () => {
     const text = (await range(page).innerText()).trim()
     const total = Number(/of (\d+)$/.exec(text)?.[1])
     expect(total).toBeGreaterThan(0)
-    expect(total).toBeLessThan(105)
     await expect(page.locator('table tbody tr')).toHaveCount(total)
     for (const cell of await page.locator('table tbody tr td:first-child a').allInnerTexts()) {
       expect(cell.trim()).toBe(reference)
@@ -91,9 +116,18 @@ test.describe('register paging', () => {
   })
 
   test('points a bookmark past the end back to the last page', async ({ page }) => {
-    await page.goto('/documents?page=9', { waitUntil: 'domcontentloaded' })
-    await expect(range(page)).toHaveText(/Page 9 is past the end/)
-    await expect(page.locator('a[rel="prev"]').first()).toHaveAttribute('href', '/documents?page=3')
+    await page.goto('/documents', { waitUntil: 'domcontentloaded' })
+    const pages = Math.max(1, Math.ceil((await totalOf(page)) / SIZE))
+
+    await page.goto('/documents?page=99', { waitUntil: 'domcontentloaded' })
+    await expect(range(page)).toHaveText(/Page 99 is past the end/)
+    // A register that fits one page has no pager links to point anywhere.
+    if (pages > 1) {
+      await expect(page.locator('a[rel="prev"]').first()).toHaveAttribute(
+        'href',
+        `/documents?page=${pages}`,
+      )
+    }
   })
 })
 
@@ -115,6 +149,17 @@ test.describe('register paging in Arabic', () => {
 })
 
 test.describe('bulk import keeps the branch — R8', () => {
+  /*
+    Offline only. The oracle is the fixture refusal ("needs a database"),
+    which proves a request was sent with the branch; against a database the
+    import would really write rows. The bug was in the form's own state, which
+    is the same code in both modes.
+  */
+  test.skip(
+    MODE === 'full',
+    'asserts the fixture refusal; the form state is the same in both modes',
+  )
+
   const sheet = {
     name: 'customers.csv',
     mimeType: 'text/csv',
