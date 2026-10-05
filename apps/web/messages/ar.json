@@ -119,7 +119,13 @@
     "home": "الرئيسية",
     "yes": "نعم",
     "no": "لا",
-    "forbiddenAction": "لا يسمح دورك بهذا الإجراء هنا. إن احتجت إليه فاطلب من المسؤول منحه لك في هذا الفرع."
+    "forbiddenAction": "لا يسمح دورك بهذا الإجراء هنا. إن احتجت إليه فاطلب من المسؤول منحه لك في هذا الفرع.",
+    "pages": "الصفحات",
+    "pageRange": "{from}–{to} من {total}",
+    "pageOf": "صفحة {page} من {pages}",
+    "pagePast": "الصفحة {page} بعد النهاية؛ عدد الصفحات {pages}.",
+    "previousPage": "السابق",
+    "nextPage": "التالي"
   },
   "search": {
     "title": "بحث",
@@ -150,7 +156,9 @@
       "quote": "عرض سعر",
       "invoice": "فاتورة",
       "consolidation": "تجميع"
-    }
+    },
+    "showAll": "{count, plural, one {عرض النتيجة الوحيدة} two {عرض النتيجتين} few {عرض كل النتائج الـ #} many {عرض كل النتائج الـ #} other {عرض كل النتائج الـ #}}",
+    "allResults": "كل النتائج"
   },
   "dashboard": {
     "title": "لوحة متابعة العمليات",
@@ -894,7 +902,10 @@
       "commercial": "تجاري",
       "compliance": "امتثال",
       "partner_compliance": "شريك"
-    }
+    },
+    "searchPlaceholder": "الشحنة أو العميل أو نوع المستند",
+    "noneMatching": "لا توجد مستندات مطابقة",
+    "noneMatchingHint": "جرّب مرجع شحنة أو اسم عميل أو نوع مستند، أو أزل عامل التصفية."
   },
   "quotes": {
     "eyebrow": "تجاري",
