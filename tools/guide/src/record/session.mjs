@@ -10,7 +10,7 @@ import { ANN_JS, ann } from './annotate.mjs'
 import { framesToMp4 } from '../video/frames.mjs'
 
 /** Runs the spec in the browser and writes `app.mp4` + `meta.json` into `dir`. */
-export async function record(spec, desc, dir) {
+export async function record(spec, desc, dir, opts = {}) {
   mkdirp(dir)
   const stack = await desc.ensure()
   const checks = []
@@ -28,9 +28,11 @@ export async function record(spec, desc, dir) {
     t: (k) => expand(`{app:${k}}`, spec.locale ?? 'en').text,
     data: {},
   }
-  if (stack.prepare) await stack.prepare(spec, ctx)
+  if (opts.ctx) Object.assign(ctx, opts.ctx)
+  else if (stack.prepare) await stack.prepare(spec, ctx)
+  if (spec.before) await spec.before(ctx)
   await r.start()
-  await r.goto(typeof spec.start === 'function' ? spec.start(ctx) : spec.start, { wait: 300 })
+  await r.goto(typeof spec.start === 'function' ? await spec.start(ctx) : spec.start, { wait: 300 })
   if (spec.ready) await spec.ready(r, ctx)
   await r.page.evaluate(ANN_JS)
   const a = ann(r, checks)

@@ -9,6 +9,7 @@
 // into the short's check report, which is how a drifting box gets caught
 // without anybody watching the video.
 import { colors } from '../brand.mjs'
+import { expand } from '../catalog.mjs'
 
 const C = {
   ring: colors.brand,
@@ -182,6 +183,8 @@ export function ann(r, checks = []) {
      * then, once settled, measure it and draw box, mask and callout in screen space.
      */
     async focus(target, html, { side = 'right', zoom = 0, pad = 6, label } = {}) {
+      // Callouts may quote product labels as {app:key}, like the rest of the guide.
+      if (html) html = expand(html).text
       const l = loc(target)
       await verify()
       await ev('clearNow')

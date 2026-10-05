@@ -113,6 +113,8 @@ function restoreNextEnv() {
 export async function stop() {
   if (!existsSync(pidFile())) return
   const pid = Number(readFileSync(pidFile(), 'utf8'))
+  // An empty pid file reads as 0, and kill(-0) is this process's own group.
+  if (!(pid > 1)) return
   try {
     process.kill(-pid, 'SIGTERM')
   } catch {}

@@ -9,6 +9,47 @@
       "accept": "Nothing is saved until a person accepts it.",
       "ready": "Accepted, the enquiry is complete and ready to price."
     },
+    "02-rates-and-quotations": {
+      "request": "Ask every partner who covers the route for a price, in one click.",
+      "replies": "Their email replies are read into prices, converted and compared.",
+      "award": "The winning reply becomes a rate card, so the next quote prices itself.",
+      "price": "{app:quote.priceIt} adds the customer’s margin. Buy, sell and margin sit side by side.",
+      "quote": "A draft quotation is ready, with the margin you will make.",
+      "send": "Send it. The margin freezes and the customer can accept it online."
+    },
+    "03-customer-accepts-quote": {
+      "list": "Your customer signs in to their own portal and sees every price you sent.",
+      "detail": "Every charge, your covering note and the date the offer ends.",
+      "accept": "She accepts with one click. No email or phone call needed.",
+      "office": "The office sees it at once, and one click opens the shipment with the agreed prices."
+    },
+    "04-shipments-and-milestones": {
+      "board": "The Shipments page lists every live shipment and where it stands.",
+      "milestones": "Each step keeps a planned, a revised and an actual date.",
+      "record": "When the vessel arrives, record it on the day.",
+      "stage": "{app:jobActions.setStatus} changes the stage, and the customer’s tracking page follows.",
+      "track": "Customers track it themselves with the reference and a container number."
+    },
+    "05-documents-and-house-bill": {
+      "panel": "Four documents are built from the shipment’s own parties and cargo lines.",
+      "preview": "Preview any of them in English or Arabic. A preview stores nothing.",
+      "issue": "Issue keeps the exact copy handed over. A new version never overwrites it.",
+      "release": "Release is a separate decision: only then can the customer see it.",
+      "register": "Every document, every version, in one register."
+    },
+    "06-invoicing-and-payments": {
+      "unbilled": "Shipments with charges nobody has invoiced yet are listed for finance.",
+      "draft": "Draft invoice copies the agreed charges onto a draft in one click.",
+      "issue": "Approve, then issue. Issuing gives the next number and cannot be undone.",
+      "receipt": "When the money arrives, record the receipt and match it to the invoice.",
+      "paid": "The invoice shows as paid, here and in the customer’s portal."
+    },
+    "07-supplier-bills": {
+      "board": "Payables shows what partners have billed, and where it disagrees with the shipment.",
+      "capture": "Capture the agent’s bill exactly as they printed it.",
+      "match": "Match each line to the cost the shipment expected. The verdict says if it agrees.",
+      "approve": "Only finance approves it for payment, with any difference in front of them."
+    },
     "08-reports": {
       "totals": "The margin report totals revenue, cost and gross profit for the shipments that sailed.",
       "lane": "Group it by customer, trade lane, mode or salesperson.",

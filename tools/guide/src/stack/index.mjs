@@ -28,9 +28,17 @@ export function stackFor(kind = 'fixtures') {
       return mod.fingerprint(spec)
     },
     /** Loads the module so `fingerprint` can run (the seeded stack reads its story to hash it). */
-    prime: load,
+    prime: async () => {
+      const m = await load()
+      if (m.loadStory) await m.loadStory()
+    },
     ensure: async () => {
       if (running) return running
+      // `next dev` allows one server per app directory, so the other stack's
+      // web app has to stop first. Builds switch stacks at most a few times.
+      const other = await import(kind === 'seeded' ? './fixtures.mjs' : './seeded.mjs')
+      await other.stop()
+      for (const d of descriptors.values()) if (d !== desc) d.forget()
       const m = await load()
       const s = await m.start()
       running = { id: `${kind}-${m.PORT ?? ''}`, kind, ...s, fingerprint: desc.fingerprint }
@@ -38,6 +46,9 @@ export function stackFor(kind = 'fixtures') {
     },
     stop: async () => {
       if (mod) await mod.stop()
+      running = undefined
+    },
+    forget: () => {
       running = undefined
     },
   }
