@@ -56,10 +56,12 @@ export default {
       label: 'Assistant asks for what is missing',
       caption: { key: 'shorts.01-whatsapp-intake.asks' },
       run: async (r, a) => {
+        // The customer named the boxes (2 × 40'HC), so the demo office's own FCL
+        // requirement, the package count, is what is left to ask for.
         const row = r.page.getByText('Asked for the missing details').first().locator('xpath=..')
         await a.focus(
           row,
-          'Missing: <b>the container type</b>.<br>It asks once, in the customer’s language.',
+          'Missing: <b>the number of packages</b>.<br>It asks once, in the customer’s language.',
           { side: 'below', zoom: 1.4 },
         )
         await r.point(row, { ms: 350 })
@@ -89,7 +91,7 @@ export default {
         )
         await r.page.waitForTimeout(1600)
         await a.focus(
-          convo.getByText(/we still need the container type/).last(),
+          convo.getByText(/we still need the number of packages/).last(),
           'Assistant: one question,<br>signed by the branch',
           { side: 'left', zoom: 1.3 },
         )
