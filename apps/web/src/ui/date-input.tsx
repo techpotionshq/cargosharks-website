@@ -66,10 +66,12 @@ export function DateInput({
           .filter(Boolean)
           .join(' ')}
       />
+      {/* The picker button sits at the line's end in English and, in
+          Chrome, at its start in Arabic; the label leaves room on that side. */}
       {label ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 start-3 end-9 flex items-center overflow-hidden text-body font-normal tracking-normal whitespace-nowrap text-ink normal-case peer-focus:hidden"
+          className="pointer-events-none absolute inset-y-0 start-3 end-9 rtl:start-9 rtl:end-3 flex items-center overflow-hidden text-body font-normal tracking-normal whitespace-nowrap text-ink normal-case peer-focus:hidden"
         >
           {label}
         </span>
