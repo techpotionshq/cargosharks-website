@@ -177,6 +177,12 @@ describe.skipIf(!enabled)('vessel positions', () => {
             },
           ])
           .onConflictDoNothing()
+        // A rerun against the same database finds the identity the last run
+        // confirmed; the suggestion case needs a job that names its ship only.
+        await tx
+          .update(jobs)
+          .set({ vesselImo: null, vesselMmsi: null })
+          .where(eq(jobs.id, JOB_NAMED))
         await tx
           .insert(jobPartners)
           .values([{ jobId: JOB_A, branchId: KUWAIT, partnerId: PARTNER_P, role: 'origin_agent' }])
