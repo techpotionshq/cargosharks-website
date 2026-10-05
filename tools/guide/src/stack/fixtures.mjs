@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { RUN, TOOL, WEB } from '../paths.mjs'
 import { BRAND_KEY } from '../brand.mjs'
-import { log, mkdirp, sleep } from '../util.mjs'
+import { log, mkdirp, refuseTakenPort, sleep } from '../util.mjs'
 
 export const PORT = Number(process.env.GUIDE_PORT ?? 3155)
 // `localhost`, not 127.0.0.1: `next dev` refuses its own chunks to any other
@@ -60,6 +60,7 @@ export async function start() {
   }
   // Sessions signed by the previous stack's secret are worthless now.
   rmSync(join(RUN, 'sessions'), { recursive: true, force: true })
+  await refuseTakenPort(`${BASE}/track`, 'fixture stack')
   log(`starting the fixture stack on ${BASE} (now = ${GUIDE_NOW}, brand = ${BRAND_KEY})`)
   const out = openSync(join(dir(), 'web.log'), 'w')
   const child = spawn(

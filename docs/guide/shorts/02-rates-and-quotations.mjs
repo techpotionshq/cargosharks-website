@@ -4,9 +4,12 @@
 // this one sent.
 import { replyToRateRequests, storyIds } from '../story/index.mjs'
 
+// The cheapest reply's row. "Rates from agents" is a table now (it was a list
+// of flex rows), and the old `li, div` match found the table's wrapper div,
+// which holds every row's button. The row is the unit the eye compares.
 const reply = (r) =>
   r.page
-    .locator('li, div')
+    .locator('tr, li')
     .filter({ has: r.page.getByText('Cheapest', { exact: true }) })
     .filter({ has: r.page.getByRole('button', { name: /Make rate card|Replace the older rate/ }) })
     .last()
