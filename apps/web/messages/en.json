@@ -11,7 +11,7 @@
     "enquiries": "Enquiries",
     "jobs": "Shipments",
     "rates": "Rate cards",
-    "finance": "Overview",
+    "finance": "Receivables",
     "tracking": "Customer tracking",
     "portal": "My shipments",
     "agent": "Assigned shipments",
@@ -151,7 +151,7 @@
     }
   },
   "dashboard": {
-    "title": "Operations dashboard",
+    "title": "Dashboard",
     "subtitle": "Everything live across Kuwait and Dubai, oldest problem first.",
     "openEnquiries": "Open enquiries",
     "openEnquiriesHint": "{unassigned} unassigned",
@@ -305,7 +305,7 @@
     "subtitleMixed": "Priced from the rate card and by hand, buy and sell side by side."
   },
   "job": {
-    "title": "Operations board",
+    "title": "Shipments",
     "subtitle": "Live shipments, exceptions first.",
     "reference": "Reference",
     "customer": "Customer",
@@ -633,7 +633,7 @@
       "body": "A live demo on sample data. Choose whose view to sign in as — the same system, seen from three sides.",
       "password": "Password",
       "personas": {
-        "operations": "The operations board",
+        "operations": "The dashboard",
         "customer": "The customer portal",
         "agent": "The agent view"
       }
@@ -2826,8 +2826,8 @@
     "restoreNote": "It becomes selectable again everywhere it was before."
   },
   "jobActions": {
-    "setStatus": "Move it on",
-    "setStatusTitle": "Where has this shipment got to?",
+    "setStatus": "Update status",
+    "setStatusTitle": "Update the shipment status",
     "setStatusDescription": "Sets the status by hand. Holding, cancelling and closing each need their own permission.",
     "status": "Status",
     "reason": "Why",
@@ -3045,7 +3045,7 @@
     "offsetDays": "Offset (days)",
     "offsetDaysHint": "From the previous step, for the planned date.",
     "customerVisible": "Customer sees it",
-    "customerVisibleHint": "Off keeps it to the ops board.",
+    "customerVisibleHint": "Off shows it to staff only.",
     "appliesToNew": "Applies to jobs booked from now on. Shipments already in flight keep the plan they were given.",
     "directions": {
       "import": "Import",
