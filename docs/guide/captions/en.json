@@ -1,0 +1,11 @@
+{
+  "shorts": {
+    "08-reports": {
+      "totals": "The margin report totals revenue, cost and gross profit for the shipments that sailed.",
+      "lane": "Group it by customer, trade lane, mode or salesperson.",
+      "mode": "Or by mode, to see which kind of freight pays best.",
+      "export": "{app:reports.exportCsv} takes the whole report into a spreadsheet.",
+      "kpis": "The dashboard puts win rate and average margin side by side. Read them together."
+    }
+  }
+}
