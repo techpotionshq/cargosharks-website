@@ -1,11 +1,28 @@
 {
   "shorts": {
+    "01-whatsapp-intake": {
+      "msg": "A customer asks for a price on WhatsApp.",
+      "queue": "Seconds later it is an enquiry in the queue, linked to their company.",
+      "asks": "The assistant spots what is missing and asks once: here, the container type.",
+      "thread": "The whole conversation stays on the enquiry, with what the assistant sent.",
+      "read": "Every detail is read from the chat, with the exact words it came from.",
+      "accept": "Nothing is saved until a person accepts it.",
+      "ready": "Accepted, the enquiry is complete and ready to price."
+    },
     "08-reports": {
       "totals": "The margin report totals revenue, cost and gross profit for the shipments that sailed.",
       "lane": "Group it by customer, trade lane, mode or salesperson.",
       "mode": "Or by mode, to see which kind of freight pays best.",
       "export": "{app:reports.exportCsv} takes the whole report into a spreadsheet.",
       "kpis": "The dashboard puts win rate and average margin side by side. Read them together."
+    },
+    "09-arabic": {
+      "switch": "One click switches the whole product to Arabic.",
+      "rtl": "The layout reads right to left, with the menu on the right.",
+      "enquiry": "The same records, in Arabic: the enquiry and its WhatsApp conversation.",
+      "quote": "Quotations and documents follow, with an Arabic PDF for every one.",
+      "track": "Customer pages follow the same choice, like public tracking.",
+      "back": "Switch back to English the same way."
     }
   }
 }
