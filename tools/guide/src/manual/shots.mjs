@@ -43,6 +43,8 @@ import { context, launch, settle } from '../record/browser.mjs'
 const VERSION = 2
 const TOOL = ['tools/guide/src/manual/shots.mjs', 'tools/guide/src/record/browser.mjs']
 const OWN = [
+  'stack',
+  'snapshot',
   'hide',
   'viewport',
   'locale',
