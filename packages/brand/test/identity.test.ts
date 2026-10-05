@@ -48,3 +48,18 @@ describe('registrationLine', () => {
     )
   })
 })
+
+/*
+  The demo's sign-in is identity too. The Al-Qabandi demo printed
+  operations@cargosharks.example and the password cargosharks-demo.
+*/
+describe('the demo sign-in', () => {
+  it('follows each brand and never wears the other one', () => {
+    expect(qabandiBrand.demo.operationsEmail).toBe('operations@qabandi.example')
+    expect(qabandiBrand.demo.password).toBe('qabandi-demo')
+    expect(cargosharksBrand.demo.operationsEmail).toBe('operations@cargosharks.example')
+    expect(cargosharksBrand.demo.password).toBe('cargosharks-demo')
+    expect(JSON.stringify(qabandiBrand.demo)).not.toMatch(/cargosharks/i)
+    expect(JSON.stringify(cargosharksBrand.demo)).not.toMatch(/qabandi/i)
+  })
+})

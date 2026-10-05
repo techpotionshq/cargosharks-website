@@ -221,10 +221,28 @@ export interface BrandDocuments {
   readonly tradingConditionsAr: string
 }
 
+/**
+ * The public demo's way in — `QABANDI_DEMO_LOGIN=1` prints both on the sign-in
+ * screen and prefills the address.
+ *
+ * Part of the brand because it is read as identity. The Al-Qabandi demo
+ * printed `operations@cargosharks.example` and the password
+ * `cargosharks-demo`: the supplier's name on the client's sign-in screen. Each
+ * brand now carries its own, and by default derives them from its key, so a
+ * new brand never inherits another's.
+ */
+export interface BrandDemo {
+  /** The operations persona's address. Always a reserved `.example` domain. */
+  readonly operationsEmail: string
+  /** The shared password when `QABANDI_DEMO_PASSWORD` is unset. */
+  readonly password: string
+}
+
 export interface Brand {
   readonly identity: BrandIdentity
   readonly contact: BrandContact
   readonly documents: BrandDocuments
+  readonly demo: BrandDemo
   readonly logo: BrandLogo
   readonly typography: BrandTypography
   readonly shape: BrandShape

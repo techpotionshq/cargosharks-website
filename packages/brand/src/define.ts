@@ -21,6 +21,7 @@ import {
 import type {
   Brand,
   BrandContact,
+  BrandDemo,
   BrandDocuments,
   BrandIdentity,
   BrandLogo,
@@ -32,6 +33,8 @@ export interface BrandSpec {
   readonly identity: BrandIdentity
   readonly contact: BrandContact
   readonly documents: BrandDocuments
+  /** Defaults to `operations@<key>.example` and `<key>-demo`. */
+  readonly demo?: Partial<BrandDemo>
   /** The corporate colour — the mark, primary actions, brand moments. */
   readonly primary: RampSpec
   /** The secondary, used for the chrome, highlights and chart accents. */
@@ -118,6 +121,11 @@ export function defineBrand(spec: BrandSpec): Brand {
     identity: spec.identity,
     contact: spec.contact,
     documents: spec.documents,
+    demo: {
+      operationsEmail: `operations@${spec.identity.key}.example`,
+      password: `${spec.identity.key}-demo`,
+      ...spec.demo,
+    },
     logo: { ...DEFAULT_LOGO, ...spec.logo },
     typography: { ...DEFAULT_TYPOGRAPHY, ...spec.typography },
     shape: { ...DEFAULT_SHAPE, ...spec.shape },

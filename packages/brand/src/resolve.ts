@@ -165,6 +165,7 @@ export function resolveBrand(env: Env = ambientEnv()): Brand {
     identity,
     contact,
     documents: base.documents,
+    demo: base.demo,
     primary: {
       hue: primaryHue ?? hueOf(base.palette.primary[500]),
       chroma: primaryChroma ?? chromaOf(base.palette.primary[500]),
