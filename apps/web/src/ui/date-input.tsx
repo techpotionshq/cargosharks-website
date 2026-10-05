@@ -69,7 +69,7 @@ export function DateInput({
       {label ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-body font-normal tracking-normal text-ink normal-case peer-focus:hidden"
+          className="pointer-events-none absolute inset-y-0 start-3 end-9 flex items-center overflow-hidden text-body font-normal tracking-normal whitespace-nowrap text-ink normal-case peer-focus:hidden"
         >
           {label}
         </span>

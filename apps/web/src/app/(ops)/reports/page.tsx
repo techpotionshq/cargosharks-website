@@ -196,7 +196,7 @@ export default async function ReportsPage({
           <DateInput
             name="from"
             defaultValue={period.from}
-            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
+            className="mt-1.5 block h-9 min-w-44 rounded-sm border border-line bg-surface px-3 text-body text-ink"
           />
         </label>
         <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
@@ -204,7 +204,7 @@ export default async function ReportsPage({
           <DateInput
             name="to"
             defaultValue={period.to}
-            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
+            className="mt-1.5 block h-9 min-w-44 rounded-sm border border-line bg-surface px-3 text-body text-ink"
           />
         </label>
         <button
