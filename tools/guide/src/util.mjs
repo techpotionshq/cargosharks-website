@@ -83,6 +83,31 @@ export const captionMinimum = (text) => {
 
 export const log = (...a) => console.log('[guide]', ...a)
 
+/**
+ * Refuses to start a server on a port something else already answers on.
+ * Each worktree keeps its stack's pid under its own cache, so a stack left up
+ * by another checkout is invisible to it: the new `next dev` could not bind,
+ * the readiness poll got its answer from the old server, and a CargoSharks
+ * build signed in to an Al-Qabandi app until the 60 s sign-in timeout.
+ */
+export async function refuseTakenPort(url, what) {
+  // A few seconds' grace: a stack stopped a moment ago (switching between the
+  // fixture and seeded stacks) can still be answering while it shuts down.
+  for (let i = 0; i < 10; i++) {
+    let answered = false
+    try {
+      const r = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(2000) })
+      answered = r.status > 0
+    } catch {}
+    if (!answered) return
+    await sleep(1000)
+  }
+  throw new Error(
+    `${what}: something already answers on ${url} that this build did not start ` +
+      `(another worktree's guide stack?). Stop it first.`,
+  )
+}
+
 export function timer() {
   const t0 = performance.now()
   return () => (performance.now() - t0) / 1000

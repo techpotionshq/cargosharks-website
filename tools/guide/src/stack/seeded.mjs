@@ -32,7 +32,7 @@ import { pathToFileURL } from 'node:url'
 import { GUIDE, REPO, RUN, TOOL, WEB, chromiumPath } from '../paths.mjs'
 import { BRAND_KEY, brand } from '../brand.mjs'
 import { filesFingerprint } from '../graph.mjs'
-import { fileHash, hash, log, mkdirp, sleep } from '../util.mjs'
+import { fileHash, hash, log, mkdirp, refuseTakenPort, sleep } from '../util.mjs'
 
 export const PORT = Number(process.env.GUIDE_SEEDED_PORT ?? 3164)
 const SERVICE_PORT = PORT - 3
@@ -244,6 +244,7 @@ async function waitHttp(url, name, tries = 180) {
 
 async function startService() {
   if (running('service')) return
+  await refuseTakenPort(`http://127.0.0.1:${SERVICE_PORT}/`, 'seeded service')
   launchProcess(
     'service',
     join(REPO, 'apps', 'service', 'node_modules', '.bin', 'tsx'),
@@ -256,6 +257,7 @@ async function startService() {
 
 async function startWeb() {
   if (running('web')) return
+  await refuseTakenPort(`${BASE}/track`, 'seeded web app')
   launchProcess(
     'web',
     'sh',

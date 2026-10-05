@@ -78,7 +78,10 @@ async function main() {
     await closeGfx()
     log(`done in ${elapsed().toFixed(1)}s; ${summary() || 'nothing to do'}`)
     log(`outputs in ${OUT}`)
-    if (!args['keep-stack'] && args.stop) {
+    // Stopped unless asked not to (`--no-stop`, or `--keep-stack`). This read
+    // `args.stop`, which only an explicit `--stop` sets, so every build left
+    // its servers running, and the next brand's build talked to them.
+    if (!args['keep-stack'] && !args['no-stop']) {
       const { stopAll } = await import('../src/stack/index.mjs')
       await stopAll()
     }
