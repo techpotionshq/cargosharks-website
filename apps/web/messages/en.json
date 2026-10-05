@@ -51,7 +51,9 @@
     "payables": "Payables",
     "settlements": "Settlements",
     "reports": "Reports",
-    "assistant": "Assistant"
+    "assistant": "Assistant",
+    "menu": "Menu",
+    "moreBelow": "More sections below"
   },
   "common": {
     "search": "Search",

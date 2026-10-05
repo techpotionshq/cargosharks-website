@@ -51,7 +51,9 @@
     "payables": "الذمم الدائنة",
     "settlements": "التسويات",
     "reports": "التقارير",
-    "assistant": "المساعد"
+    "assistant": "المساعد",
+    "menu": "القائمة",
+    "moreBelow": "المزيد من الأقسام في الأسفل"
   },
   "common": {
     "search": "بحث",
