@@ -10,6 +10,8 @@
 
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { requireSession } from '@/lib/session'
 import { listPartners, partnerTypeCounts } from '@/features/network/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -26,23 +28,22 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PartnersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string }>
+  searchParams: Promise<{ q?: string; type?: string; page?: string }>
 }) {
   const session = await requireSession()
-  const { q, type } = await searchParams
+  const { q, type, page } = await searchParams
   const t = await getTranslations('partners')
   const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const [all, typeCounts] = await Promise.all([
-    listPartners(session.actor, q),
-    partnerTypeCounts(session.actor),
+  const [partnersPage, typeCounts] = await Promise.all([
+    listPartners(session.actor, { search: q, type }, pageRequest(page)),
+    partnerTypeCounts(session.actor, q),
   ])
-
-  // Filtered here rather than in SQL: the register is capped at 200 rows, and
-  // a second round trip to a database 300ms away costs more than the filter.
-  const rows = type ? all.filter((row) => row.type === type) : all
+  const rows = partnersPage.rows
+  // "All" is every partner the search matches, whichever type tab is open.
+  const allCount = typeCounts.reduce((sum, row) => sum + row.count, 0)
 
   const query = (next: Record<string, string | undefined>): string => {
     const params = new URLSearchParams()
@@ -66,9 +67,11 @@ export default async function PartnersPage({
         value: q,
         placeholder: t('searchPlaceholder'),
         label: tc('search'),
+        // A new term keeps the type tab, rather than silently dropping it.
+        hidden: { type },
       }}
       filters={[
-        { label: tc('all'), href: query({ type: undefined }), active: !type, count: all.length },
+        { label: tc('all'), href: query({ type: undefined }), active: !type, count: allCount },
         ...typeCounts.map((row) => ({
           label: t(`types.${row.type}`),
           href: query({ type: row.type }),
@@ -76,7 +79,7 @@ export default async function PartnersPage({
           active: type === row.type,
         })),
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={partnersPage.total === 0}
       empty={{
         icon: 'partners',
         title: q || type ? t('noneMatching') : t('noneYet'),
@@ -138,6 +141,7 @@ export default async function PartnersPage({
           ))}
         </TBody>
       </TableShell>
+      <Pager page={partnersPage} path="/partners" params={{ q, type }} />
     </Register>
   )
 }

@@ -9,6 +9,8 @@
 
 import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { requireSession } from '@/lib/session'
 import { customsCounts, listCustoms } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -27,12 +29,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function CustomsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string }>
+  searchParams: Promise<{ scope?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { scope } = await searchParams
+  const { scope, page } = await searchParams
   const view =
     scope === 'released' ? 'released' : scope === 'all' ? 'all' : scope === 'held' ? 'held' : 'live'
 
@@ -42,13 +44,13 @@ export default async function CustomsPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
-  // Held is a subset of live, so it reads the live list and keeps the holds —
-  // the summary has always counted them, and now the strip can show them.
-  const [live, counts] = await Promise.all([
-    listCustoms(session.actor, view === 'held' ? 'live' : view),
+  // Held is a scope of its own in the query, so it pages over every hold and
+  // agrees with the count the summary has always shown for it.
+  const [customsPage, counts] = await Promise.all([
+    listCustoms(session.actor, view, pageRequest(page)),
     customsCounts(session.actor),
   ])
-  const rows = view === 'held' ? live.filter((row) => row.status === 'held') : live
+  const rows = customsPage.rows
 
   return (
     <Register
@@ -76,7 +78,7 @@ export default async function CustomsPage({
         },
         { label: tc('all'), href: '/customs?scope=all', active: view === 'all' },
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={customsPage.total === 0}
       empty={{
         icon: 'customs',
         title: view === 'live' ? t('noneLive') : t('noneMatching'),
@@ -170,6 +172,7 @@ export default async function CustomsPage({
           })}
         </TBody>
       </TableShell>
+      <Pager page={customsPage} path="/customs" params={{ scope }} />
     </Register>
   )
 }

@@ -25,7 +25,7 @@ const { enquiries, quotes, withActor } = await import('@qabandi/db')
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, homeActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { listEnquiries, getEnquiry } = await import('./queries')
+const { countEnquiries, listEnquiries, getEnquiry } = await import('./queries')
 
 const systemActor = { ...bothBranchesActor, type: 'system' as const }
 
@@ -66,8 +66,9 @@ async function seed(values: Record<string, unknown> = {}): Promise<string> {
   })
 }
 
+const WIDE = { page: 1, size: 200 }
 const find = async (id: string, filters = {}) =>
-  (await listEnquiries(bothBranchesActor, { limit: 200, ...filters })).find((row) => row.id === id)
+  (await listEnquiries(bothBranchesActor, filters, 'en', WIDE)).rows.find((row) => row.id === id)
 
 describe.skipIf(!enabled)('the enquiry queue’s reads', () => {
   beforeAll(async () => {
@@ -238,29 +239,49 @@ describe.skipIf(!enabled)('the enquiry queue’s reads', () => {
       expect(await find(inTime, { overdueOnly: true })).toBeUndefined()
     })
 
-    it('caps the page even when asked for more than it will give', async () => {
-      const rows = await listEnquiries(bothBranchesActor, { limit: 5000 })
-      expect(rows.length).toBeLessThanOrEqual(200)
+    it('pages at the size asked for, and reports the whole total', async () => {
+      const page = await listEnquiries(bothBranchesActor, {}, 'en', { page: 1, size: 3 })
+      expect(page.rows.length).toBeLessThanOrEqual(3)
+      expect(page.total).toBeGreaterThanOrEqual(page.rows.length)
     })
 
     it('returns nothing for a status nothing holds', async () => {
-      expect(await listEnquiries(bothBranchesActor, { status: 'cancelled' })).toEqual([])
+      const none = await listEnquiries(bothBranchesActor, { status: 'cancelled' })
+      expect(none.rows).toEqual([])
+      expect(none.total).toBe(0)
     })
   })
 
   describe('paging', () => {
-    /** Keyset, not OFFSET — page four hundred costs what page one does (§12). */
-    it('continues after a row rather than counting past it', async () => {
-      const first = await listEnquiries(bothBranchesActor, { limit: 3 })
-      expect(first.length).toBeGreaterThan(0)
+    /*
+      Replaces a keyset test for a cursor no screen used: it continued by
+      creation time while the queue sorts by deadline. Offset pages now, as
+      every register does, and the property that matters is that page two
+      neither repeats page one nor disagrees with it about the total.
+    */
+    it('reaches page two without repeating page one', async () => {
+      const one = await listEnquiries(bothBranchesActor, {}, 'en', { page: 1, size: 3 })
+      const two = await listEnquiries(bothBranchesActor, {}, 'en', { page: 2, size: 3 })
 
-      const anchor = first.at(-1)!
-      const next = await listEnquiries(bothBranchesActor, {
-        limit: 3,
-        after: { createdAt: anchor.createdAt, id: anchor.id },
-      })
+      expect(one.total).toBeGreaterThan(3)
+      expect(two.total).toBe(one.total)
+      expect(two.rows.length).toBeGreaterThan(0)
+      const firstIds = new Set(one.rows.map((row) => row.id))
+      expect(two.rows.some((row) => firstIds.has(row.id))).toBe(false)
+    })
 
-      expect(next.map((row) => row.id)).not.toContain(anchor.id)
+    it('counts the open queue as the open filter pages through it', async () => {
+      const counts = await countEnquiries(homeActor)
+      const open = await listEnquiries(homeActor, { status: 'open' }, 'en', { page: 1, size: 1 })
+      const unassigned = await listEnquiries(
+        homeActor,
+        { status: 'open', unassignedOnly: true },
+        'en',
+        { page: 1, size: 1 },
+      )
+
+      expect(counts.open).toBe(open.total)
+      expect(counts.unassigned).toBe(unassigned.total)
     })
   })
 
@@ -281,11 +302,11 @@ describe.skipIf(!enabled)('the enquiry queue’s reads', () => {
         return row!.id
       })
 
-      const visible = await listEnquiries(homeActor, { limit: 200 })
-      expect(visible.map((row) => row.id)).not.toContain(away)
+      const visible = await listEnquiries(homeActor, {}, 'en', WIDE)
+      expect(visible.rows.map((row) => row.id)).not.toContain(away)
 
-      const both = await listEnquiries(bothBranchesActor, { limit: 200 })
-      expect(both.map((row) => row.id)).toContain(away)
+      const both = await listEnquiries(bothBranchesActor, {}, 'en', WIDE)
+      expect(both.rows.map((row) => row.id)).toContain(away)
     })
 
     /** Not-found rather than forbidden: no enumeration signal. */

@@ -119,7 +119,13 @@
     "home": "Home",
     "yes": "Yes",
     "no": "No",
-    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch."
+    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch.",
+    "pages": "Pages",
+    "pageRange": "{from}–{to} of {total}",
+    "pageOf": "Page {page} of {pages}",
+    "pagePast": "Page {page} is past the end; there are {pages}.",
+    "previousPage": "Previous",
+    "nextPage": "Next"
   },
   "search": {
     "title": "Search",
@@ -150,7 +156,9 @@
       "quote": "Quotation",
       "invoice": "Invoice",
       "consolidation": "Consolidation"
-    }
+    },
+    "showAll": "{count, plural, one {Show the # match} other {Show all # matches}}",
+    "allResults": "All results"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -900,7 +908,10 @@
       "commercial": "Commercial",
       "compliance": "Compliance",
       "partner_compliance": "Partner"
-    }
+    },
+    "searchPlaceholder": "Shipment, customer or document type",
+    "noneMatching": "No documents match",
+    "noneMatchingHint": "Try a shipment reference, a customer's name or a document type, or clear the filter."
   },
   "quotes": {
     "eyebrow": "Commercial",
@@ -3043,7 +3054,9 @@
       "payment": {
         "received": "A customer’s payment has been received and set against an invoice."
       }
-    }
+    },
+    "forbidden": "You cannot edit notification wording",
+    "forbiddenHint": "Your role does not include admin.reference.write."
   },
   "milestoneForm": {
     "open": "Add a step",
@@ -3184,7 +3197,9 @@
     "disabledReasons": {
       "switchedOff": "Switched off by an administrator",
       "noDeliverySince": "Nothing delivered since {day}"
-    }
+    },
+    "forbidden": "You cannot manage API keys",
+    "forbiddenHint": "Your role does not include admin.api_keys.write."
   },
   "chargeableForm": {
     "open": "Add a rule",
@@ -3819,7 +3834,19 @@
   "notifications": {
     "title": "Notifications",
     "empty": "You're all caught up.",
-    "markAllRead": "Mark all read"
+    "markAllRead": "Mark all read",
+    "emailTitle": "Email me about",
+    "emailHint": "Alerts always arrive here. Untick a group to stop its emails.",
+    "emailSave": "Save",
+    "groups": {
+      "enquiries": "New and overdue enquiries",
+      "quotes": "Customer answers to quotations",
+      "operations": "Shipment exceptions and free time",
+      "rates": "Rate cards and agent replies",
+      "suppliers": "Supplier mail",
+      "finance": "Supplier invoice variances",
+      "admin": "Administration"
+    }
   },
   "enquiryAutomation": {
     "label": "Automation",

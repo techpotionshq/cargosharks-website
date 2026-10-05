@@ -72,6 +72,31 @@ export function ImportConsole({
   const t = useTranslations('importsValidation')
   const fileInput = useRef<HTMLInputElement>(null)
   const chosen = useRef<File | null>(null)
+  const branchSelect = useRef<HTMLSelectElement>(null)
+  const directionSelect = useRef<HTMLSelectElement>(null)
+  const partnerSelect = useRef<HTMLSelectElement>(null)
+
+  /*
+    The pickers' choices live in state, and are put back after every action:
+    that is the fix for R8 (live run 5).
+
+    React resets a form after its action runs (`form.reset()`), which puts
+    every select back to the option its markup marks as default — controlled
+    or not, since a controlled `value` sets `selected` but not
+    `defaultSelected`. The Branch select was also `required`: "Check the file"
+    reset it to "Choose a branch", and "Import 200" then did nothing at all —
+    the browser's required-field check blocked the submit with a tooltip a
+    headless run never saw and a busy operator easily missed. The effect below
+    restores each choice after the reset, as the file is restored. The
+    direction and partner pickers had the same reset, so a buy tariff lost its
+    agent between the check and the import.
+  */
+  const [branchId, setBranchId] = useState('')
+  const [direction, setDirection] = useState('buy')
+  const [partnerId, setPartnerId] = useState('')
+  // Said on the screen, in the operator's language, rather than left to the
+  // browser: set when a submit is stopped for want of a branch.
+  const [branchMissing, setBranchMissing] = useState(false)
 
   // The mapping the engine guessed, with anything the operator changed layered
   // on top. Reset whenever a different file is chosen.
@@ -101,6 +126,15 @@ export function ImportConsole({
     mapping; a different file starts afresh.
   */
   useEffect(() => {
+    // The pickers first: unlike the file, these always have a value to put back.
+    for (const [select, value] of [
+      [branchSelect.current, branchId],
+      [directionSelect.current, direction],
+      [partnerSelect.current, partnerId],
+    ] as const) {
+      if (select && select.value !== value) select.value = value
+    }
+
     const input = fileInput.current
     if (!input || !chosen.current || (input.files && input.files.length > 0)) return
     try {
@@ -110,6 +144,9 @@ export function ImportConsole({
     } catch {
       // A browser without a constructible DataTransfer: the operator re-chooses.
     }
+    // Only after an action: the choices are read at that moment on purpose,
+    // and a change of choice needs no restoring.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
   const headers = state.headers ?? []
@@ -139,7 +176,19 @@ export function ImportConsole({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form
+      action={action}
+      className="flex flex-col gap-5"
+      onSubmit={(event) => {
+        // Not `required` on the select: the browser's own refusal is a tooltip
+        // that says nothing in a headless run and little to anyone else. The
+        // server refuses too (`no_branch`), but by then the report is gone.
+        if (!needsBranch || branchId !== '') return
+        event.preventDefault()
+        setBranchMissing(true)
+        branchSelect.current?.focus()
+      }}
+    >
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="mapping" value={JSON.stringify(posted)} />
 
@@ -188,10 +237,21 @@ export function ImportConsole({
                 {labels.branch}
               </label>
               <select
+                ref={branchSelect}
                 id="branchId"
                 name="branchId"
-                required
-                className="h-10 w-full max-w-sm rounded-sm border border-line bg-surface px-3 text-body text-ink"
+                value={branchId}
+                onChange={(event) => {
+                  setBranchId(event.target.value)
+                  if (event.target.value !== '') setBranchMissing(false)
+                }}
+                aria-required="true"
+                aria-invalid={branchMissing || undefined}
+                aria-describedby={branchMissing ? 'branchId-error' : undefined}
+                className={[
+                  'h-10 w-full max-w-sm rounded-sm border bg-surface px-3 text-body text-ink',
+                  branchMissing ? 'border-critical' : 'border-line',
+                ].join(' ')}
               >
                 <option value="">{labels.chooseBranch}</option>
                 {branches.map((branch) => (
@@ -200,7 +260,17 @@ export function ImportConsole({
                   </option>
                 ))}
               </select>
-              <p className="text-caption text-ink-subtle">{labels.branchHint}</p>
+              {branchMissing ? (
+                <p
+                  id="branchId-error"
+                  role="alert"
+                  className="text-body-sm font-medium text-critical"
+                >
+                  {labels.error_no_branch}
+                </p>
+              ) : (
+                <p className="text-caption text-ink-subtle">{labels.branchHint}</p>
+              )}
             </div>
           ) : null}
 
@@ -211,9 +281,11 @@ export function ImportConsole({
                   {labels.direction}
                 </label>
                 <select
+                  ref={directionSelect}
                   id="direction"
                   name="direction"
-                  defaultValue="buy"
+                  value={direction}
+                  onChange={(event) => setDirection(event.target.value)}
                   className="h-10 rounded-sm border border-line bg-surface px-3 text-body text-ink"
                 >
                   <option value="buy">{labels.buy}</option>
@@ -225,8 +297,11 @@ export function ImportConsole({
                   {labels.partner}
                 </label>
                 <select
+                  ref={partnerSelect}
                   id="partnerId"
                   name="partnerId"
+                  value={partnerId}
+                  onChange={(event) => setPartnerId(event.target.value)}
                   className="h-10 w-full rounded-sm border border-line bg-surface px-3 text-body text-ink"
                 >
                   <option value="">{labels.choosePartner}</option>
@@ -385,9 +460,18 @@ export function ImportConsole({
           {ready ? (
             <div className="pt-4">
               <input type="hidden" name="intent" value="commit" />
-              <Submit icon="check" pendingLabel={labels.committing}>
-                {labels.commit} {state.acceptedRows}
-              </Submit>
+              <div className="flex flex-wrap items-center gap-3">
+                <Submit icon="check" pendingLabel={labels.committing}>
+                  {labels.commit} {state.acceptedRows}
+                </Submit>
+                {/* Beside the button that was pressed as well, since the
+                    branch picker may be a screen's height above it. */}
+                {branchMissing ? (
+                  <span className="text-body-sm font-medium text-critical">
+                    {labels.error_no_branch}
+                  </span>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </Card>

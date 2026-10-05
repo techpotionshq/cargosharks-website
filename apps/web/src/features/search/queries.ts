@@ -21,19 +21,7 @@
 import 'server-only'
 import { asc, desc, eq, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import {
-  consolidations,
-  customers,
-  enquiries,
-  equipment,
-  inSeries,
-  invoices,
-  jobs,
-  locations,
-  quotes,
-  withActor,
-  type Actor,
-} from '@qabandi/db'
+import { customers, equipment, inSeries, jobs, locations, withActor, type Actor } from '@qabandi/db'
 import type { Mode } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
@@ -45,6 +33,7 @@ import {
   pilotQuotes,
 } from '@/lib/pilot/fixtures'
 import { pickName } from '@/lib/named'
+import { pageOf, pageOffset, type PageRequest } from '@/lib/paging'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -118,14 +107,33 @@ interface RecordHit {
   readonly matchedValue: string | null
 }
 
+/** The four groups the results page draws, each of which can be paged on its own. */
+export const SEARCH_SECTIONS = ['jobs', 'records', 'containers', 'customers'] as const
+export type SearchSection = (typeof SEARCH_SECTIONS)[number]
+
 export interface SearchResults {
   readonly jobs: readonly JobHit[]
   readonly containers: readonly ContainerHit[]
   readonly customers: readonly CustomerHit[]
   readonly records: readonly RecordHit[]
+  /**
+   * Every match in each group, counted — not the length of the group shown.
+   *
+   * Each group shows its first twenty, and used to stop there without saying
+   * so: a customer name that matched sixty shipments listed twenty and the
+   * page said "20 results". The totals are what the page prints, and a group
+   * with more than it shows links to a paged view of itself (`focus`).
+   */
+  readonly totals: Readonly<Record<SearchSection, number>>
 }
 
-const EMPTY: SearchResults = { jobs: [], containers: [], customers: [], records: [] }
+const EMPTY: SearchResults = {
+  jobs: [],
+  containers: [],
+  customers: [],
+  records: [],
+  totals: { jobs: 0, containers: 0, customers: 0, records: 0 },
+}
 
 /** Where a record opens. */
 export function recordHref(kind: RecordKind, id: string): string {
@@ -141,15 +149,18 @@ export function recordHref(kind: RecordKind, id: string): string {
 /** Below this a query matches half the database and answers nothing. */
 export const MIN_QUERY_LENGTH = 2
 
-const LIMIT = 20
+/** Rows per group on the overview; a focused group pages at the register size. */
+export const SECTION_PREVIEW = 20
 
+/** Every match, across the groups — from the counts, never from what is shown. */
 export function totalHits(results: SearchResults): number {
-  return (
-    results.jobs.length +
-    results.containers.length +
-    results.customers.length +
-    results.records.length
-  )
+  return SEARCH_SECTIONS.reduce((sum, section) => sum + results.totals[section], 0)
+}
+
+/** One group, paged: which group, and which page of it. */
+export interface SearchFocus {
+  readonly section: SearchSection
+  readonly request: PageRequest
 }
 
 /**
@@ -170,26 +181,90 @@ function contains(value: string): string {
   return `%${value.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
 }
 
-export async function search(actor: Actor, query: string): Promise<SearchResults> {
+/**
+ * The search, every group at once (the overview), or one group a page at a
+ * time (`focus`, which leaves the other groups empty and uncounted).
+ */
+export async function search(
+  actor: Actor,
+  query: string,
+  focus?: SearchFocus,
+): Promise<SearchResults> {
   const term = query.trim()
   if (term.length < MIN_QUERY_LENGTH) return EMPTY
 
-  if (usePilotFixtures()) return searchFixtures(term)
+  if (usePilotFixtures()) return windowed(searchFixtures(term), focus)
 
   const loose = contains(term)
   const tight = contains(tighten(term))
 
+  const jobsWhere = or(
+    sql`replace(${jobs.reference}, ' ', '') ilike ${tight}`,
+    sql`replace(${jobs.masterBillNumber}, ' ', '') ilike ${tight}`,
+    sql`replace(${jobs.houseBillNumber}, ' ', '') ilike ${tight}`,
+    sql`replace(${jobs.bookingNumber}, ' ', '') ilike ${tight}`,
+    sql`replace(${jobs.customerReference}, ' ', '') ilike ${tight}`,
+    sql`${customers.legalNameEn} ilike ${loose}`,
+    sql`${customers.legalNameAr} ilike ${loose}`,
+  )
+  const containersWhere = sql`replace(${equipment.containerNo}, ' ', '') ilike ${tight}`
+  const customersWhere = or(
+    sql`${customers.legalNameEn} ilike ${loose}`,
+    sql`${customers.legalNameAr} ilike ${loose}`,
+    sql`replace(${customers.code}, ' ', '') ilike ${tight}`,
+  )
   /*
-    One transaction for all three lookups, not three.
+    The four kinds of record as one list, newest first, so it can page.
+
+    It was four queries of twenty concatenated and cut to twenty, which meant
+    twenty matching enquiries hid every matching invoice. One `union all`
+    keeps the kinds together under one order and one offset. A draft invoice
+    has no number yet, so there is nothing for anyone to be holding; a
+    consolidation also matches by its master bill, and says so.
+  */
+  const recordsUnion = sql`
+    select 'enquiry' as kind, e.id, e.reference, null::text as "matchedBill", e.created_at
+      from enquiries e
+     where replace(e.reference, ' ', '') ilike ${tight}
+    union all
+    select 'quote', q.id, q.reference, null::text, q.created_at
+      from quotes q
+     where replace(q.reference, ' ', '') ilike ${tight}
+    union all
+    select 'invoice', i.id, i.series_no, null::text, i.created_at
+      from invoices i
+     where replace(i.series_no, ' ', '') ilike ${tight}
+    union all
+    select 'consolidation', c.id, c.reference, c.master_bill_number, c.created_at
+      from consolidations c
+     where replace(c.reference, ' ', '') ilike ${tight}
+        or replace(c.master_bill_number, ' ', '') ilike ${tight}
+  `
+
+  const window = (section: SearchSection) =>
+    focus === undefined
+      ? { limit: SECTION_PREVIEW, offset: 0 }
+      : focus.section === section
+        ? { limit: focus.request.size, offset: pageOffset(focus.request) }
+        : null
+  const wanted = (section: SearchSection) => window(section) !== null
+
+  /*
+    One transaction for every lookup, not one each.
 
     Each `withActor` is its own `BEGIN`, `set_config` and `COMMIT`; against a
     database a few hundred milliseconds away that difference is the whole
     perceived cost of the box.
   */
   return withActor(actor, async (tx) => {
-    const [jobRows, containerRows, customerRows, enquiryRows, quoteRows, invoiceRows, consolRows] =
-      await inSeries([
-        () =>
+    const count = async (rows: Promise<{ n: number }[]>) => (await rows)[0]?.n ?? 0
+    const none = async () => []
+
+    const [jobRows, containerRows, customerRows, recordRows, totals] = await inSeries([
+      () => {
+        const w = window('jobs')
+        if (!w) return none()
+        return (
           tx
             .select({
               id: jobs.id,
@@ -212,102 +287,107 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
             .leftJoin(customers, eq(customers.id, jobs.customerId))
             .leftJoin(origin, eq(origin.id, jobs.originId))
             .leftJoin(destination, eq(destination.id, jobs.destinationId))
-            .where(
-              or(
-                sql`replace(${jobs.reference}, ' ', '') ilike ${tight}`,
-                sql`replace(${jobs.masterBillNumber}, ' ', '') ilike ${tight}`,
-                sql`replace(${jobs.houseBillNumber}, ' ', '') ilike ${tight}`,
-                sql`replace(${jobs.bookingNumber}, ' ', '') ilike ${tight}`,
-                sql`replace(${jobs.customerReference}, ' ', '') ilike ${tight}`,
-                sql`${customers.legalNameEn} ilike ${loose}`,
-                sql`${customers.legalNameAr} ilike ${loose}`,
-              ),
-            )
+            .where(jobsWhere)
             // The live board's order: what is arriving soonest, then what moved last.
-            .orderBy(asc(jobs.eta), desc(jobs.updatedAt))
-            .limit(LIMIT),
+            .orderBy(asc(jobs.eta), desc(jobs.updatedAt), asc(jobs.id))
+            .limit(w.limit)
+            .offset(w.offset)
+        )
+      },
 
-        () =>
-          tx
-            .select({
-              containerNo: equipment.containerNo,
-              type: equipment.containerType,
-              jobId: jobs.id,
-              jobReference: jobs.reference,
-              jobStatus: jobs.status,
-            })
-            .from(equipment)
-            .innerJoin(jobs, eq(jobs.id, equipment.jobId))
-            .where(sql`replace(${equipment.containerNo}, ' ', '') ilike ${tight}`)
-            .orderBy(asc(equipment.containerNo))
-            .limit(LIMIT),
+      () => {
+        const w = window('containers')
+        if (!w) return none()
+        return tx
+          .select({
+            containerNo: equipment.containerNo,
+            type: equipment.containerType,
+            jobId: jobs.id,
+            jobReference: jobs.reference,
+            jobStatus: jobs.status,
+          })
+          .from(equipment)
+          .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+          .where(containersWhere)
+          .orderBy(asc(equipment.containerNo), asc(equipment.id))
+          .limit(w.limit)
+          .offset(w.offset)
+      },
 
-        () =>
-          tx
-            .select({
-              id: customers.id,
-              code: customers.code,
-              legalNameEn: customers.legalNameEn,
-              legalNameAr: customers.legalNameAr,
-              openJobs: sql<number>`(
+      () => {
+        const w = window('customers')
+        if (!w) return none()
+        return tx
+          .select({
+            id: customers.id,
+            code: customers.code,
+            legalNameEn: customers.legalNameEn,
+            legalNameAr: customers.legalNameAr,
+            openJobs: sql<number>`(
             select count(*)::int from jobs j
              where j.customer_id = "customers"."id"
                and j.status not in ('closed', 'cancelled')
           )`,
-            })
-            .from(customers)
-            .where(
-              or(
-                sql`${customers.legalNameEn} ilike ${loose}`,
-                sql`${customers.legalNameAr} ilike ${loose}`,
-                sql`replace(${customers.code}, ' ', '') ilike ${tight}`,
-              ),
+          })
+          .from(customers)
+          .where(customersWhere)
+          .orderBy(asc(customers.legalNameEn), asc(customers.id))
+          .limit(w.limit)
+          .offset(w.offset)
+      },
+
+      async () => {
+        const w = window('records')
+        if (!w) return []
+        const result = await tx.execute(sql`
+          select kind, id, reference, "matchedBill"
+            from (${recordsUnion}) r
+           order by created_at desc, id
+           limit ${w.limit} offset ${w.offset}
+        `)
+        return result.rows as unknown as {
+          kind: RecordKind
+          id: string
+          reference: string | null
+          matchedBill: string | null
+        }[]
+      },
+
+      async () => ({
+        jobs: wanted('jobs')
+          ? await count(
+              tx
+                .select({ n: sql<number>`count(*)::int` })
+                .from(jobs)
+                .leftJoin(customers, eq(customers.id, jobs.customerId))
+                .where(jobsWhere),
             )
-            .orderBy(asc(customers.legalNameEn))
-            .limit(LIMIT),
-
-        () =>
-          tx
-            .select({ id: enquiries.id, reference: enquiries.reference })
-            .from(enquiries)
-            .where(sql`replace(${enquiries.reference}, ' ', '') ilike ${tight}`)
-            .orderBy(desc(enquiries.createdAt))
-            .limit(LIMIT),
-
-        () =>
-          tx
-            .select({ id: quotes.id, reference: quotes.reference })
-            .from(quotes)
-            .where(sql`replace(${quotes.reference}, ' ', '') ilike ${tight}`)
-            .orderBy(desc(quotes.createdAt))
-            .limit(LIMIT),
-
-        () =>
-          tx
-            .select({ id: invoices.id, reference: invoices.seriesNo })
-            .from(invoices)
-            // A draft has no number yet, so there is nothing for anyone to be holding.
-            .where(sql`replace(${invoices.seriesNo}, ' ', '') ilike ${tight}`)
-            .orderBy(desc(invoices.createdAt))
-            .limit(LIMIT),
-
-        () =>
-          tx
-            .select({
-              id: consolidations.id,
-              reference: consolidations.reference,
-              masterBillNumber: consolidations.masterBillNumber,
-            })
-            .from(consolidations)
-            .where(
-              or(
-                sql`replace(${consolidations.reference}, ' ', '') ilike ${tight}`,
-                sql`replace(${consolidations.masterBillNumber}, ' ', '') ilike ${tight}`,
-              ),
+          : 0,
+        containers: wanted('containers')
+          ? await count(
+              tx
+                .select({ n: sql<number>`count(*)::int` })
+                .from(equipment)
+                .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+                .where(containersWhere),
             )
-            .orderBy(desc(consolidations.createdAt))
-            .limit(LIMIT),
-      ])
+          : 0,
+        customers: wanted('customers')
+          ? await count(
+              tx
+                .select({ n: sql<number>`count(*)::int` })
+                .from(customers)
+                .where(customersWhere),
+            )
+          : 0,
+        records: wanted('records')
+          ? ((
+              (await tx.execute(sql`select count(*)::int as n from (${recordsUnion}) r`))
+                .rows[0] as { n: number } | undefined
+            )?.n ?? 0)
+          : 0,
+      }),
+    ])
 
     const matched = (reference: string, other: string | null) =>
       tighten(reference).includes(tighten(term)) ? null : other
@@ -350,24 +430,45 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
         jobStatus: row.jobStatus,
       })),
       customers: customerRows,
-      records: [
-        ...enquiryRows.map((row) => ({ kind: 'enquiry' as const, ...row, matchedValue: null })),
-        ...quoteRows.map((row) => ({ kind: 'quote' as const, ...row, matchedValue: null })),
-        ...invoiceRows.map((row) => ({
-          kind: 'invoice' as const,
-          id: row.id,
-          reference: row.reference ?? '—',
-          matchedValue: null,
-        })),
-        ...consolRows.map((row) => ({
-          kind: 'consolidation' as const,
-          id: row.id,
-          reference: row.reference,
-          matchedValue: matched(row.reference, row.masterBillNumber),
-        })),
-      ].slice(0, LIMIT),
+      records: recordRows.map((row) => ({
+        kind: row.kind,
+        id: row.id,
+        reference: row.reference ?? '—',
+        matchedValue:
+          row.kind === 'consolidation' && row.reference
+            ? matched(row.reference, row.matchedBill)
+            : null,
+      })),
+      totals,
     }
   })
+}
+
+/**
+ * The fixture search cut to the window the database query takes: twenty a
+ * group on the overview, or one group's page when focused. The totals are the
+ * full lists' lengths, which on fixtures *are* the counts.
+ */
+function windowed(all: Omit<SearchResults, 'totals'>, focus?: SearchFocus): SearchResults {
+  const cut = <T>(section: SearchSection, rows: readonly T[]): readonly T[] => {
+    if (focus === undefined) return rows.slice(0, SECTION_PREVIEW)
+    if (focus.section !== section) return []
+    return pageOf(rows, focus.request).rows
+  }
+  const counted = (section: SearchSection, rows: readonly unknown[]) =>
+    focus === undefined || focus.section === section ? rows.length : 0
+  return {
+    jobs: cut('jobs', all.jobs),
+    containers: cut('containers', all.containers),
+    customers: cut('customers', all.customers),
+    records: cut('records', all.records),
+    totals: {
+      jobs: counted('jobs', all.jobs),
+      containers: counted('containers', all.containers),
+      customers: counted('customers', all.customers),
+      records: counted('records', all.records),
+    },
+  }
 }
 
 /**
@@ -417,7 +518,7 @@ function classify(
  * a search box that only works against Postgres is a search box the client
  * never sees working.
  */
-function searchFixtures(term: string): SearchResults {
+function searchFixtures(term: string): Omit<SearchResults, 'totals'> {
   const tight = tighten(term)
   const loose = term.toLowerCase()
   const matchesTight = (value: string | null | undefined) =>
@@ -524,14 +625,13 @@ function searchFixtures(term: string): SearchResults {
       })),
   ]
 
+  // Every match; `windowed` takes the overview's twenty or a focused page.
   return {
-    records: records.slice(0, LIMIT),
-    jobs: jobHits
-      .sort((a, b) => (a.eta?.getTime() ?? Infinity) - (b.eta?.getTime() ?? Infinity))
-      .slice(0, LIMIT),
-    containers: containerHits.slice(0, LIMIT),
-    customers: [...customerHits.values()]
-      .sort((a, b) => a.legalNameEn.localeCompare(b.legalNameEn))
-      .slice(0, LIMIT),
+    records,
+    jobs: jobHits.sort((a, b) => (a.eta?.getTime() ?? Infinity) - (b.eta?.getTime() ?? Infinity)),
+    containers: containerHits,
+    customers: [...customerHits.values()].sort((a, b) =>
+      a.legalNameEn.localeCompare(b.legalNameEn),
+    ),
   }
 }

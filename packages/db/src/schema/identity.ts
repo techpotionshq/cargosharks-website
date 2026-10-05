@@ -210,6 +210,23 @@ export const principals = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     deactivatedAt: tsz('deactivated_at'),
     lastSeenAt: tsz('last_seen_at'),
+    /**
+     * The staff notification groups this person has turned email off for —
+     * run 5, R12 (`core/staff-notifications.ts`).
+     *
+     * Group keys, not event keys: a person decides "no enquiry mail", not
+     * which of three enquiry events they want. The bell is never muted, so
+     * nobody can opt out of finding out. A column on the person rather than a
+     * table of its own because it is one small list per person, read with the
+     * row the dispatcher already reads, and written by the person on their own
+     * row, which `principals_scope` already permits and the audit trigger on
+     * `principals` already records. Customers' opt-outs stay on
+     * `customer_contacts`, where a contact who never signs in can carry one.
+     */
+    notificationEmailOptOuts: jsonb('notification_email_opt_outs')
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     ...timestamps,
   },
   (t) => [

@@ -99,6 +99,9 @@ const owed = (
   currency: string,
 ) => summary.outstanding.find((entry) => entry.currency === currency)?.amount ?? '0'
 
+/** One wide page: these tests ask what a filter or scope matches, not how it pages. */
+const WIDE = { page: 1, size: 200 }
+
 describe.skipIf(!enabled)('ledger registers', () => {
   beforeAll(async () => {
     await world()
@@ -220,7 +223,7 @@ describe.skipIf(!enabled)('ledger registers', () => {
      * filtered by the query, but absent from it.
      */
     it('shows an invoice from the actor’s branch and hides the other', async () => {
-      const mine = await listInvoices(homeActor)
+      const mine = (await listInvoices(homeActor, {}, 'en', WIDE)).rows
 
       expect(mine.length).toBeGreaterThan(0)
       expect(mine.every((row) => row.branchCode === 'FXH')).toBe(true)
@@ -233,14 +236,14 @@ describe.skipIf(!enabled)('ledger registers', () => {
      * before the scoping it is here to prove stops holding.
      */
     it('shows both to a principal holding a role in both branches', async () => {
-      const away = await listInvoices(bothBranchesActor, 'issued')
+      const away = (await listInvoices(bothBranchesActor, { status: 'issued' }, 'en', WIDE)).rows
 
       expect(away.some((row) => row.branchCode === 'FXA')).toBe(true)
       expect(away.some((row) => row.branchCode === 'FXH')).toBe(true)
     })
 
     it('scopes receipts the same way', async () => {
-      const mine = await listPayments(homeActor)
+      const mine = (await listPayments(homeActor, 'en', {}, WIDE)).rows
       expect(mine.some((p) => p.id === HOME_PAYMENT)).toBe(true)
     })
 
@@ -252,7 +255,7 @@ describe.skipIf(!enabled)('ledger registers', () => {
       history has accumulated is the scoping itself.
     */
     it('scopes quotations the same way', async () => {
-      const mine = await listQuotes(homeActor)
+      const mine = (await listQuotes(homeActor, undefined, 'en', WIDE)).rows
       expect(mine.length).toBeGreaterThan(0)
       expect(mine.every((q) => q.branchCode === 'FXH')).toBe(true)
     })
@@ -317,10 +320,26 @@ describe.skipIf(!enabled)('ledger registers', () => {
       expect(after.issued).toBe(before.issued)
     })
 
+    /*
+      Against the register's total, not the length of its page: the length
+      only ever agreed while there were fewer receipts than the page held.
+    */
     it('summarises receipts against the rows it lists', async () => {
-      const rows = await listPayments(homeActor)
+      const page = await listPayments(homeActor)
       const summary = await paymentSummary(homeActor)
-      expect(summary.count).toBe(rows.length)
+      expect(summary.count).toBe(page.total)
+
+      const withBalance = await listPayments(homeActor, 'en', { withBalanceOnly: true })
+      expect(summary.withBalance).toBe(withBalance.total)
+    })
+
+    it('reaches the second page of invoices without repeating the first', async () => {
+      const one = await listInvoices(homeActor, {}, 'en', { page: 1, size: 1 })
+      const two = await listInvoices(homeActor, {}, 'en', { page: 2, size: 1 })
+
+      expect(one.total).toBeGreaterThan(1)
+      expect(two.total).toBe(one.total)
+      expect(two.rows[0]!.id).not.toBe(one.rows[0]!.id)
     })
 
     /*
@@ -484,15 +503,15 @@ describe.skipIf(!enabled)('ledger registers', () => {
 
   describe('filters', () => {
     it('filters the invoice register by status', async () => {
-      const issued = await listInvoices(homeActor, 'issued')
+      const issued = (await listInvoices(homeActor, { status: 'issued' })).rows
       expect(issued.every((i) => i.status === 'issued')).toBe(true)
 
-      const drafts = await listInvoices(homeActor, 'draft')
+      const drafts = (await listInvoices(homeActor, { status: 'draft' })).rows
       expect(drafts.every((i) => i.status === 'draft')).toBe(true)
     })
 
     it('filters quotations by status', async () => {
-      const drafts = await listQuotes(homeActor, 'draft')
+      const drafts = (await listQuotes(homeActor, 'draft')).rows
       expect(drafts.every((q) => q.status === 'draft')).toBe(true)
     })
   })
@@ -511,7 +530,7 @@ describe.skipIf(!enabled)('ledger registers', () => {
 
       // And through the register, where the row is whichever the page holds:
       // what matters is that `numeric` never arrives as a float.
-      const [row] = await listInvoices(homeActor)
+      const [row] = (await listInvoices(homeActor)).rows
       expect(typeof row!.total).toBe('string')
     })
   })

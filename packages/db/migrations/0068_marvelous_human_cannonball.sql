@@ -1,0 +1,1 @@
+ALTER TABLE "principals" ADD COLUMN "notification_email_opt_outs" jsonb DEFAULT '[]'::jsonb NOT NULL;

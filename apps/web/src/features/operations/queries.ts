@@ -13,7 +13,7 @@
  * rows as "Live" is a demo the room stops believing.
  */
 
-import { asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import {
   customers,
   customsStages,
@@ -29,10 +29,10 @@ import {
 } from '@qabandi/db'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
   pilotCustomsCounts,
   pilotCustomsRows,
-  pilotDocumentCounts,
   pilotDocumentRows,
   pilotExceptionCounts,
   pilotExceptionRows,
@@ -70,61 +70,68 @@ export async function listExceptions(
   actor: Actor,
   scope: 'open' | 'closed' | 'all' = 'open',
   locale: 'en' | 'ar' = 'en',
-): Promise<ExceptionRow[]> {
-  if (usePilotFixtures()) return pilotExceptionRows(Date.now(), scope, locale)
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<ExceptionRow>> {
+  if (usePilotFixtures()) return pageOf(pilotExceptionRows(Date.now(), scope, locale), request)
 
-  return withActor(actor, async (tx) => {
-    const filter =
-      scope === 'open'
-        ? isNull(exceptions.closedAt)
-        : scope === 'closed'
-          ? isNotNull(exceptions.closedAt)
-          : undefined
+  const filter =
+    scope === 'open'
+      ? isNull(exceptions.closedAt)
+      : scope === 'closed'
+        ? isNotNull(exceptions.closedAt)
+        : undefined
 
-    return (
-      tx
-        .select({
-          id: exceptions.id,
-          jobId: exceptions.jobId,
-          jobReference: jobs.reference,
-          customerName: customers.legalNameEn,
-          customerNameAr: customers.legalNameAr,
-          code: exceptionCodes.code,
-          nameEn: exceptionCodes.nameEn,
-          nameAr: exceptionCodes.nameAr,
-          severity: exceptions.severity,
-          description: exceptions.description,
-          openedAt: exceptions.openedAt,
-          dueAt: exceptions.dueAt,
-          closedAt: exceptions.closedAt,
-          // The owner as they write their own name — principals.name_ar (F27).
-          owner: named(locale, principals.nameEn, principals.nameAr),
-          costImpact: exceptions.costImpact,
-          costCurrency: exceptions.costCurrency,
-        })
-        .from(exceptions)
-        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-        .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
-        .leftJoin(customers, eq(customers.id, jobs.customerId))
-        .leftJoin(principals, eq(principals.id, exceptions.ownerId))
-        .where(filter)
-        /*
+  // Paged with a count where this was `limit(200)` (the audit after live run 5).
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: exceptions.id,
+            jobId: exceptions.jobId,
+            jobReference: jobs.reference,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            code: exceptionCodes.code,
+            nameEn: exceptionCodes.nameEn,
+            nameAr: exceptionCodes.nameAr,
+            severity: exceptions.severity,
+            description: exceptions.description,
+            openedAt: exceptions.openedAt,
+            dueAt: exceptions.dueAt,
+            closedAt: exceptions.closedAt,
+            // The owner as they write their own name — principals.name_ar (F27).
+            owner: named(locale, principals.nameEn, principals.nameAr),
+            costImpact: exceptions.costImpact,
+            costCurrency: exceptions.costCurrency,
+          })
+          .from(exceptions)
+          .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+          .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(principals, eq(principals.id, exceptions.ownerId))
+          .where(filter)
+          /*
         Oldest first is right for the open ones and wrong for the closed (O18):
         with more than 200 closed, the newest closures — the ones anybody is
         looking for — never made the page. Closed ones read newest-closed
         first; "all" lists the open ones (oldest first) and then the closed.
       */
-        .orderBy(
-          ...(scope === 'open'
-            ? [asc(exceptions.openedAt)]
-            : [
-                desc(sql`coalesce(${exceptions.closedAt}, 'infinity'::timestamptz)`),
-                asc(exceptions.openedAt),
-              ]),
-        )
-        .limit(200)
-    )
-  })
+          .orderBy(
+            ...(scope === 'open'
+              ? [asc(exceptions.openedAt)]
+              : [
+                  desc(sql`coalesce(${exceptions.closedAt}, 'infinity'::timestamptz)`),
+                  asc(exceptions.openedAt),
+                ]),
+            asc(exceptions.id),
+          )
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, exceptions, filter),
+    ),
+  )
 }
 
 export async function exceptionCounts(
@@ -169,55 +176,76 @@ export interface CustomsRow {
 
 export async function listCustoms(
   actor: Actor,
-  scope: 'live' | 'released' | 'all' = 'live',
-): Promise<CustomsRow[]> {
-  if (usePilotFixtures()) return pilotCustomsRows(Date.now(), scope)
+  /*
+    `held` is its own scope rather than a filter over the live page. The
+    register read the live list and kept the holds in memory, so it could find
+    only the holds among the first two hundred by deadline; and the count on
+    its tab (`customsCounts`) is `status = 'held'`, which this now matches.
+  */
+  scope: 'live' | 'held' | 'released' | 'all' = 'live',
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<CustomsRow>> {
+  if (usePilotFixtures()) {
+    const rows =
+      scope === 'held'
+        ? pilotCustomsRows(Date.now(), 'all').filter((row) => row.status === 'held')
+        : pilotCustomsRows(Date.now(), scope)
+    return pageOf(rows, request)
+  }
 
-  return withActor(actor, async (tx) => {
-    const filter =
-      scope === 'live'
-        ? isNull(customsStages.releasedAt)
+  const filter =
+    scope === 'live'
+      ? isNull(customsStages.releasedAt)
+      : scope === 'held'
+        ? eq(customsStages.status, 'held')
         : scope === 'released'
           ? isNotNull(customsStages.releasedAt)
           : undefined
 
-    return (
-      tx
-        .select({
-          id: customsStages.id,
-          jobId: customsStages.jobId,
-          jobReference: jobs.reference,
-          customerName: customers.legalNameEn,
-          customerNameAr: customers.legalNameAr,
-          status: customsStages.status,
-          declarationType: customsStages.declarationType,
-          declarationNo: customsStages.declarationNo,
-          filedAt: customsStages.filedAt,
-          releasedAt: customsStages.releasedAt,
-          slaDueAt: customsStages.slaDueAt,
-          inspectionRequired: customsStages.inspectionRequired,
-          dutyAmount: customsStages.dutyAmount,
-          dutyCurrency: customsStages.dutyCurrency,
-          brokerName: partners.legalNameEn,
-          brokerNameAr: partners.legalNameAr,
-        })
-        .from(customsStages)
-        .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
-        .leftJoin(customers, eq(customers.id, jobs.customerId))
-        .leftJoin(partners, eq(partners.id, customsStages.brokerPartnerId))
-        .where(filter)
-        // Released ones newest first, for the reason the exceptions give (O18).
-        .orderBy(
-          ...(scope === 'live'
-            ? [asc(customsStages.slaDueAt)]
-            : [
-                desc(sql`coalesce(${customsStages.releasedAt}, 'infinity'::timestamptz)`),
-                asc(customsStages.slaDueAt),
-              ]),
-        )
-        .limit(200)
-    )
-  })
+  // Paged with a count where this was `limit(200)` (the audit after live run 5).
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: customsStages.id,
+            jobId: customsStages.jobId,
+            jobReference: jobs.reference,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            status: customsStages.status,
+            declarationType: customsStages.declarationType,
+            declarationNo: customsStages.declarationNo,
+            filedAt: customsStages.filedAt,
+            releasedAt: customsStages.releasedAt,
+            slaDueAt: customsStages.slaDueAt,
+            inspectionRequired: customsStages.inspectionRequired,
+            dutyAmount: customsStages.dutyAmount,
+            dutyCurrency: customsStages.dutyCurrency,
+            brokerName: partners.legalNameEn,
+            brokerNameAr: partners.legalNameAr,
+          })
+          .from(customsStages)
+          .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(partners, eq(partners.id, customsStages.brokerPartnerId))
+          .where(filter)
+          // Released ones newest first, for the reason the exceptions give (O18).
+          .orderBy(
+            ...(scope === 'live'
+              ? [asc(customsStages.slaDueAt)]
+              : [
+                  desc(sql`coalesce(${customsStages.releasedAt}, 'infinity'::timestamptz)`),
+                  asc(customsStages.slaDueAt),
+                ]),
+            asc(customsStages.id),
+          )
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, customsStages, filter),
+    ),
+  )
 }
 
 export async function customsCounts(
@@ -258,61 +286,155 @@ export interface DocumentRow {
   readonly isSuperseded: boolean
 }
 
+export interface DocumentFilters {
+  /** Shipment reference, customer name in either language, or document type. */
+  readonly search?: string
+  /** `released`, or `draft` for not yet released — the two figures the summary counts. */
+  readonly state?: 'released' | 'draft'
+}
+
+/** The fixture register, filtered exactly as `documentsWhere` filters the table. */
+function pilotDocumentsMatching(filters: DocumentFilters, locale: 'en' | 'ar'): DocumentRow[] {
+  const term = filters.search?.trim().toLowerCase()
+  return pilotDocumentRows(Date.now(), locale).filter(
+    (row) =>
+      (!filters.state ||
+        (filters.state === 'released' ? row.releasedAt !== null : row.releasedAt === null)) &&
+      (!term ||
+        [
+          row.jobReference,
+          row.customerName,
+          row.customerNameAr,
+          row.typeCode,
+          row.typeNameEn,
+          row.typeNameAr,
+        ].some((value) => (value ?? '').toLowerCase().includes(term))),
+  )
+}
+
+/**
+ * The register's filter as SQL, shared by the page and every count.
+ *
+ * Over the joined shipment, customer and document type, because those are what
+ * somebody types: "the bill for Fintas", "KWI-JOB-2026-00412", "packing list".
+ */
+function documentsWhere(filters: DocumentFilters) {
+  const term = filters.search?.trim()
+  const like = term ? `%${term}%` : undefined
+  return and(
+    filters.state === 'released'
+      ? isNotNull(documents.releasedAt)
+      : filters.state === 'draft'
+        ? isNull(documents.releasedAt)
+        : undefined,
+    like
+      ? or(
+          ilike(jobs.reference, like),
+          ilike(customers.legalNameEn, like),
+          ilike(customers.legalNameAr, like),
+          ilike(documentTypes.code, like),
+          ilike(documentTypes.nameEn, like),
+          ilike(documentTypes.nameAr, like),
+        )
+      : undefined,
+  )
+}
+
 /**
  * The document register, newest first.
  *
  * Superseded versions stay visible rather than being filtered out: a house
  * bill that was reissued is exactly the thing someone needs to find when the
  * customer is holding the old one.
+ *
+ * Paged, searchable and filterable. Live run 5 found a hundred and five rows
+ * in one unbroken list with no way to look for anything, capped at two hundred
+ * besides, and a branch raises several documents per shipment — the register
+ * a launch with four hundred open jobs would have outgrown in its first week.
  */
 export async function listDocuments(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<DocumentRow[]> {
-  if (usePilotFixtures()) return pilotDocumentRows(Date.now(), locale)
+  filters: DocumentFilters = {},
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<DocumentRow>> {
+  if (usePilotFixtures()) return pageOf(pilotDocumentsMatching(filters, locale), request)
 
-  return withActor(actor, async (tx) =>
-    tx
+  const where = documentsWhere(filters)
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: documents.id,
+            jobId: documents.jobId,
+            jobReference: jobs.reference,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            typeCode: documentTypes.code,
+            typeNameEn: documentTypes.nameEn,
+            typeNameAr: documentTypes.nameAr,
+            category: documentTypes.category,
+            version: documents.version,
+            releasedAt: documents.releasedAt,
+            authorName: named(locale, principals.nameEn, principals.nameAr),
+            createdAt: documents.createdAt,
+            isSuperseded: sql<boolean>`${documents.supersededById} is not null`,
+          })
+          .from(documents)
+          .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
+          .innerJoin(jobs, eq(jobs.id, documents.jobId))
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(principals, eq(principals.id, documents.authorId))
+          .where(where)
+          .orderBy(desc(documents.createdAt), desc(documents.id))
+          .limit(limit)
+          .offset(offset),
+      async () => {
+        const [row] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(documents)
+          .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
+          .innerJoin(jobs, eq(jobs.id, documents.jobId))
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .where(where)
+        return row?.n ?? 0
+      },
+    ),
+  )
+}
+
+/**
+ * The register's figures — every document, released, and not yet released —
+ * over the same search the table is showing, so the filter beside each figure
+ * pages through exactly that many rows.
+ */
+export async function documentCounts(
+  actor: Actor,
+  search?: string,
+): Promise<{ total: number; released: number; draft: number }> {
+  if (usePilotFixtures()) {
+    const rows = pilotDocumentsMatching({ search }, 'en')
+    return {
+      total: rows.length,
+      released: rows.filter((row) => row.releasedAt !== null).length,
+      draft: rows.filter((row) => row.releasedAt === null).length,
+    }
+  }
+
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
       .select({
-        id: documents.id,
-        jobId: documents.jobId,
-        jobReference: jobs.reference,
-        customerName: customers.legalNameEn,
-        customerNameAr: customers.legalNameAr,
-        typeCode: documentTypes.code,
-        typeNameEn: documentTypes.nameEn,
-        typeNameAr: documentTypes.nameAr,
-        category: documentTypes.category,
-        version: documents.version,
-        releasedAt: documents.releasedAt,
-        authorName: named(locale, principals.nameEn, principals.nameAr),
-        createdAt: documents.createdAt,
-        isSuperseded: sql<boolean>`${documents.supersededById} is not null`,
+        total: sql<number>`count(*)::int`,
+        released: sql<number>`(count(*) filter (where ${documents.releasedAt} is not null))::int`,
+        draft: sql<number>`(count(*) filter (where ${documents.releasedAt} is null))::int`,
       })
       .from(documents)
       .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
       .innerJoin(jobs, eq(jobs.id, documents.jobId))
       .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(principals, eq(principals.id, documents.authorId))
-      .orderBy(desc(documents.createdAt))
-      .limit(200),
-  )
-}
-
-export async function documentCounts(
-  actor: Actor,
-): Promise<{ total: number; released: number; draft: number }> {
-  if (usePilotFixtures()) return pilotDocumentCounts()
-
-  return withActor(actor, async (tx) => {
-    const result = await tx.execute(sql`
-      select count(*)::int                                        as total,
-             count(*) filter (where released_at is not null)::int as released,
-             count(*) filter (where released_at is null)::int     as draft
-        from documents
-    `)
-    const row = result.rows[0] as unknown as
-      { total: number; released: number; draft: number } | undefined
+      .where(documentsWhere({ search }))
     return { total: row?.total ?? 0, released: row?.released ?? 0, draft: row?.draft ?? 0 }
   })
 }

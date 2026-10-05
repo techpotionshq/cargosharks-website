@@ -23,6 +23,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
   pilotCustomer,
   pilotCustomerContacts,
@@ -61,10 +62,14 @@ export interface CustomerDetail extends CustomerRow {
   }[]
 }
 
-export async function listCustomers(actor: Actor, search?: string): Promise<CustomerRow[]> {
+export async function listCustomers(
+  actor: Actor,
+  search?: string,
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<CustomerRow>> {
   // The search term goes through: a register whose box does nothing is a
   // register the room reads as broken.
-  if (usePilotFixtures()) return pilotCustomers(search)
+  if (usePilotFixtures()) return pageOf(pilotCustomers(search), request)
 
   return withActor(actor, async (tx) => {
     const term = search?.trim()
@@ -76,28 +81,47 @@ export async function listCustomers(actor: Actor, search?: string): Promise<Cust
         )
       : undefined
 
-    return tx
-      .select({
-        id: customers.id,
-        code: customers.code,
-        legalNameEn: customers.legalNameEn,
-        legalNameAr: customers.legalNameAr,
-        countryCode: customers.countryCode,
-        isActive: customers.isActive,
-        branchCode: branches.code,
-        // Counted in the same statement rather than an N+1 per row: at a
-        // 300ms round trip, one query per customer is a visibly slow page.
-        openJobs: sql<number>`(
+    /*
+      Paged, with a count (R10). This was `limit(200)` with no way past it, so
+      with 211 customers the last eleven by name — Jahra Industries among them
+      — were missing from the register while the search box still found them.
+    */
+    return readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: customers.id,
+            code: customers.code,
+            legalNameEn: customers.legalNameEn,
+            legalNameAr: customers.legalNameAr,
+            countryCode: customers.countryCode,
+            isActive: customers.isActive,
+            branchCode: branches.code,
+            // Counted in the same statement rather than an N+1 per row: at a
+            // 300ms round trip, one query per customer is a visibly slow page.
+            openJobs: sql<number>`(
           select count(*)::int from jobs j
            where j.customer_id = "customers"."id"
              and j.status not in ('closed', 'cancelled')
         )`,
-      })
-      .from(customers)
-      .leftJoin(branches, eq(branches.id, customers.primaryBranchId))
-      .where(filter)
-      .orderBy(asc(customers.legalNameEn))
-      .limit(200)
+          })
+          .from(customers)
+          .leftJoin(branches, eq(branches.id, customers.primaryBranchId))
+          .where(filter)
+          // `id` breaks ties between two companies with the same name, so no
+          // row sits on two pages or on none.
+          .orderBy(asc(customers.legalNameEn), asc(customers.id))
+          .limit(limit)
+          .offset(offset),
+      async () => {
+        const [row] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(customers)
+          .where(filter)
+        return row?.n ?? 0
+      },
+    )
   })
 }
 

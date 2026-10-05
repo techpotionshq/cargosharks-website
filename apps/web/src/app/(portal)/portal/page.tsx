@@ -14,7 +14,9 @@
 import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { listPortalShipments } from '@/features/portal/queries'
+import { listPortalShipments, portalShipmentCounts } from '@/features/portal/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay, formatNumber, formatRelative } from '@/lib/format'
 import { Card } from '@/ui/card'
@@ -30,40 +32,42 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('portal') }
 }
 
-export default async function PortalHome() {
+export default async function PortalHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const shipments = await listPortalShipments(session.actor, locale)
+  const { page } = await searchParams
+  const [shipmentsPage, counts] = await Promise.all([
+    listPortalShipments(session.actor, locale, pageRequest(page)),
+    portalShipmentCounts(session.actor),
+  ])
+  const shipments = shipmentsPage.rows
 
   const t = await getTranslations('portal')
   const tJob = await getTranslations('job')
   const tMode = await getTranslations('mode')
   const now = Date.now()
 
-  const active = shipments.filter((s) => !['completed', 'closed', 'cancelled'].includes(s.status))
-  const arriving = shipments.filter(
-    (s) => s.eta !== null && s.eta.getTime() > now && s.eta.getTime() < now + 7 * 86_400_000,
-  )
-  const documents = shipments.reduce((sum, s) => sum + s.documentsReleased, 0)
+  // Counted over every shipment the customer may see, not over this page of them.
+  const { active, arriving, documents } = counts
 
   return (
     <>
       <PageHeader title={t('title')} description={t('subtitle')} />
 
       <div className="mb-5 grid grid-cols-1 gap-4 @xl:grid-cols-3">
-        <StatTile label={t('active')} value={formatNumber(active.length, locale)} icon="jobs" />
-        <StatTile
-          label={t('arriving')}
-          value={formatNumber(arriving.length, locale)}
-          icon="calendar"
-        />
+        <StatTile label={t('active')} value={formatNumber(active, locale)} icon="jobs" />
+        <StatTile label={t('arriving')} value={formatNumber(arriving, locale)} icon="calendar" />
         <StatTile label={t('documents')} value={formatNumber(documents, locale)} icon="document" />
       </div>
 
-      {shipments.length === 0 ? (
+      {shipmentsPage.total === 0 ? (
         <Card>
           <EmptyState icon="ship" title={t('empty')} description={t('emptyHint')} />
         </Card>
@@ -194,6 +198,11 @@ export default async function PortalHome() {
           })}
         </ul>
       )}
+      <Pager
+        page={shipmentsPage}
+        path="/portal"
+        className="mt-3 rounded-card border border-line bg-surface"
+      />
     </>
   )
 }

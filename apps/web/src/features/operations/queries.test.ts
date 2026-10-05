@@ -50,7 +50,7 @@ describe.skipIf(!enabled)('the exceptions register', () => {
       ]),
     )
 
-    const closed = await listExceptions(bothBranchesActor, 'closed')
+    const closed = (await listExceptions(bothBranchesActor, 'closed')).rows
     expect(closed[0]!.description).toBe('closed just now')
   })
 })
