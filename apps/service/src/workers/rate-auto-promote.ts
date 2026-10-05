@@ -25,6 +25,7 @@ import {
   promoteRateReply,
   rateRequests,
   systemActor,
+  fxRateOrder,
   withActor,
   SYSTEM_PRINCIPAL_ID,
   type Tx,
@@ -293,7 +294,8 @@ async function latestRates(
     })
     .from(fxRates)
     .where(and(inCurrencies(froms), eq(fxRates.toCurrency, base)))
-    .orderBy(sql`${fxRates.effectiveOn} desc`)
+    // The shared order: newest day, a hand-entered rate over the feed's that day.
+    .orderBy(...fxRateOrder())
 
   for (const row of rows) {
     if (!map.has(row.fromCurrency)) map.set(row.fromCurrency, row.rate)

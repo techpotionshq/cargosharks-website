@@ -47,6 +47,7 @@ import {
   type RateLine,
 } from '@qabandi/core'
 import { chargeableRuleFor } from './chargeable'
+import { FX_RATE_ORDER_SQL } from './fx-feed'
 import { findCoveringRateCard, type CoveringRateCard, type CoveringRateLine } from './rate-cards'
 import type { Tx } from './actor'
 
@@ -201,20 +202,38 @@ export async function priceEnquiryToQuote(
     .then((r) => r.rows as unknown as { code: string; minorUnits: number }[])
   const lookup = currencyLookup(currencies)
 
-  // The newest rate on or before the pricing date, never a later one (FR-RT-06).
+  /*
+    The newest rate on or before the pricing date, never a later one (FR-RT-06).
+
+    The order after `from_currency` is the shared one in `fx-feed.ts`. It was
+    `effective_on desc` alone, so on a day holding both a feed row and a
+    hand-entered one `distinct on` returned whichever the scan met first —
+    the administrator's rate on some quotations and the feed's on others.
+    Source and moment come along so the screen can say whose rate it was.
+  */
   const rates = await tx
     .execute(
       sql`
         select distinct on (from_currency)
                from_currency as "from", to_currency as "to", rate::text as rate,
-               effective_on::text as "effectiveOn"
+               effective_on::text as "effectiveOn", source, taken_at as "takenAt"
           from fx_rates
          where to_currency = ${enquiry.baseCurrency}
            and effective_on <= ${on}::date
-         order by from_currency, effective_on desc
+         order by from_currency, ${FX_RATE_ORDER_SQL}
       `,
     )
-    .then((r) => r.rows as unknown as { from: string; to: string; rate: string }[])
+    .then(
+      (r) =>
+        r.rows as unknown as {
+          from: string
+          to: string
+          rate: string
+          effectiveOn: string
+          source: string
+          takenAt: Date | string
+        }[],
+    )
 
   const pricedAt = new Date()
   const opts: PricingOptions = {
@@ -343,7 +362,36 @@ export async function priceEnquiryToQuote(
         chargeableBasis: derived?.basis ?? null,
         divisorCm3PerKg: rule?.divisorCm3PerKg?.toString() ?? null,
         baseCurrency: opts.baseCurrency,
-        fx: opts.fxRates.map((r) => ({ from: r.from, to: r.to, rate: r.rate.toString() })),
+        /*
+          Every rate onto the base that was on file, with whose rate it was and
+          when it was taken — so the quotation screen can show the person
+          pricing "USD→KWD 0.30918 · ExchangeRate-API · 05 Oct" before they
+          send it. `rate` stays the first key readers look for.
+        */
+        fx: rates.map((r) => ({
+          from: r.from,
+          to: r.to,
+          rate: dec(r.rate).toString(),
+          source: r.source,
+          effectiveOn: r.effectiveOn,
+          takenAt: new Date(r.takenAt).toISOString(),
+        })),
+        /*
+          The rates a line was actually converted at, which is what decides
+          whether the customer's quotation carries the conversion footnote
+          (`quoteConversionDate` in core). A card already in the base currency
+          converts nothing, and a footnote there would be noise.
+        */
+        converted: rates
+          .filter((r) => priced.some((line) => line.amount.currency === r.from))
+          .map((r) => ({
+            from: r.from,
+            to: r.to,
+            rate: dec(r.rate).toString(),
+            source: r.source,
+            effectiveOn: r.effectiveOn,
+            takenAt: new Date(r.takenAt).toISOString(),
+          })),
         inclusions: revenue.map((line) => nameFor(line.chargeTypeKey, sellCard ?? buyCard!)),
         /*
           The buy side line by line, in the quotation's currency and converted

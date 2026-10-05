@@ -11,6 +11,7 @@ import {
   partners,
   rateCards,
   rateRequests,
+  fxRateOrder,
   withActor,
   type Actor,
 } from '@qabandi/db'
@@ -410,7 +411,8 @@ async function latestRates(
     })
     .from(fxRates)
     .where(and(inArray(fxRates.fromCurrency, [...froms]), eq(fxRates.toCurrency, base)))
-    .orderBy(desc(fxRates.effectiveOn))
+    // The shared order: newest day, a hand-entered rate over the feed's that day.
+    .orderBy(...fxRateOrder())
 
   // Rows come newest first; the first seen for a currency is its latest rate.
   for (const row of rows) {
