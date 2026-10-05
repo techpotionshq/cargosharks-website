@@ -22,7 +22,9 @@ const {
   referenceCounts,
   listChargeTypes,
   listReferenceSample,
+  countUsers,
   listAudit,
+  listAuditPage,
   auditTableCounts,
   listCalendarOptions,
 } = await import('./queries')
@@ -34,8 +36,22 @@ describe.skipIf(!enabled)('administration reads', () => {
 
   describe('people and places', () => {
     it('lists the fixture principal among the users', async () => {
-      const emails = (await listUsers(bothBranchesActor)).map((u) => u.email)
+      const emails = (await listUsers(bothBranchesActor, { page: 1, size: 500 })).rows.map(
+        (u) => u.email,
+      )
       expect(emails).toContain('fixtures@qabandi.test')
+    })
+
+    /*
+      The register's figures are counts, not the length of a page: one row a
+      page, and "People" still reads every member of staff.
+    */
+    it('counts every member of staff, whatever page is showing', async () => {
+      const page = await listUsers(bothBranchesActor, { page: 1, size: 1 })
+      const counts = await countUsers(bothBranchesActor)
+      expect(counts.people).toBe(page.total)
+      expect(page.rows).toHaveLength(1)
+      expect(counts.withLogin).toBeLessThanOrEqual(counts.people)
     })
 
     /** The seeded matrix: seven roles, and the permission counts behind them. */
@@ -192,6 +208,19 @@ describe.skipIf(!enabled)('administration reads', () => {
 
     it('honours the row cap the export relies on', async () => {
       expect((await listAudit(adminActor, { limit: 3 })).length).toBeLessThanOrEqual(3)
+    })
+
+    /*
+      The screen pages the same filter the export reads, and its "Entries"
+      figure is the total, not the hundred and fifty rows it used to fetch.
+    */
+    it('pages the trail, with the total the screen prints', async () => {
+      const one = await listAuditPage(adminActor, {}, { page: 1, size: 2 })
+      const two = await listAuditPage(adminActor, {}, { page: 2, size: 2 })
+      expect(one.total).toBeGreaterThan(2)
+      expect(two.total).toBe(one.total)
+      const firstIds = new Set(one.rows.map((row) => String(row.id)))
+      expect(two.rows.some((row) => firstIds.has(String(row.id)))).toBe(false)
     })
   })
 })

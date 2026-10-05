@@ -32,6 +32,7 @@ import {
   Buildings,
   CalendarBlank,
   CaretDown,
+  CaretLeft,
   CaretRight,
   ChatsCircle,
   ChartLineUp,
@@ -125,6 +126,8 @@ const ICONS = {
   search: MagnifyingGlass,
   filter: FunnelSimple,
   'chevron-end': CaretRight,
+  /** The previous page. Mirrored like its partner, so it points back toward the start edge. */
+  'chevron-start': CaretLeft,
   'chevron-down': CaretDown,
   'arrow-end': ArrowRight,
   'arrow-up-end': ArrowUpRight,
@@ -157,6 +160,7 @@ export type IconName = keyof typeof ICONS
 /** Glyphs whose meaning depends on reading direction. */
 const MIRRORED = new Set<IconName>([
   'chevron-end',
+  'chevron-start',
   'arrow-end',
   'arrow-up-end',
   'arrow-down-end',

@@ -13,12 +13,13 @@
 
 import type { Metadata } from 'next'
 import { Fragment } from 'react'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
   listCalendars,
   listChargeTypes,
   listDutyRates,
+  getFxFeedPanel,
   listFxRates,
   listEngineRules,
   listMilestoneTemplates,
@@ -42,7 +43,9 @@ import {
   MilestoneTemplateDialog,
   WorkingCalendarDialog,
 } from '@/features/admin/ui/reference-dialogs'
-import { formatMoney, formatNumber, trimDecimal } from '@/lib/format'
+import { formatDateTime, formatMoney, formatNumber, trimDecimal } from '@/lib/format'
+import { FxFeedNotice, hasFeedRows } from '@/features/admin/ui/fx-feed-notice'
+import { fxSourceName, type FxTranslate } from '@/lib/fx-label'
 
 /**
  * One height for every register on this page — 34rem.
@@ -122,7 +125,7 @@ export default async function ReferencePage() {
       ? t(`categories.${category}` as 'categories.other')
       : category
 
-  const [counts, charges, sample, milestones, calendars, duties, rules, fx, records] =
+  const [counts, charges, sample, milestones, calendars, duties, rules, fx, records, fxFeed] =
     await Promise.all([
       referenceCounts(session.actor),
       listChargeTypes(session.actor),
@@ -133,7 +136,22 @@ export default async function ReferencePage() {
       listEngineRules(session.actor),
       listFxRates(session.actor),
       listReferenceRecords(session.actor),
+      getFxFeedPanel(session.actor),
     ])
+  const tFx = await getTranslations('fxFeed')
+  const timeZone = await getTimeZone()
+  /*
+    Whose rate each row is. A feed row names its provider; a hand-entered one
+    says so, with who typed it and when where the audit trail tells us.
+  */
+  const fxSourceLabel = (row: (typeof fx)[number]) => {
+    if (row.source === 'manual') {
+      const at = row.takenAt ? formatDateTime(row.takenAt, locale, timeZone) : null
+      if (!at) return t('fxManual')
+      return row.enteredBy ? tFx('manualBy', { name: row.enteredBy, at }) : tFx('manualAt', { at })
+    }
+    return fxSourceName(row.source, tFx as unknown as FxTranslate) ?? row.source
+  }
 
   /*
     The engine rules, worded here rather than in the read.
@@ -782,6 +800,7 @@ export default async function ReferencePage() {
               description={t('fxRatesHint')}
               actions={<FxRateDialog />}
             />
+            <FxFeedNotice panel={fxFeed} feedRowsShown={hasFeedRows(fx)} className="mt-3" />
           </div>
           {fx.length === 0 ? (
             <EmptyState icon="finance" title={t('noFxRates')} description={t('noFxRatesHint')} />
@@ -810,7 +829,7 @@ export default async function ReferencePage() {
                     </TD>
                     <TD className="numeric text-ink-muted">{row.effectiveOn}</TD>
                     <TD priority="low" className="text-ink-muted">
-                      {row.source === 'manual' ? t('fxManual') : row.source}
+                      {fxSourceLabel(row)}
                     </TD>
                     <TD align="end">
                       <FxRateDialog

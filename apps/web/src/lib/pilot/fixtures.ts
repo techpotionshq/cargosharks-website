@@ -87,6 +87,7 @@ import type {
   DocumentView,
   DutyRateRow,
   EngineRuleRow,
+  FxFeedPanel,
   FxRateRow,
   EnquiryProposalRow,
   EnquirySummary,
@@ -3925,15 +3926,6 @@ export function pilotPartners(search?: string): PartnerRow[] {
     .sort((a, b) => a.legalNameEn.localeCompare(b.legalNameEn))
 }
 
-/** Serves `partnerTypeCounts` — the filter strip, derived so it cannot drift. */
-export function pilotPartnerTypeCounts(): { type: string; count: number }[] {
-  const counts = new Map<string, number>()
-  for (const row of PARTNERS) counts.set(row.type, (counts.get(row.type) ?? 0) + 1)
-  return [...counts.entries()]
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => a.type.localeCompare(b.type))
-}
-
 /** Serves `listLocations`. `useCount` is the column that tells you which matter. */
 export function pilotLocations(search?: string): LocationRow[] {
   const term = search?.trim().toLowerCase()
@@ -4370,21 +4362,9 @@ export function pilotDocumentRows(now = Date.now(), locale: 'en' | 'ar' = 'en'):
     })
   })
 
-  return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 200)
-}
-
-/** Serves `documentCounts`. */
-export function pilotDocumentCounts(now = Date.now()): {
-  total: number
-  released: number
-  draft: number
-} {
-  const rows = pilotDocumentRows(now)
-  return {
-    total: rows.length,
-    released: rows.filter((row) => row.releasedAt !== null).length,
-    draft: rows.filter((row) => row.releasedAt === null).length,
-  }
+  // No cap: the register pages (`lib/paging.ts`). The `slice(0, 200)` here
+  // mirrored the query's old `limit(200)`, so both sides now return everything.
+  return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 }
 
 // --- payables — features/payables/queries.ts --------------------------------
@@ -5585,6 +5565,15 @@ export function pilotDutyRates(now = Date.now()): DutyRateRow[] {
  * Serves `listFxRates` — the rates the pilot's USD cards are priced through,
  * at roughly the levels the demo's KWD totals were computed at.
  */
+/**
+ * Serves `getFxFeedPanel`. Manual, because the fixture integration row is
+ * manual: the pilot demo types its rates, and a feed panel claiming otherwise
+ * would describe a deployment that is not there.
+ */
+export function pilotFxFeed(): FxFeedPanel {
+  return { driver: 'manual', stale: null, lastFetchedAt: null }
+}
+
 export function pilotFxRates(now = Date.now()): FxRateRow[] {
   return [
     {

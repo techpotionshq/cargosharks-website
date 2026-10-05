@@ -33,6 +33,8 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { Button, Lane } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
@@ -47,20 +49,21 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ direction?: string }>
+  searchParams: Promise<{ direction?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const { direction } = await searchParams
+  const { direction, page } = await searchParams
 
-  const [rows, summary, margins, expiring] = await Promise.all([
+  const [cardsPage, summary, margins, expiring] = await Promise.all([
     listRateCards(
       session.actor,
       direction === 'buy' || direction === 'sell' ? direction : undefined,
       locale,
+      pageRequest(page),
     ),
     rateCardSummary(session.actor),
     laneMargins(session.actor, locale),
@@ -306,7 +309,7 @@ export default async function RatesPage({
             active: direction === 'sell',
           },
         ]}
-        isEmpty={rows.length === 0}
+        isEmpty={cardsPage.total === 0}
         empty={{
           icon: 'rates',
           title: direction ? t('noneMatching') : t('noneYet'),
@@ -330,7 +333,7 @@ export default async function RatesPage({
             </TR>
           </THead>
           <TBody>
-            {rows.map((row) => (
+            {cardsPage.rows.map((row) => (
               <TR key={row.id}>
                 <TD>
                   <Badge tone={row.direction === 'buy' ? 'info' : 'brand'}>
@@ -387,6 +390,7 @@ export default async function RatesPage({
             ))}
           </TBody>
         </TableShell>
+        <Pager page={cardsPage} path="/rates" params={{ direction }} />
       </Register>
     </>
   )

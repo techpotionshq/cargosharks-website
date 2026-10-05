@@ -4,23 +4,23 @@ import { alias } from 'drizzle-orm/pg-core'
 import {
   branches,
   enquiries,
-  fxRates,
   locations,
   partnerContacts,
   partnerCoverage,
   partners,
   rateCards,
   rateRequests,
+  ratesOnto,
   withActor,
   type Actor,
 } from '@qabandi/db'
-import { dec, rateReplyReview } from '@qabandi/core'
 import type {
   CoveringAgent,
   RateRequestsView,
   RateRequestView,
   RenewalView,
 } from '@/lib/pilot/types'
+import { convertToBase, D, rateReplyReview, todayIn } from '@qabandi/core'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotCoveringAgents, pilotRateRequests, pilotRenewals } from '@/lib/pilot/fixtures'
@@ -48,7 +48,7 @@ export async function getEnquiryRateRequests(
 
   return withActor(actor, async (tx) => {
     const [enquiry] = await tx
-      .select({ branchId: enquiries.branchId })
+      .select({ branchId: enquiries.branchId, readyOn: enquiries.readyOn })
       .from(enquiries)
       .where(eq(enquiries.id, enquiryId))
       .limit(1)
@@ -88,7 +88,18 @@ export async function getEnquiryRateRequests(
           .filter((c): c is string => Boolean(c) && c !== baseCurrency),
       ),
     ]
-    const fx = await latestRates(tx, currencies, baseCurrency)
+    /*
+      The rates "Price it" would use: the same query (`ratesOnto`), on the
+      same day — the enquiry's readiness date, or today. A comparison that
+      ranked at one rate and a quotation priced at another is the
+      disagreement this used to allow.
+    */
+    const { rates: fx, places } = await ratesOnto(
+      tx,
+      currencies,
+      baseCurrency,
+      enquiry.readyOn ?? todayIn(),
+    )
 
     const requests: RateRequestView[] = rows.map((row) => {
       const response = (row.response ?? {}) as {
@@ -112,7 +123,13 @@ export async function getEnquiryRateRequests(
             ? response.unpriced
             : 0
 
-      const normalizedTotal = normalise(row.quotedTotal, row.quotedCurrency, baseCurrency, fx)
+      const normalizedTotal = convertToBase(
+        row.quotedTotal,
+        row.quotedCurrency,
+        baseCurrency,
+        row.quotedCurrency ? fx.get(row.quotedCurrency)?.rate : null,
+        places,
+      )
 
       /*
         What a person must check before trusting the figure (R1): a line kept
@@ -187,8 +204,9 @@ export async function getEnquiryRateRequests(
         (r.review?.ranked ?? true),
     )
     if (ranked.length > 0) {
+      // Compared as decimals: two totals a fils apart are not equal floats.
       const cheapest = ranked.reduce((a, b) =>
-        dec(a.normalizedTotal!).lessThanOrEqualTo(dec(b.normalizedTotal!)) ? a : b,
+        new D(a.normalizedTotal!).lte(new D(b.normalizedTotal!)) ? a : b,
       )
       const flagged = requests.map((r) => (r.id === cheapest.id ? { ...r, isCheapest: true } : r))
       requests.length = 0
@@ -415,55 +433,4 @@ async function countryOf(
     .where(eq(locations.id, locationId))
     .limit(1)
   return row?.country ?? null
-}
-
-/** The most recent rate for each currency onto the base, as a string map. */
-async function latestRates(
-  tx: Parameters<Parameters<typeof withActor>[1]>[0],
-  froms: readonly string[],
-  base: string,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
-  if (froms.length === 0) return map
-
-  const rows = await tx
-    .select({
-      fromCurrency: fxRates.fromCurrency,
-      rate: fxRates.rate,
-      effectiveOn: fxRates.effectiveOn,
-    })
-    .from(fxRates)
-    .where(and(inArray(fxRates.fromCurrency, [...froms]), eq(fxRates.toCurrency, base)))
-    .orderBy(desc(fxRates.effectiveOn))
-
-  // Rows come newest first; the first seen for a currency is its latest rate.
-  for (const row of rows) {
-    if (!map.has(row.fromCurrency)) map.set(row.fromCurrency, row.rate)
-  }
-  return map
-}
-
-/**
- * A quoted total on the base currency, or null when it cannot be brought there.
- *
- * Same currency needs no rate; a different one needs a rate on file, and its
- * absence is honestly null rather than a guess. Kept as a fixed-scale string —
- * this is money and never a float — using the same three-place discipline the
- * rest of the system holds KWD to.
- */
-function normalise(
-  total: string | null,
-  currency: string | null,
-  base: string,
-  fx: ReadonlyMap<string, string>,
-): string | null {
-  if (!total || !currency) return null
-  if (currency === base) return total
-  const rate = fx.get(currency)
-  if (!rate) return null
-  // Decimal-safe multiply via integer math would be ideal; here the figure is a
-  // ranking key shown to a person, so a Number multiply with a fixed scale is
-  // honest enough and never feeds an invoice.
-  const converted = Number(total) * Number(rate)
-  return Number.isFinite(converted) ? converted.toFixed(3) : null
 }

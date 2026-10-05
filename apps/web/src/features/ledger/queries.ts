@@ -19,7 +19,7 @@
  */
 
 import 'server-only'
-import { asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import {
   accountingExports,
   branches,
@@ -33,9 +33,10 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { named } from '@/lib/named'
-import { OWED_INVOICE_STATUSES } from '@qabandi/core'
+import { D, OWED_INVOICE_STATUSES, isInvoiceOverdue } from '@qabandi/core'
 import type { CurrencyAmount } from '@/lib/by-currency'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
   pilotAccountingExports,
   pilotHasQuotes,
@@ -70,40 +71,55 @@ export interface QuoteRow {
   readonly branchCode: string | null
 }
 
-/** `locale` names the customer in the reader's language (F27). */
+/**
+ * `locale` names the customer in the reader's language (F27).
+ *
+ * A page, not a capped list: this was `limit(200)`, newest first, so the
+ * two-hundred-and-first quotation simply was not on the register (the audit
+ * after live run 5, R9's pattern). The counts beside the filters were already
+ * their own query (`quoteStatusCounts`), and still are.
+ */
 export async function listQuotes(
   actor: Actor,
   status?: string,
   locale: 'en' | 'ar' = 'en',
-): Promise<QuoteRow[]> {
-  if (usePilotFixtures()) return pilotQuotes(Date.now(), status, locale)
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<QuoteRow>> {
+  if (usePilotFixtures()) return pageOf(pilotQuotes(Date.now(), status, locale), request)
 
+  const where = status ? eq(quotes.status, status as never) : undefined
   return withActor(actor, async (tx) =>
-    tx
-      .select({
-        id: quotes.id,
-        reference: quotes.reference,
-        version: quotes.version,
-        status: quotes.status,
-        currency: quotes.currency,
-        totalSell: quotes.totalSell,
-        totalCost: quotes.totalCost,
-        validUntil: quotes.validUntil,
-        sentAt: quotes.sentAt,
-        decidedAt: quotes.decidedAt,
-        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
-        enquiryReference: enquiries.reference,
-        preparedBy: named(locale, principals.nameEn, principals.nameAr),
-        branchCode: branches.code,
-      })
-      .from(quotes)
-      .leftJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
-      .leftJoin(customers, eq(customers.id, enquiries.customerId))
-      .leftJoin(principals, eq(principals.id, quotes.preparedById))
-      .leftJoin(branches, eq(branches.id, quotes.branchId))
-      .where(status ? eq(quotes.status, status as never) : undefined)
-      .orderBy(desc(quotes.createdAt))
-      .limit(200),
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: quotes.id,
+            reference: quotes.reference,
+            version: quotes.version,
+            status: quotes.status,
+            currency: quotes.currency,
+            totalSell: quotes.totalSell,
+            totalCost: quotes.totalCost,
+            validUntil: quotes.validUntil,
+            sentAt: quotes.sentAt,
+            decidedAt: quotes.decidedAt,
+            customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
+            enquiryReference: enquiries.reference,
+            preparedBy: named(locale, principals.nameEn, principals.nameAr),
+            branchCode: branches.code,
+          })
+          .from(quotes)
+          .leftJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+          .leftJoin(customers, eq(customers.id, enquiries.customerId))
+          .leftJoin(principals, eq(principals.id, quotes.preparedById))
+          .leftJoin(branches, eq(branches.id, quotes.branchId))
+          .where(where)
+          .orderBy(desc(quotes.createdAt), desc(quotes.id))
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, quotes, where),
+    ),
   )
 }
 
@@ -140,38 +156,83 @@ export interface InvoiceRow {
   readonly branchCode: string | null
 }
 
-/** `locale` names the customer in the reader's language (F27). */
+export interface InvoiceListFilters {
+  readonly status?: string
+  /**
+   * Only invoices overdue on this day (`YYYY-MM-DD`).
+   *
+   * `overdue` is a state *and* a date *and* a balance, so it is not an enum
+   * value — and the register used to read two hundred invoices and keep the
+   * overdue ones in memory, which found only the overdue invoices among the
+   * newest two hundred. This is `isInvoiceOverdue` from `core` written as SQL
+   * so it pages: owed (`OWED_INVOICE_STATUSES`), not a credit note, due before
+   * today, and something still owed after receipts and partial credit notes.
+   */
+  readonly overdueOn?: string
+}
+
+/** The register's overdue rule over a row — the fixture side of `overdueOn`. */
+function overdueOn(row: InvoiceRow, today: string): boolean {
+  const balance = new D(row.total ?? 0).minus(row.amountPaid ?? 0).minus(row.amountCredited ?? 0)
+  return isInvoiceOverdue({ ...row, balance }, today)
+}
+
+/**
+ * `locale` names the customer in the reader's language (F27).
+ *
+ * A page with its total, for the reason `listQuotes` gives.
+ */
 export async function listInvoices(
   actor: Actor,
-  status?: string,
+  filters: InvoiceListFilters = {},
   locale: 'en' | 'ar' = 'en',
-): Promise<InvoiceRow[]> {
-  if (usePilotFixtures()) return pilotInvoices(Date.now(), status, locale)
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<InvoiceRow>> {
+  if (usePilotFixtures()) {
+    const rows = pilotInvoices(Date.now(), filters.status, locale)
+    const today = filters.overdueOn
+    return pageOf(today ? rows.filter((row) => overdueOn(row, today)) : rows, request)
+  }
 
+  const where = and(
+    filters.status ? eq(invoices.status, filters.status as never) : undefined,
+    filters.overdueOn
+      ? sql`${invoices.status} in (${OWED})
+          and not ${invoices.isCreditNote}
+          and ${invoices.dueOn} < ${filters.overdueOn}
+          and ${invoices.total} - ${invoices.amountPaid} - ${invoices.amountCredited} > 0`
+      : undefined,
+  )
   return withActor(actor, async (tx) =>
-    tx
-      .select({
-        id: invoices.id,
-        seriesNo: invoices.seriesNo,
-        status: invoices.status,
-        currency: invoices.currency,
-        subtotal: invoices.subtotal,
-        taxAmount: invoices.taxAmount,
-        total: invoices.total,
-        amountPaid: invoices.amountPaid,
-        amountCredited: invoices.amountCredited,
-        issuedAt: invoices.issuedAt,
-        dueOn: invoices.dueOn,
-        isCreditNote: invoices.isCreditNote,
-        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
-        branchCode: branches.code,
-      })
-      .from(invoices)
-      .leftJoin(customers, eq(customers.id, invoices.customerId))
-      .leftJoin(branches, eq(branches.id, invoices.branchId))
-      .where(status ? eq(invoices.status, status as never) : undefined)
-      .orderBy(desc(invoices.createdAt))
-      .limit(200),
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: invoices.id,
+            seriesNo: invoices.seriesNo,
+            status: invoices.status,
+            currency: invoices.currency,
+            subtotal: invoices.subtotal,
+            taxAmount: invoices.taxAmount,
+            total: invoices.total,
+            amountPaid: invoices.amountPaid,
+            amountCredited: invoices.amountCredited,
+            issuedAt: invoices.issuedAt,
+            dueOn: invoices.dueOn,
+            isCreditNote: invoices.isCreditNote,
+            customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
+            branchCode: branches.code,
+          })
+          .from(invoices)
+          .leftJoin(customers, eq(customers.id, invoices.customerId))
+          .leftJoin(branches, eq(branches.id, invoices.branchId))
+          .where(where)
+          .orderBy(desc(invoices.createdAt), desc(invoices.id))
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, invoices, where),
+    ),
   )
 }
 
@@ -277,39 +338,71 @@ export interface PaymentRow {
   readonly allocated: string
 }
 
-/** `locale` names the customer in the reader's language (F27). */
+/** What of a receipt is matched to invoices, as text — `numeric` never passes through a float. */
+const allocatedSql = sql<string>`coalesce((
+  select sum(pa.amount)::text from payment_allocations pa
+   where pa.payment_id = "payments"."id"
+), '0')`
+
+/**
+ * `locale` names the customer in the reader's language (F27).
+ *
+ * `withBalanceOnly` is the register's "Unallocated" view — receipts with any
+ * amount not yet matched to an invoice. It was a `filter` over the newest two
+ * hundred receipts in memory; in the `where` now, so it pages over all of them.
+ */
 export async function listPayments(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<PaymentRow[]> {
-  if (usePilotFixtures()) return pilotPayments(Date.now(), locale)
+  filters: { readonly withBalanceOnly?: boolean } = {},
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<PaymentRow>> {
+  if (usePilotFixtures()) {
+    const rows = pilotPayments(Date.now(), locale)
+    return pageOf(filters.withBalanceOnly ? rows.filter(hasBalance) : rows, request)
+  }
 
+  const where = filters.withBalanceOnly
+    ? sql`${payments.amount} > (
+        select coalesce(sum(pa.amount), 0) from payment_allocations pa
+         where pa.payment_id = "payments"."id"
+      )`
+    : undefined
   return withActor(actor, async (tx) =>
-    tx
-      .select({
-        id: payments.id,
-        amount: payments.amount,
-        currency: payments.currency,
-        receivedOn: payments.receivedOn,
-        method: payments.method,
-        reference: payments.reference,
-        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
-        branchCode: branches.code,
-        recordedBy: named(locale, principals.nameEn, principals.nameAr),
-        // What of this receipt has been matched to an invoice. An unallocated
-        // payment is money you have but cannot close a ledger with.
-        allocated: sql<string>`coalesce((
-          select sum(pa.amount)::text from payment_allocations pa
-           where pa.payment_id = "payments"."id"
-        ), '0')`,
-      })
-      .from(payments)
-      .leftJoin(customers, eq(customers.id, payments.customerId))
-      .leftJoin(branches, eq(branches.id, payments.branchId))
-      .leftJoin(principals, eq(principals.id, payments.recordedById))
-      .orderBy(desc(payments.receivedOn))
-      .limit(200),
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: payments.id,
+            amount: payments.amount,
+            currency: payments.currency,
+            receivedOn: payments.receivedOn,
+            method: payments.method,
+            reference: payments.reference,
+            customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
+            branchCode: branches.code,
+            recordedBy: named(locale, principals.nameEn, principals.nameAr),
+            // What of this receipt has been matched to an invoice. An unallocated
+            // payment is money you have but cannot close a ledger with.
+            allocated: allocatedSql,
+          })
+          .from(payments)
+          .leftJoin(customers, eq(customers.id, payments.customerId))
+          .leftJoin(branches, eq(branches.id, payments.branchId))
+          .leftJoin(principals, eq(principals.id, payments.recordedById))
+          .where(where)
+          .orderBy(desc(payments.receivedOn), desc(payments.id))
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, payments, where),
+    ),
   )
+}
+
+/** A receipt with something left to allocate. Decimal: money minus money. */
+function hasBalance(row: PaymentRow): boolean {
+  return new D(row.amount).minus(row.allocated).gt(0)
 }
 
 /**
@@ -322,10 +415,24 @@ export async function listPayments(
  * counts, with each amount cast to text before it is wrapped, so `numeric`
  * never passes through a JSON number on its way to the page.
  */
-export async function paymentSummary(
-  actor: Actor,
-): Promise<{ count: number; received: readonly CurrencyAmount[]; unallocated: number }> {
-  if (usePilotFixtures()) return pilotPaymentSummary()
+export async function paymentSummary(actor: Actor): Promise<{
+  count: number
+  received: readonly CurrencyAmount[]
+  unallocated: number
+  /**
+   * Receipts with anything left to allocate — what the "Unallocated" filter
+   * pages through. `unallocated` beside it counts receipts with *nothing*
+   * allocated, the summary's figure; the filter's count was that figure, so
+   * a part-allocated receipt was in the list and not in the number on its tab.
+   */
+  withBalance: number
+}> {
+  if (usePilotFixtures()) {
+    return {
+      ...pilotPaymentSummary(),
+      withBalance: pilotPayments().filter(hasBalance).length,
+    }
+  }
 
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
@@ -334,6 +441,10 @@ export async function paymentSummary(
         count(*) filter (where not exists (
           select 1 from payment_allocations pa where pa.payment_id = payments.id
         ))::int       as unallocated,
+        count(*) filter (where payments.amount > (
+          select coalesce(sum(pa.amount), 0) from payment_allocations pa
+           where pa.payment_id = payments.id
+        ))::int       as with_balance,
         coalesce((
           select json_agg(json_build_object('currency', r.currency, 'amount', r.amount)
                           order by r.total desc, r.currency)
@@ -343,12 +454,19 @@ export async function paymentSummary(
       from payments
     `)
     const row = result.rows[0] as unknown as
-      { count: number; received: CurrencyAmount[] | null; unallocated: number } | undefined
+      | {
+          count: number
+          received: CurrencyAmount[] | null
+          unallocated: number
+          with_balance: number
+        }
+      | undefined
 
     return {
       count: row?.count ?? 0,
       received: (row?.received ?? []).map(({ currency, amount }) => ({ currency, amount })),
       unallocated: row?.unallocated ?? 0,
+      withBalance: row?.with_balance ?? 0,
     }
   })
 }

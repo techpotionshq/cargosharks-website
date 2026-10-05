@@ -18,7 +18,9 @@ import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
-import { listRoles, listUsers } from '@/features/admin/queries'
+import { countUsers, listRoles, listUsers } from '@/features/admin/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatRelative } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -36,7 +38,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
-export default async function UsersPage() {
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const session = await requireSession()
   /*
     The layout already decides who reaches this shell, but a page that trusts
@@ -52,6 +58,7 @@ export default async function UsersPage() {
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
+  const params = await searchParams
 
   if (!can(session, 'admin.users.write')) {
     return (
@@ -64,9 +71,12 @@ export default async function UsersPage() {
     )
   }
 
-  const [people, roleRows] = await Promise.all([listUsers(session.actor), listRoles(session.actor)])
-
-  const withLogin = people.filter((person) => person.hasPassword).length
+  const [peoplePage, counts, roleRows] = await Promise.all([
+    listUsers(session.actor, pageRequest(params.page)),
+    countUsers(session.actor),
+    listRoles(session.actor),
+  ])
+  const people = peoplePage.rows
 
   return (
     <Register
@@ -75,8 +85,8 @@ export default async function UsersPage() {
       title={t('title')}
       description={t('subtitle')}
       summary={[
-        { label: t('people'), value: people.length },
-        { label: t('withLogin'), value: withLogin },
+        { label: t('people'), value: counts.people },
+        { label: t('withLogin'), value: counts.withLogin },
         { label: t('roles'), value: roleRows.length },
       ]}
       isEmpty={false}
@@ -227,6 +237,7 @@ export default async function UsersPage() {
             })}
           </TBody>
         </TableShell>
+        <Pager page={peoplePage} path="/settings/users" />
       </Card>
 
       <Grid>

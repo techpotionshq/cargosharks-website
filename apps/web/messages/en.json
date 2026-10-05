@@ -119,7 +119,13 @@
     "home": "Home",
     "yes": "Yes",
     "no": "No",
-    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch."
+    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch.",
+    "pages": "Pages",
+    "pageRange": "{from}–{to} of {total}",
+    "pageOf": "Page {page} of {pages}",
+    "pagePast": "Page {page} is past the end; there are {pages}.",
+    "previousPage": "Previous",
+    "nextPage": "Next"
   },
   "search": {
     "title": "Search",
@@ -150,7 +156,9 @@
       "quote": "Quotation",
       "invoice": "Invoice",
       "consolidation": "Consolidation"
-    }
+    },
+    "showAll": "{count, plural, one {Show the # match} other {Show all # matches}}",
+    "allResults": "All results"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -900,7 +908,10 @@
       "commercial": "Commercial",
       "compliance": "Compliance",
       "partner_compliance": "Partner"
-    }
+    },
+    "searchPlaceholder": "Shipment, customer or document type",
+    "noneMatching": "No documents match",
+    "noneMatchingHint": "Try a shipment reference, a customer's name or a document type, or clear the filter."
   },
   "quotes": {
     "eyebrow": "Commercial",
@@ -3043,7 +3054,9 @@
       "payment": {
         "received": "A customer’s payment has been received and set against an invoice."
       }
-    }
+    },
+    "forbidden": "You cannot edit notification wording",
+    "forbiddenHint": "Your role does not include admin.reference.write."
   },
   "milestoneForm": {
     "open": "Add a step",
@@ -3184,7 +3197,9 @@
     "disabledReasons": {
       "switchedOff": "Switched off by an administrator",
       "noDeliverySince": "Nothing delivered since {day}"
-    }
+    },
+    "forbidden": "You cannot manage API keys",
+    "forbiddenHint": "Your role does not include admin.api_keys.write."
   },
   "chargeableForm": {
     "open": "Add a rule",
@@ -3394,11 +3409,12 @@
       "rateAutoFanout": "Automatic rate requests",
       "enquiryAutoAccept": "Automatic enquiry fill",
       "rateAutoPromote": "Automatic rate award",
-      "quoteAutoDraft": "Automatic quotation draft"
+      "quoteAutoDraft": "Automatic quotation draft",
+      "vesselPositions": "Vessel positions"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
-      "fx": "A daily rate for each currency marked tracked. Nothing prices from the feed — a charge line keeps the rate it was struck at.",
+      "fx": "A daily rate for each tracked currency. Indicative rates from two public providers, cross-checked against each other and the Gulf pegs. A charge line keeps the rate it was priced at.",
       "carrierPoll": "How often the poll asks, and how many shipments each run covers. Calls per hour has to stay under the carrier’s cap.",
       "carrierTracking": "Where container milestones come from. The carriers publish their own events — free, self-serve, one registration each.",
       "carrierMaersk": "Covers MAEU, MAEI, MCPU, SEAU and SEJJ. Registration is self-serve at developer.maersk.com.",
@@ -3412,7 +3428,8 @@
       "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on.",
       "enquiryAutoAccept": "Apply what a model reads off an enquiry email without a coordinator's click — but only above the confidence set here, only where the field is still empty, and never for an ambiguous port or commodity, which stay in the queue for a person.",
       "rateAutoPromote": "Promote the cheapest agent reply into a buy rate card without a coordinator's click. Choose when it commits: as soon as one reply parses, once every agent has answered, or after a wait window.",
-      "quoteAutoDraft": "Once a buy rate is awarded and the lane is covered, draft the quotation against the customer's house margin and its covering note — as a draft. It never sends; a person reviews and puts it in front of the customer."
+      "quoteAutoDraft": "Once a buy rate is awarded and the lane is covered, draft the quotation against the customer's house margin and its covering note — as a draft. It never sends; a person reviews and puts it in front of the customer.",
+      "vesselPositions": "Where the ship carrying a job was last heard on AIS. aisstream.io is free and uses coastal receivers only: it covers China, Singapore and Europe, and not the Gulf. Off by default."
     },
     "drivers": {
       "smtp": {
@@ -3421,7 +3438,8 @@
       },
       "fx": {
         "manual": "Typed by hand",
-        "api": "Daily from a feed"
+        "api": "Daily from a feed",
+        "resilient": "Daily from two public providers, cross-checked"
       },
       "carrierTracking": {
         "manual": "Typed by an operator",
@@ -3456,6 +3474,10 @@
       "quoteAutoDraft": {
         "manual": "Priced by a coordinator",
         "auto": "Drafted automatically"
+      },
+      "vesselPositions": {
+        "off": "Off",
+        "aisstream": "aisstream.io (free, coastal receivers)"
       }
     },
     "fields": {
@@ -3519,7 +3541,8 @@
       "rateAutoPromote": {
         "waitHours": "Wait window (hours)"
       },
-      "quoteAutoDraft": {}
+      "quoteAutoDraft": {},
+      "vesselPositions": {}
     },
     "secrets": {
       "smtp": {
@@ -3559,6 +3582,9 @@
       },
       "fileStore": {
         "secretAccessKey": "Secret access key"
+      },
+      "vesselPositions": {
+        "apiKey": "API key"
       }
     },
     "groups": {
@@ -3597,7 +3623,19 @@
       "provider_down": "The provider's service has a fault. The system tries again on its next run.",
       "other": "The last attempt failed. The provider's message is below.",
       "detail": "Provider's message"
-    }
+    },
+    "driverSettings": "Settings for: {driver}",
+    "acknowledge": {
+      "fx": {
+        "resilient": {
+          "title": "Before you switch on public rates",
+          "notice": "Rates come from two third-party providers: ExchangeRate-API, with currency-api as the fallback. They can be late or wrong. They are indicative rates, not bank rates. Check a rate before you use it in a quote or an invoice.",
+          "label": "I understand. These are indicative rates from third parties, and we check them before use."
+        }
+      }
+    },
+    "acknowledgedBy": "Acknowledged by {name} on {at}",
+    "acknowledgedAt": "Acknowledged on {at}"
   },
   "assistant": {
     "title": "Assistant",
@@ -3806,7 +3844,19 @@
   "notifications": {
     "title": "Notifications",
     "empty": "You're all caught up.",
-    "markAllRead": "Mark all read"
+    "markAllRead": "Mark all read",
+    "emailTitle": "Email me about",
+    "emailHint": "Alerts always arrive here. Untick a group to stop its emails.",
+    "emailSave": "Save",
+    "groups": {
+      "enquiries": "New and overdue enquiries",
+      "quotes": "Customer answers to quotations",
+      "operations": "Shipment exceptions and free time",
+      "rates": "Rate cards and agent replies",
+      "suppliers": "Supplier mail",
+      "finance": "Supplier invoice variances",
+      "admin": "Administration"
+    }
   },
   "enquiryAutomation": {
     "label": "Automation",
@@ -3909,7 +3959,8 @@
     "fxSameCurrency": "Choose two different currencies.",
     "invitedNoMail": "Login created for {email}, but no invitation email went. Use Send sign-in link beside them for what to do next.",
     "signInLinkLogged": "No email was sent: mail on this deployment is set to log only. Give {email} the link below yourself. It sets their password once and works for one hour.",
-    "signInLinkHandOver": "Set-password link, to pass on"
+    "signInLinkHandOver": "Set-password link, to pass on",
+    "acknowledgeRequired": "Tick the acknowledgement to switch on public rates."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -4680,7 +4731,8 @@
     },
     "refusedExpired": "This offer has expired. Ask us for a new price.",
     "refusedDecided": "You already answered this quotation.",
-    "refusedMissing": "This quotation is no longer available. We may have sent you a newer version. Refresh the page."
+    "refusedMissing": "This quotation is no longer available. We may have sent you a newer version. Refresh the page.",
+    "conversionNote": "Amounts in other currencies were converted at the rate on {on}. The invoice may be converted at the rate on the invoice date."
   },
   "portalInvoices": {
     "title": "My invoices",
@@ -4719,7 +4771,8 @@
     "about": "Details",
     "issuedBy": "Issued by",
     "pdf": "PDF (EN)",
-    "pdfAr": "PDF (AR)"
+    "pdfAr": "PDF (AR)",
+    "conversionNote": "Amounts in other currencies were converted at the rate on {on}."
   },
   "conversation": {
     "title": "Conversation",
@@ -4789,5 +4842,73 @@
     "emailOnLogin": "This contact signs in with this address. Change it on their portal login.",
     "notFound": "That contact is not on file.",
     "customerInactive": "This customer is retired. Bring them back before adding contacts."
+  },
+  "vesselPosition": {
+    "eyebrow": "AIS",
+    "title": "Vessel position",
+    "current": "Current",
+    "lastKnown": "Last known",
+    "lastSeen": "Last seen",
+    "lastSeenNear": "Last seen {age} near {place}",
+    "lastSeenAtSea": "Last seen {age} at sea",
+    "noRecent": "No recent position. The vessel may be outside receiver coverage.",
+    "noneYet": "No position has arrived for this vessel yet.",
+    "noIdentity": "Add the vessel's MMSI to follow its position.",
+    "speed": "Speed",
+    "speedValue": "{speed} kn",
+    "course": "Course",
+    "courseValue": "{course}°",
+    "status": "Navigation status",
+    "reportedDestination": "Destination reported by the vessel",
+    "reportedEta": "ETA reported by the vessel",
+    "reportedHint": "The crew types these values into the transponder. They are not our ETA.",
+    "identity": "MMSI {mmsi}",
+    "imoValue": "IMO {imo}",
+    "source": "Source: {source}",
+    "mapLabel": "Last known position of {vessel}",
+    "thisVessel": "this vessel",
+    "navStatus": {
+      "underWayEngine": "Under way",
+      "atAnchor": "At anchor",
+      "notUnderCommand": "Not under command",
+      "restrictedManoeuvrability": "Restricted manoeuvrability",
+      "constrainedByDraught": "Constrained by draught",
+      "moored": "Moored",
+      "aground": "Aground",
+      "fishing": "Fishing",
+      "underWaySailing": "Under way, sailing"
+    },
+    "suggestionTitle": "Possible match from AIS",
+    "suggestionBody": "{name}, MMSI {mmsi}. Confirm the vessel before positions show.",
+    "suggestionByImo": "The IMO number matches.",
+    "suggestionByName": "Only the name matches. Check the IMO number before you confirm.",
+    "confirm": "Confirm vessel",
+    "edit": "Vessel identity",
+    "editTitle": "Vessel identity",
+    "editDescription": "AIS identifies a ship by its MMSI. The IMO number stays with the ship for life.",
+    "imo": "IMO number",
+    "imoHint": "Seven digits, for example 9321483.",
+    "mmsi": "MMSI",
+    "mmsiHint": "Nine digits. The carrier's schedule or a vessel database shows it.",
+    "imoInvalid": "Enter a valid IMO number: seven digits with a correct check digit.",
+    "mmsiInvalid": "Enter a valid MMSI: nine digits that start with 2 to 7.",
+    "notFound": "The system cannot find this job.",
+    "boardLegend": "Vessel, last known position"
+  },
+  "fxFeed": {
+    "attribution": "Indicative rates from ExchangeRate-API (fallback: currency-api), fetched {at}. Not a bank or central bank rate. Check before quoting.",
+    "attributionNever": "Indicative rates from ExchangeRate-API (fallback: currency-api). No rate is fetched yet. Not a bank or central bank rate. Check before quoting.",
+    "stale": "{days, plural, one {The newest automatic rate is # day old.} other {The newest automatic rate is # days old.}} Check the feed, or enter today's rate by hand.",
+    "staleNever": "The feed has not written a rate for {pairs} yet. Check the feed, or enter the rate by hand.",
+    "manualBy": "Entered by hand by {name}, {at}",
+    "manualAt": "Entered by hand, {at}",
+    "sources": {
+      "er-api": "ExchangeRate-API",
+      "currency-api": "currency-api",
+      "http": "Feed",
+      "manual": "Entered by hand",
+      "seed-demo": "Demo data"
+    },
+    "convertedAt": "Converted at"
   }
 }

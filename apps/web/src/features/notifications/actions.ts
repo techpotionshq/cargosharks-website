@@ -18,7 +18,9 @@ import type { Route } from 'next'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireSession } from '@/lib/session'
-import { markAllRead, markRead } from './queries'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { staffGroupsInUse } from '@qabandi/core'
+import { markAllRead, markRead, setEmailOptOuts } from './queries'
 import { isTarget } from './target'
 
 /**
@@ -51,5 +53,25 @@ export async function openNotification(formData: FormData): Promise<void> {
 export async function clearNotifications(): Promise<void> {
   const session = await requireSession()
   await markAllRead(session.actor)
+  revalidatePath('/', 'layout')
+}
+
+/**
+ * Which staff notifications reach this person by email — R12.
+ *
+ * The form lists one checkbox per group, ticked meaning "email me". An
+ * unticked box arrives as nothing, so the opt-outs are the groups on the
+ * screen that were not sent; a value that is not a group is ignored rather
+ * than stored. The bell is not offered: it always receives.
+ */
+export async function saveEmailPreferences(formData: FormData): Promise<void> {
+  // The demo has no `principals` row to keep the choice on; the form simply
+  // re-renders as it was.
+  if (usePilotFixtures()) return
+  const session = await requireSession()
+  if (session.actor.type !== 'internal') return
+  const wanted = new Set(formData.getAll('email').map(String))
+  const optOuts = staffGroupsInUse().filter((group) => !wanted.has(group))
+  await setEmailOptOuts(session.actor, optOuts)
   revalidatePath('/', 'layout')
 }

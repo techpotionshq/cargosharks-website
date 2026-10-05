@@ -20,10 +20,13 @@ import {
   documents,
   jobMilestones,
   jobs,
+  invoiceConversionDate,
   locations,
+  systemActor,
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { quoteConversionDate } from '@qabandi/core'
 import type {
   Mode,
   PortalInvoice,
@@ -41,6 +44,10 @@ import {
   pilotPortalShipments,
 } from '@/lib/pilot/fixtures'
 import { named } from '@/lib/named'
+import { sumByCurrency, type CurrencyAmount } from '@/lib/by-currency'
+import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
+import { D } from '@qabandi/core'
+import { isOverdue, portalQuoteState } from './status'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -50,42 +57,59 @@ const destination = alias(locations, 'destination')
   milestone carries an Arabic name, but `nullif` still falls back to English —
   an empty Arabic name is as unset as a null one.
 */
+/** A customer's shipments: anything but a draft or a cancellation. */
+const VISIBLE_JOB = and(isNull(jobs.cancelledAt), sql`${jobs.status} <> 'draft'`)
+
+/**
+ * The customer's shipments, a page at a time.
+ *
+ * This was `limit(50)` by ETA, over closed shipments as well as live ones, and
+ * the tiles above it counted those fifty: a customer with two years of history
+ * saw fifty shipments, "Active" among them only, and no way to the rest. The
+ * tiles are `portalShipmentCounts` now.
+ */
 export async function listPortalShipments(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<PortalShipment[]> {
-  if (usePilotFixtures()) return pilotPortalShipments(Date.now(), locale)
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<PortalShipment>> {
+  if (usePilotFixtures()) return pageOf(pilotPortalShipments(Date.now(), locale), request)
 
   const ar = locale === 'ar'
 
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: jobs.id,
-        reference: jobs.reference,
-        customerReference: jobs.customerReference,
-        status: jobs.status,
-        mode: jobs.mode,
-        eta: jobs.eta,
-        originName: ar
-          ? sql<string | null>`coalesce(nullif(${origin.nameAr}, ''), ${origin.nameEn})`
-          : origin.nameEn,
-        destinationName: ar
-          ? sql<string | null>`coalesce(nullif(${destination.nameAr}, ''), ${destination.nameEn})`
-          : destination.nameEn,
-        milestonesTotal: sql<number>`(
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: jobs.id,
+            reference: jobs.reference,
+            customerReference: jobs.customerReference,
+            status: jobs.status,
+            mode: jobs.mode,
+            eta: jobs.eta,
+            originName: ar
+              ? sql<string | null>`coalesce(nullif(${origin.nameAr}, ''), ${origin.nameEn})`
+              : origin.nameEn,
+            destinationName: ar
+              ? sql<
+                  string | null
+                >`coalesce(nullif(${destination.nameAr}, ''), ${destination.nameEn})`
+              : destination.nameEn,
+            milestonesTotal: sql<number>`(
           select count(*)::int from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.customerVisible} = true
         )`,
-        milestonesDone: sql<number>`(
+            milestonesDone: sql<number>`(
           select count(*)::int from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.customerVisible} = true
              and ${jobMilestones.actualAt} is not null
         )`,
-        // Released only. A draft on the job is not a customer document.
-        documentsReleased: sql<number>`(
+            // Released only. A draft on the job is not a customer document.
+            documentsReleased: sql<number>`(
           select count(*)::int from ${documents}
            join ${documentTypes} on ${documentTypes.id} = ${documents.documentTypeId}
            where ${documents.jobId} = "jobs"."id"
@@ -93,7 +117,7 @@ export async function listPortalShipments(
              and ${documents.supersededById} is null
              and ${documentTypes.isCustomerVisible} = true
         )`,
-        nextMilestone: sql<string | null>`(
+            nextMilestone: sql<string | null>`(
           select ${ar ? sql`coalesce(nullif(${jobMilestones.nameAr}, ''), ${jobMilestones.nameEn})` : jobMilestones.nameEn}
             from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
@@ -102,28 +126,88 @@ export async function listPortalShipments(
            order by ${jobMilestones.seq}
            limit 1
         )`,
+          })
+          .from(jobs)
+          .leftJoin(origin, eq(origin.id, jobs.originId))
+          .leftJoin(destination, eq(destination.id, jobs.destinationId))
+          .where(VISIBLE_JOB)
+          .orderBy(asc(jobs.eta), asc(jobs.id))
+          .limit(limit)
+          .offset(offset)
+
+        return rows.map((row) => ({
+          id: row.id,
+          reference: row.reference,
+          customerReference: row.customerReference,
+          status: row.status,
+          mode: row.mode as Mode,
+          originName: row.originName ?? '—',
+          destinationName: row.destinationName ?? '—',
+          eta: row.eta,
+          milestonesTotal: row.milestonesTotal,
+          milestonesDone: row.milestonesDone,
+          documentsReleased: row.documentsReleased,
+          nextMilestone: row.nextMilestone,
+        }))
+      },
+      () => countRows(tx, jobs, VISIBLE_JOB),
+    ),
+  )
+}
+
+/** Statuses a customer no longer counts as active. */
+const FINISHED = ['completed', 'closed', 'cancelled']
+
+/**
+ * The portal home's three tiles, counted over every shipment the customer
+ * may see rather than over the page of them below.
+ */
+export async function portalShipmentCounts(
+  actor: Actor,
+): Promise<{ active: number; arriving: number; documents: number }> {
+  if (usePilotFixtures()) {
+    const now = Date.now()
+    const rows = pilotPortalShipments(now)
+    return {
+      active: rows.filter((s) => !FINISHED.includes(s.status)).length,
+      arriving: rows.filter(
+        (s) => s.eta !== null && s.eta.getTime() > now && s.eta.getTime() < now + 7 * 86_400_000,
+      ).length,
+      documents: rows.reduce((sum, s) => sum + s.documentsReleased, 0),
+    }
+  }
+
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        active: sql<number>`(count(*) filter (
+          where ${jobs.status}::text not in ('completed', 'closed', 'cancelled')
+        ))::int`,
+        arriving: sql<number>`(count(*) filter (
+          where ${jobs.eta} > now() and ${jobs.eta} < now() + interval '7 days'
+        ))::int`,
+        /*
+          Released, current and customer-visible: what each row's own count
+          shows. Written as qualified SQL rather than interpolated columns:
+          with one table in the `from`, Drizzle prints a bare "id", which
+          the subquery binds to the wrong table (check-boundaries rule 3).
+        */
+        documents: sql<number>`coalesce(sum((
+          select count(*) from documents d
+           join document_types dt on dt.id = d.document_type_id
+           where d.job_id = "jobs"."id"
+             and d.released_at is not null
+             and d.superseded_by_id is null
+             and dt.is_customer_visible = true
+        )), 0)::int`,
       })
       .from(jobs)
-      .leftJoin(origin, eq(origin.id, jobs.originId))
-      .leftJoin(destination, eq(destination.id, jobs.destinationId))
-      .where(and(isNull(jobs.cancelledAt), sql`${jobs.status} <> 'draft'`))
-      .orderBy(asc(jobs.eta))
-      .limit(50)
-
-    return rows.map((row) => ({
-      id: row.id,
-      reference: row.reference,
-      customerReference: row.customerReference,
-      status: row.status,
-      mode: row.mode as Mode,
-      originName: row.originName ?? '—',
-      destinationName: row.destinationName ?? '—',
-      eta: row.eta,
-      milestonesTotal: row.milestonesTotal,
-      milestonesDone: row.milestonesDone,
-      documentsReleased: row.documentsReleased,
-      nextMilestone: row.nextMilestone,
-    }))
+      .where(VISIBLE_JOB)
+    return {
+      active: row?.active ?? 0,
+      arriving: row?.arriving ?? 0,
+      documents: row?.documents ?? 0,
+    }
   })
 }
 
@@ -165,22 +249,68 @@ function quoteColumns(locale: 'en' | 'ar') {
 export async function listPortalQuotes(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<PortalQuote[]> {
-  if (usePilotFixtures()) return pilotPortalQuotes(Date.now(), locale)
-  if (!isCustomer(actor)) return []
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<PortalQuote>> {
+  if (usePilotFixtures()) return pageOf(pilotPortalQuotes(Date.now(), locale), request)
+  if (!isCustomer(actor)) return pageOf([], request)
+
+  // Paged with a count, where this was `limit 100` and the tiles counted it.
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const result = await tx.execute(sql`
+          select ${quoteColumns(locale)}
+            from quotes q
+            join enquiries e on e.id = q.enquiry_id
+            left join locations o on o.id = e.origin_id
+            left join locations d on d.id = e.destination_id
+           where ${OFFERED}
+           order by coalesce(q.sent_at, q.created_at) desc, q.id desc
+           limit ${limit} offset ${offset}
+        `)
+        return result.rows as unknown as PortalQuote[]
+      },
+      async () => {
+        const result = await tx.execute(
+          sql`select count(*)::int as n from quotes q where ${OFFERED}`,
+        )
+        return (result.rows[0] as { n: number } | undefined)?.n ?? 0
+      },
+    ),
+  )
+}
+
+/**
+ * The quotations page's two tiles, over every offer the customer holds.
+ *
+ * "Awaiting" is `portalQuoteState` = `sent`: sent, and not past its last valid
+ * day in Kuwait (`today`), the rule the list badges each row by.
+ */
+export async function portalQuoteCounts(
+  actor: Actor,
+  today: string,
+): Promise<{ awaiting: number; accepted: number }> {
+  if (usePilotFixtures()) {
+    const states = pilotPortalQuotes(Date.now()).map((q) => portalQuoteState(q, today))
+    return {
+      awaiting: states.filter((state) => state === 'sent').length,
+      accepted: states.filter((state) => state === 'accepted').length,
+    }
+  }
+  if (!isCustomer(actor)) return { awaiting: 0, accepted: 0 }
 
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
-      select ${quoteColumns(locale)}
+      select count(*) filter (
+               where q.status = 'sent' and (q.valid_until is null or q.valid_until >= ${today}::date)
+             )::int as awaiting,
+             count(*) filter (where q.status = 'accepted')::int as accepted
         from quotes q
-        join enquiries e on e.id = q.enquiry_id
-        left join locations o on o.id = e.origin_id
-        left join locations d on d.id = e.destination_id
        where ${OFFERED}
-       order by coalesce(q.sent_at, q.created_at) desc
-       limit 100
     `)
-    return result.rows as unknown as PortalQuote[]
+    const row = result.rows[0] as { awaiting: number; accepted: number } | undefined
+    return { awaiting: row?.awaiting ?? 0, accepted: row?.accepted ?? 0 }
   })
 }
 
@@ -218,7 +348,17 @@ export async function getPortalQuote(
        where q.id = ${id} and ${OFFERED}
        limit 1
     `)
-    return result.rows[0] as unknown as PortalQuoteDetail | undefined
+    const quote = result.rows[0] as unknown as PortalQuoteDetail | undefined
+    if (!quote) return undefined
+    /*
+      Whether a line was converted, for the footnote. Read apart from the
+      projection above and reduced to a date here, because the snapshot also
+      holds our buy side and must never travel to the page whole.
+    */
+    const [frozen] = (
+      await tx.execute(sql`select priced_snapshot as snapshot from quotes where id = ${id}`)
+    ).rows as unknown as { snapshot: unknown }[]
+    return { ...quote, convertedOn: quoteConversionDate(frozen?.snapshot, quote.currency) }
   })
 }
 
@@ -244,20 +384,87 @@ function invoiceColumns() {
 export async function listPortalInvoices(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<PortalInvoice[]> {
-  if (usePilotFixtures()) return pilotPortalInvoices(Date.now(), locale)
-  if (!isCustomer(actor)) return []
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<PortalInvoice>> {
+  if (usePilotFixtures()) return pageOf(pilotPortalInvoices(Date.now(), locale), request)
+  if (!isCustomer(actor)) return pageOf([], request)
+
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const result = await tx.execute(sql`
+          select ${invoiceColumns()}
+            from invoices i
+            left join invoices c on c.id = i.credits_invoice_id
+           where ${ISSUED}
+           order by i.issued_at desc nulls last, i.series_no desc, i.id desc
+           limit ${limit} offset ${offset}
+        `)
+        return result.rows as unknown as PortalInvoice[]
+      },
+      async () => {
+        const result = await tx.execute(
+          sql`select count(*)::int as n from invoices i where ${ISSUED}`,
+        )
+        return (result.rows[0] as { n: number } | undefined)?.n ?? 0
+      },
+    ),
+  )
+}
+
+/**
+ * What the customer owes, per currency, and how many invoices are overdue —
+ * over every issued invoice, in SQL.
+ *
+ * Both tiles were worked out from the hundred newest invoices the list had
+ * fetched, so an unpaid invoice older than the hundredth fell out of
+ * "Outstanding" — money owed that the customer's own screen said was not. The
+ * sum is `numeric` handed over as text, never a float; the overdue rule is
+ * `isInvoiceOverdue` in core (owed states only, not a credit note), which
+ * `isOverdue` in `status.ts` delegates to, written as SQL against `today`.
+ */
+export async function portalInvoiceSummary(
+  actor: Actor,
+  today: string,
+): Promise<{ owing: readonly CurrencyAmount[]; overdue: number }> {
+  if (usePilotFixtures()) {
+    const invoices = pilotPortalInvoices(Date.now())
+    return {
+      owing: sumByCurrency(
+        invoices
+          .filter((invoice) => !invoice.isCreditNote)
+          .map((invoice) => ({ currency: invoice.currency, amount: invoice.balance })),
+      ).filter((entry) => new D(entry.amount).greaterThan(0)),
+      overdue: invoices.filter((invoice) => isOverdue(invoice, today)).length,
+    }
+  }
+  if (!isCustomer(actor)) return { owing: [], overdue: 0 }
 
   return withActor(actor, async (tx) => {
-    const result = await tx.execute(sql`
-      select ${invoiceColumns()}
+    const owing = await tx.execute(sql`
+      select i.currency, sum(i.total - i.amount_paid - i.amount_credited)::text as amount
         from invoices i
-        left join invoices c on c.id = i.credits_invoice_id
-       where ${ISSUED}
-       order by i.issued_at desc nulls last, i.series_no desc
-       limit 100
+       where ${ISSUED} and not i.is_credit_note
+       group by i.currency
+      having sum(i.total - i.amount_paid - i.amount_credited) > 0
+       order by i.currency
     `)
-    return result.rows as unknown as PortalInvoice[]
+    const overdue = await tx.execute(sql`
+      select count(*)::int as n
+        from invoices i
+       where i.status in ('issued', 'part_paid')
+         and not i.is_credit_note
+         and i.due_on < ${today}::date
+         and i.total - i.amount_paid - i.amount_credited > 0
+    `)
+    return {
+      owing: (owing.rows as unknown as CurrencyAmount[]).map(({ currency, amount }) => ({
+        currency,
+        amount,
+      })),
+      overdue: (overdue.rows[0] as { n: number } | undefined)?.n ?? 0,
+    }
   })
 }
 
@@ -270,7 +477,7 @@ export async function getPortalInvoice(
   if (usePilotFixtures()) return pilotPortalInvoice(id, Date.now(), locale)
   if (!isCustomer(actor)) return undefined
 
-  return withActor(actor, async (tx) => {
+  const invoice = await withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select ${invoiceColumns()},
              i.subtotal::text as subtotal, i.tax_amount::text as "taxAmount",
@@ -301,4 +508,12 @@ export async function getPortalInvoice(
     `)
     return result.rows[0] as unknown as PortalInvoiceDetail | undefined
   })
+  if (!invoice) return undefined
+  /*
+    The conversion footnote, read with the system actor once the customer has
+    been shown the invoice: the charge lines and quotation it is worked out
+    from are ours, and only the date leaves (`invoiceConversionDate`).
+  */
+  const convertedOn = await withActor(systemActor(), (tx) => invoiceConversionDate(tx, id))
+  return { ...invoice, convertedOn }
 }

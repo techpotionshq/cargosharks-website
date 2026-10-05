@@ -50,6 +50,8 @@ import { getJobLedger } from '@/features/costing/queries'
 import { JobLedgerCard } from '@/features/costing/ui/panels'
 import { jobEquipmentOptions, jobProofOfDelivery } from '@/features/pod/queries'
 import { ProofOfDeliveryCard } from '@/features/pod/ui/panels'
+import { getJobVessel } from '@/features/vessels/queries'
+import { VesselPositionCard } from '@/features/vessels/ui/vessel-position-card'
 import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
@@ -92,11 +94,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     for twenty demo shipments. These return empty under fixtures and the
     panels say so.
   */
-  const [parties, cargo, containerOptions, ledger, podRecords, podEquipment] = await Promise.all([
-    listJobParties(session.actor, id),
-    listJobCargo(session.actor, id),
-    listJobContainers(session.actor, id),
-    /*
+  const [parties, cargo, containerOptions, ledger, podRecords, podEquipment, vessel] =
+    await Promise.all([
+      listJobParties(session.actor, id),
+      listJobCargo(session.actor, id),
+      listJobContainers(session.actor, id),
+      /*
       The charge ledger and the margin it produces (FR-FN-04, 0014).
 
       Kept out of `getJobDetail` for the same reason the three above are: that
@@ -104,17 +107,23 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       widening it would mean inventing a P&L for twenty demo shipments. Returns
       an empty ledger under fixtures and the card says so.
     */
-    getJobLedger(session.actor, id, locale),
-    /*
+      getJobLedger(session.actor, id, locale),
+      /*
       Proof of delivery, and the containers it can name.
 
       Two queries rather than folding the equipment into the first: the picker
       needs every container on the job, and the delivery records name at most
       the ones already delivered.
     */
-    jobProofOfDelivery(session.actor, id),
-    jobEquipmentOptions(session.actor, id),
-  ])
+      jobProofOfDelivery(session.actor, id),
+      jobEquipmentOptions(session.actor, id),
+      /*
+      The vessel's last AIS fix, and its identity (IMO, MMSI). Its own read,
+      for the reason the ones above give: `JobDetail` is shared with the
+      fixtures, and the vessel slice has fixtures of its own.
+    */
+      getJobVessel(session.actor, id),
+    ])
 
   const t = await getTranslations('job')
   const tc = await getTranslations('common')
@@ -372,6 +381,16 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               </Field>
             </dl>
           </Card>
+
+          {/* --- the vessel, where AIS last heard it ----------------- */}
+          {vessel ? (
+            <VesselPositionCard
+              vessel={vessel}
+              locale={locale}
+              timeZone={timeZone}
+              canEdit={can(session, 'job.update')}
+            />
+          ) : null}
 
           {/*
             --- the free-time clocks ---------------------------------

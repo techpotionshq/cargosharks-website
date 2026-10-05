@@ -10,6 +10,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { requireSession } from '@/lib/session'
 import { listConsolidations } from '@/features/consolidation/queries'
 import { ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
@@ -27,14 +29,19 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('consolidations') }
 }
 
-export default async function ConsolidationsPage() {
+export default async function ConsolidationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const [rows, t, tc, tMode] = await Promise.all([
-    listConsolidations(session.actor, {}, locale),
+  const { page } = await searchParams
+  const [consolidationsPage, t, tc, tMode] = await Promise.all([
+    listConsolidations(session.actor, {}, locale, pageRequest(page)),
     getTranslations('consolidations'),
     getTranslations('common'),
     getTranslations('mode'),
@@ -61,7 +68,7 @@ export default async function ConsolidationsPage() {
       <CandidatesPanel />
 
       <Card padding="none">
-        {rows.length === 0 ? (
+        {consolidationsPage.total === 0 ? (
           <EmptyState icon="ship" title={t('none')} description={t('noneHint')} />
         ) : (
           <TableShell>
@@ -80,7 +87,7 @@ export default async function ConsolidationsPage() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((row) => (
+              {consolidationsPage.rows.map((row) => (
                 <TR key={row.id}>
                   <TD>
                     <Link
@@ -139,6 +146,7 @@ export default async function ConsolidationsPage() {
             </TBody>
           </TableShell>
         )}
+        <Pager page={consolidationsPage} path="/consolidations" />
       </Card>
     </>
   )

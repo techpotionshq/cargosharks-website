@@ -16,7 +16,18 @@ import { redirect } from 'next/navigation'
 import type { Metadata, Route } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { MIN_QUERY_LENGTH, recordHref, search, totalHits } from '@/features/search/queries'
+import {
+  MIN_QUERY_LENGTH,
+  SEARCH_SECTIONS,
+  recordHref,
+  search,
+  totalHits,
+  type SearchResults,
+  type SearchSection,
+} from '@/features/search/queries'
+import { pageHref, pageRequest } from '@/lib/paging'
+import { Pager } from '@/ui/pager'
+import { Button } from '@/ui/layout'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay } from '@/lib/format'
 import { Card } from '@/ui/card'
@@ -36,13 +47,20 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; in?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { q } = await searchParams
-  const query = (q ?? '').trim()
+  const params = await searchParams
+  const query = (params.q ?? '').trim()
+  /*
+    One group, paged (`?in=jobs&page=2`). The overview shows twenty of each
+    group; a group with more links here, so every match is reachable rather
+    than only the first twenty.
+  */
+  const section = SEARCH_SECTIONS.find((candidate) => candidate === params.in)
+  const focus = section ? { section, request: pageRequest(params.page) } : undefined
 
   const t = await getTranslations('search')
   const tc = await getTranslations('common')
@@ -51,8 +69,26 @@ export default async function SearchPage({
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const results = query.length >= MIN_QUERY_LENGTH ? await search(session.actor, query) : null
+  const results =
+    query.length >= MIN_QUERY_LENGTH ? await search(session.actor, query, focus) : null
   const count = results ? totalHits(results) : 0
+
+  /** "Show all 57" under a group the overview cut, and the pager inside a focused one. */
+  const more = (group: SearchSection, results: SearchResults) =>
+    focus === undefined && results.totals[group] > results[group].length
+      ? {
+          footerHref: pageHref('/search', { q: query, in: group }, 1),
+          footerLabel: t('showAll', { count: results.totals[group] }),
+        }
+      : {}
+  const pager = (group: SearchSection, results: SearchResults) =>
+    focus?.section === group ? (
+      <Pager
+        page={{ total: results.totals[group], page: focus.request.page, size: focus.request.size }}
+        path="/search"
+        params={{ q: query, in: group }}
+      />
+    ) : null
 
   /*
     One exact identifier, and the operator is taken straight to the record.
@@ -63,7 +99,7 @@ export default async function SearchPage({
     a coincidence of how little has been typed, and jumping on it would move
     the page out from under someone still typing.
   */
-  if (results && count === 1) {
+  if (results && count === 1 && focus === undefined) {
     const exactJob = results.jobs.find((job) => equalsLoosely(job.matchedValue, query))
     const exactContainer = results.containers.find((row) => equalsLoosely(row.containerNo, query))
     const target = exactJob?.id ?? exactContainer?.jobId
@@ -113,10 +149,17 @@ export default async function SearchPage({
         </Card>
       ) : (
         <div className="flex flex-col gap-4">
-          <p className="text-body-sm text-ink-subtle">{t('found', { count })}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-body-sm text-ink-subtle">{t('found', { count })}</p>
+            {focus ? (
+              <Button href={pageHref('/search', { q: query }, 1)} size="sm" icon="chevron-start">
+                {t('allResults')}
+              </Button>
+            ) : null}
+          </div>
 
-          {results.jobs.length > 0 ? (
-            <Panel padding="none" icon="jobs" title={t('jobs')}>
+          {results.totals.jobs > 0 ? (
+            <Panel padding="none" icon="jobs" title={t('jobs')} {...more('jobs', results)}>
               <TableShell>
                 <THead>
                   <TR>
@@ -173,15 +216,21 @@ export default async function SearchPage({
                   ))}
                 </TBody>
               </TableShell>
+              {pager('jobs', results)}
             </Panel>
           ) : null}
 
-          {results.records.length > 0 ? (
+          {results.totals.records > 0 ? (
             /*
               Enquiries, quotes, invoices and consolidations by their own
               references, and consolidations by their master bill (U4).
             */
-            <Panel padding="none" icon="document" title={t('records')}>
+            <Panel
+              padding="none"
+              icon="document"
+              title={t('records')}
+              {...more('records', results)}
+            >
               <TableShell>
                 <THead>
                   <TR>
@@ -212,11 +261,17 @@ export default async function SearchPage({
                   ))}
                 </TBody>
               </TableShell>
+              {pager('records', results)}
             </Panel>
           ) : null}
 
-          {results.containers.length > 0 ? (
-            <Panel padding="none" icon="container" title={t('containers')}>
+          {results.totals.containers > 0 ? (
+            <Panel
+              padding="none"
+              icon="container"
+              title={t('containers')}
+              {...more('containers', results)}
+            >
               <TableShell>
                 <THead>
                   <TR>
@@ -250,11 +305,17 @@ export default async function SearchPage({
                   ))}
                 </TBody>
               </TableShell>
+              {pager('containers', results)}
             </Panel>
           ) : null}
 
-          {results.customers.length > 0 ? (
-            <Panel padding="none" icon="customers" title={t('customers')}>
+          {results.totals.customers > 0 ? (
+            <Panel
+              padding="none"
+              icon="customers"
+              title={t('customers')}
+              {...more('customers', results)}
+            >
               <TableShell>
                 <THead>
                   <TR>
@@ -297,6 +358,7 @@ export default async function SearchPage({
                   })}
                 </TBody>
               </TableShell>
+              {pager('customers', results)}
             </Panel>
           ) : null}
         </div>

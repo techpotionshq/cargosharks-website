@@ -26,6 +26,7 @@ import { recordId } from '@/lib/ids'
 import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { currencyLabel, formatDate, formatMoney, formatNumber } from '@/lib/format'
+import { fxRateLabel, type FxTranslate } from '@/lib/fx-label'
 import { Card, CardHeader } from '@/ui/card'
 import { Field } from '@/ui/layout'
 import { Badge } from '@/ui/status'
@@ -69,6 +70,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
 
   const t = await getTranslations('quote')
   const tEnq = await getTranslations('enquiry')
+  const tFx = await getTranslations('fxFeed')
   const tForm = await getTranslations('enquiryForm')
   const tMode = await getTranslations('mode')
   const tc = await getTranslations('common')
@@ -434,6 +436,29 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                     <p className={`mt-3 text-micro text-ink-subtle ${solo ? '@2xl:ms-8' : ''}`}>
                       {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
                     </p>
+
+                    {/*
+                      The rate each converted line was priced at, whose rate it
+                      was and when it was taken — visible before the quotation
+                      is sent, because a feed rate is indicative and the person
+                      sending it is the one who has to check it. In UTC, the
+                      providers' own day, so it matches what they publish.
+                    */}
+                    {option.fx && option.fx.length > 0 ? (
+                      <ul
+                        className={`mt-2 space-y-0.5 text-micro text-ink-muted ${solo ? '@2xl:ms-8' : ''}`}
+                        data-testid="quote-fx"
+                      >
+                        {option.fx.map((rate) => (
+                          <li key={`${rate.from}-${rate.to}`}>
+                            {tFx('convertedAt')}{' '}
+                            <bdi dir="ltr" className="numeric">
+                              {fxRateLabel(rate, tFx as unknown as FxTranslate, locale)}
+                            </bdi>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 </div>
               </Card>

@@ -18,7 +18,7 @@ Section 6 lists what is missing, deliberately and in full.
 
 | Measure | How | Where |
 | --- | --- | --- |
-| Separation enforced by the database | Row-level security, `ENABLE` **and** `FORCE`, on 87 of 93 tables. 211 policies. Reading a table and writing it are separate policies where the two differ: a principal can read its own grants but writing one needs `admin.users.write` in that branch, and a trigger refuses changes to a principal's own type, customer, partner or credential link. | `migrations/0004_rls.sql`, `0050_fix_pass_policies.sql` |
+| Separation enforced by the database | Row-level security, `ENABLE` **and** `FORCE`, on 88 of 94 tables. 225 policies. Reading a table and writing it are separate policies where the two differ: a principal can read its own grants but writing one needs `admin.users.write` in that branch, and a trigger refuses changes to a principal's own type, customer, partner or credential link. | `migrations/0004_rls.sql`, `0050_fix_pass_policies.sql` |
 | No unscoped path to data | `db` is not exported for query use. Every read opens one transaction through `withActor`, which stamps the principal into transaction-local settings the policies read. | `packages/db/src/actor.ts` |
 | Safe under connection pooling | `set_config(..., true)` makes each setting transaction-local, so a pooled connection cannot carry one tenant's identity into the next request. | `actor.ts` |
 | Least privilege at the role level | The application connects as `app_user`: `NOBYPASSRLS`, owns nothing, and `DELETE` is revoked. Migrations run as a separate `app_migrator`. | `migrations/01-roles.sql` |
@@ -28,10 +28,13 @@ Section 6 lists what is missing, deliberately and in full.
 The six tables without row-level security are the five `auth_*` credential
 tables and `inbound_webhook_events`, which holds provider delivery receipts for
 deduplication and no business data. `audit_log` has row-level security: reading
-it needs `admin.audit.read`, which only Administrator holds. Eight tables carry
+it needs `admin.audit.read`, which only Administrator holds. Nine tables carry
 no audit trigger — the five `auth_*` tables, because a trigger over credential
 rows would copy secrets into the log; `audit_log` and `support_access_log`,
-because a trigger on them would recurse; and `inbound_webhook_events`. Each
+because a trigger on them would recurse; `inbound_webhook_events`; and
+`vessel_positions`, AIS telemetry rewritten every few minutes per vessel, whose
+audited fact is the vessel recorded on the job (it keeps row-level security,
+scoped through `jobs`). Each
 exclusion is declared with its reason in `packages/db/src/schema/` and recorded
 in the migrations.
 
@@ -41,11 +44,11 @@ in the migrations.
 | --- | --- |
 | Passwords | Minimum twelve characters. Hashed by Better Auth; never stored or logged in clear. |
 | Registration | Closed. Invitation only — there is no public sign-up form and no magic-link flow. Inviting a colleague, or a customer contact to the portal, creates the login and mails a one-hour link to set the first password, through the same reset flow; the administrator never sets or sees it. The people list shows who has not set a password yet. |
-| Sessions | Database-backed and opaque. Never a stateless JWT, so revocation takes effect on the **next request**. Twelve-hour expiry. Signing out deletes the session row, not only the cookie. |
+| Sessions | Database-backed and opaque. Never a stateless JWT, so revocation takes effect on the **next request**. Twelve-hour expiry. Signing out deletes the session row, not only the cookie. Suspending a user deletes all of their session rows, so re-enabling the account revives none of them. |
 | Second factor | TOTP, mandatory for roles that carry `requires_two_factor` (Administrator, Finance). Enforced in both internal shells; an unenrolled principal cannot reach any screen. The challenge accepts a backup code as well as a TOTP code, so a lost phone is recoverable without an administrator. |
-| Sign-in lockout | Five failed attempts, none more than thirty minutes after the last, lock the account for fifteen minutes. The lock lifts by itself, so it cannot be used to deny service to a named person. Enforced in Better Auth's own request hooks, so it holds for its raw `/api/auth` endpoints as well as for the sign-in form. |
-| Rate limiting | Ten sign-in attempts per address per fifteen minutes, counting every attempt rather than only failures. Password-reset requests: ten per address per fifteen minutes and three per email per hour. Better Auth's built-in limiter runs as well in production. These budgets are kept in process memory, so a restart resets them; the lockout, which is stored, is the persistent control. |
-| Client address | Taken from `X-Forwarded-For` as the entry `TRUSTED_PROXY_HOPS` places from the right (default 1, the shipped Traefik), never the leftmost entry a caller can write. The web proxy hands that address to Better Auth in a header it overwrites on every request, so the throttles, Better Auth's limiter, session rows and the audit trail all see the same address. |
+| Sign-in lockout | Five failed attempts, none more than thirty minutes after the last, lock the account for fifteen minutes. The lock lifts by itself, so it cannot be used to deny service to a named person. Enforced in Better Auth's own request hooks, so it holds for its raw `/api/auth` endpoints as well as for the sign-in form. The same lock is also kept in process memory for every address typed, with or without an account, so the lock answer does not reveal which addresses have accounts. |
+| Rate limiting | Fifty failed sign-in attempts per address per fifteen minutes; a correct password spends nothing, so a whole office behind one address can sign in at once. Password-reset requests: ten per address per fifteen minutes and three per email per hour. Better Auth's built-in limiter runs as well in production, except on `/sign-in/email` and `/two-factor/verify-totp`, which the hooks above govern. The TOTP check is held to the same terms: fifty wrong codes per address per fifteen minutes (a correct code spends nothing), and five wrong codes lock that user's second factor for fifteen minutes. These budgets are kept in process memory, so a restart resets them; the lockout, which is stored, is the persistent control. |
+| Client address | Taken from `X-Forwarded-For` as the entry `TRUSTED_PROXY_HOPS` places from the right (default 1, the shipped Traefik), never the leftmost entry a caller can write. When that entry is a Cloudflare edge address (Cloudflare's published ranges, replaceable with `CLOUDFLARE_IP_RANGES`), the visitor is read from `CF-Connecting-IP`, which only Cloudflare writes on requests it forwards; a request that reaches the origin directly cannot set it. The web proxy hands that address to Better Auth in a header it overwrites on every request, so the throttles, Better Auth's limiter, session rows and the audit trail all see the same address. |
 | Account enumeration | One message for "no such user" and "wrong password". The password-reset form answers identically whether or not the address exists. |
 | Reset links | One hour. A reset revokes the account's sessions. |
 
@@ -136,20 +139,20 @@ everything above.
 ## How the numbers are produced
 
 Counted against a freshly migrated and seeded database (migrations through
-`0057`), 2026-10-02:
+`0070`), 2026-10-05:
 
 ```sql
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
- where n.nspname = 'public' and c.relkind = 'r';                    -- 93
+ where n.nspname = 'public' and c.relkind = 'r';                    -- 94
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relkind = 'r'
-   and c.relrowsecurity and c.relforcerowsecurity;                  -- 87
-select count(*) from pg_policies where schemaname = 'public';       -- 211
+   and c.relrowsecurity and c.relforcerowsecurity;                  -- 88
+select count(*) from pg_policies where schemaname = 'public';       -- 225
 select count(*) from pg_trigger
  where tgname like '%\_audit' and not tgisinternal;                 -- 85
 ```
 
-The permission count is `node scripts/check-permissions.mjs` ("38 enforced
+The permission count is `node scripts/check-permissions.mjs` ("39 enforced
 keys, all declared"). `pnpm test:db` asserts that every business table has row-level security enabled
 *and* forced and an audit trigger attached, walking the table registry in
 `packages/db/src/schema/table.ts`. A table that nobody remembered to protect

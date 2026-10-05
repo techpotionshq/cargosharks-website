@@ -31,6 +31,7 @@ import {
 } from '@qabandi/db'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
   pilotExpiringRateCards,
   pilotLaneMargins,
@@ -101,15 +102,26 @@ export async function listRateCards(
   direction?: string,
   // Names ports and counterparties in the reader's language (F27).
   locale: 'en' | 'ar' = 'en',
-): Promise<RateCardRow[]> {
-  if (usePilotFixtures()) return pilotRateCards(Date.now(), direction, locale)
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<RateCardRow>> {
+  if (usePilotFixtures()) return pageOf(pilotRateCards(Date.now(), direction, locale), request)
 
   const originName = named(locale, sql`o.name_en`, sql`o.name_ar`)
   const destinationName = named(locale, sql`d.name_en`, sql`d.name_ar`)
   const partnerName = named(locale, sql`p.legal_name_en`, sql`p.legal_name_ar`)
   const customerName = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
-  return withActor(actor, async (tx) => {
-    const result = await tx.execute(sql`
+  const where = direction ? sql`rc.direction = ${direction}::rate_direction` : sql`true`
+  /*
+    A page and a count, where this was `limit 200` (the audit after live run
+    5). A forwarder with a few hundred lanes and a card per agent per lane per
+    quarter passes two hundred in a season, and the oldest live cards were the
+    ones that fell off.
+  */
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const result = await tx.execute(sql`
       select rc.id,
              rc.direction::text                as direction,
              rc.mode::text                     as mode,
@@ -141,12 +153,20 @@ export async function listRateCards(
             from rate_card_lines rcl
            where rcl.rate_card_id = rc.id
         ) l on true
-       where ${direction ? sql`rc.direction = ${direction}::rate_direction` : sql`true`}
-       order by rc.valid_from desc, rc.direction, ${originName}
-       limit 200
+       where ${where}
+       order by rc.valid_from desc, rc.direction, ${originName}, rc.id
+       limit ${limit} offset ${offset}
     `)
-    return result.rows as unknown as RateCardRow[]
-  })
+        return result.rows as unknown as RateCardRow[]
+      },
+      async () => {
+        const result = await tx.execute(
+          sql`select count(*)::int as n from rate_cards rc where ${where}`,
+        )
+        return (result.rows[0] as { n: number } | undefined)?.n ?? 0
+      },
+    ),
+  )
 }
 
 /**

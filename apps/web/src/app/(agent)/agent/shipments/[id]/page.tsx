@@ -22,6 +22,8 @@ import { requireSession } from '@/lib/session'
 import { recordId } from '@/lib/ids'
 import { trackOwnShipment } from '@/features/tracking/queries'
 import { ShipmentView } from '@/features/tracking/ui/shipment-view'
+import { getJobVessel } from '@/features/vessels/queries'
+import { VesselPositionCard } from '@/features/vessels/ui/vessel-position-card'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Icon } from '@/ui/icon'
 
@@ -39,6 +41,9 @@ export default async function AgentShipmentPage({ params }: { params: Promise<{ 
 
   const result = await trackOwnShipment(session.actor, id)
   if (!result) notFound()
+  // Under the same actor: `vessel_positions_read` shows the ship only when
+  // this contact can see a job sailing on it, which the line above has proved.
+  const vessel = await getJobVessel(session.actor, id)
 
   const t = await getTranslations('agent')
 
@@ -57,6 +62,11 @@ export default async function AgentShipmentPage({ params }: { params: Promise<{ 
         locale={locale}
         timeZone={timeZone}
         documentHref={(documentId) => `/api/documents/${documentId}`}
+        vesselCard={
+          vessel ? (
+            <VesselPositionCard vessel={vessel} locale={locale} timeZone={timeZone} />
+          ) : undefined
+        }
       />
     </>
   )

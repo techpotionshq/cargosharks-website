@@ -30,7 +30,7 @@
  * product without anyone having to remember to make it so.
  */
 
-import { useActionState, useId, useRef, type ReactNode } from 'react'
+import { useActionState, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import {
   ChoiceCards,
@@ -138,6 +138,13 @@ export type FieldSpec =
       readonly title: string
       readonly hint?: string
       readonly fields: readonly FieldSpec[]
+      /**
+       * Shown only while another field in the form holds this value — a
+       * driver's own settings under a driver picker. Hidden, not removed, so
+       * what was typed survives switching back; the server ignores what does
+       * not apply, which is where the rule lives anyway.
+       */
+      readonly when?: { readonly name: string; readonly value: string }
     }
   | {
       readonly kind: 'hidden'
@@ -402,14 +409,59 @@ function fieldKey(field: FieldSpec, index: number): string {
   return `${field.name}:${index}`
 }
 
+/**
+ * Children shown only while a named control in the same form has a value.
+ *
+ * Reads the form on every change rather than lifting the picker's state,
+ * because every control here is uncontrolled on purpose (see `useAttemptKey`)
+ * and making one of them controlled for this would be the odd one out.
+ */
+function WhenVisible({
+  name,
+  value,
+  children,
+}: {
+  readonly name: string
+  readonly value: string
+  readonly children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const form = ref.current?.closest('form')
+    if (!form) return
+    const update = () => {
+      const control = form.elements.namedItem(name)
+      const current =
+        control && 'value' in control ? (control as { value: string }).value : undefined
+      setShown(current === value)
+    }
+    update()
+    form.addEventListener('change', update)
+    return () => form.removeEventListener('change', update)
+  }, [name, value])
+  return (
+    <div ref={ref} hidden={!shown} className="col-span-12">
+      {children}
+    </div>
+  )
+}
+
 function RenderField({ field, state }: { field: FieldSpec; state: ActionState }) {
   if (field.kind === 'section') {
-    return (
+    const section = (
       <FormSection title={field.title} hint={field.hint}>
         {field.fields.map((child, index) => (
           <RenderField key={fieldKey(child, index)} field={child} state={state} />
         ))}
       </FormSection>
+    )
+    return field.when ? (
+      <WhenVisible name={field.when.name} value={field.when.value}>
+        {section}
+      </WhenVisible>
+    ) : (
+      section
     )
   }
 

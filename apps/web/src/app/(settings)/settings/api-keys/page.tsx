@@ -15,7 +15,7 @@
 import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { assertCan } from '@/lib/permissions'
+import { can } from '@/lib/permissions'
 import { listApiKeys, listWebhookEndpoints } from '@/features/admin/api-keys'
 import {
   CreateApiKeyForm,
@@ -40,7 +40,25 @@ export default async function ApiKeysPage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  assertCan(session, 'admin.api_keys.write')
+
+  /*
+    A sentence rather than `assertCan`'s throw (run 5, R5). The throw reached
+    the error boundary as "Something went wrong" with a ForbiddenError in the
+    log, for a page an operations manager can reach by typing its URL. The
+    audit page's refusal is the house pattern: say which permission is
+    missing, so the person knows whom to ask.
+  */
+  if (!can(session, 'admin.api_keys.write')) {
+    const tr = await getTranslations('apiKeys')
+    return (
+      <>
+        <PageHeader eyebrow={tr('eyebrow')} title={tr('title')} />
+        <div className="rounded-card border border-line bg-surface">
+          <EmptyState icon="hold" title={tr('forbidden')} description={tr('forbiddenHint')} />
+        </div>
+      </>
+    )
+  }
 
   const [keys, endpoints, options, t, tc] = await Promise.all([
     getLocale().then((locale) => listApiKeys(locale === 'ar' ? 'ar' : 'en')),

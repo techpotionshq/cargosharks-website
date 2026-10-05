@@ -24,8 +24,8 @@ security contact is at `/.well-known/security.txt`.
 ## Where this stands
 
 **Strong**, and unusually so for the stage: tenancy enforced by the database
-rather than by application code (87 of 93 tables with row-level security
-enabled *and* forced, 211 policies); audit written by 85 triggers, and a build
+rather than by application code (88 of 94 tables with row-level security
+enabled *and* forced, 225 policies); audit written by 85 triggers, and a build
 that fails for any business table without one; `DELETE` revoked from the
 application role; vendor support access granted by the customer, time-boxed,
 read-only unless the customer grants write scope, and logged per transaction;

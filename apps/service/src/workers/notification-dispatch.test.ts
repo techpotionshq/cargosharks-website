@@ -49,6 +49,7 @@ const {
   branches,
   customerContacts,
   customers,
+  enquiries,
   invoices,
   notificationChannelSettings,
   notificationDeliveries,
@@ -704,6 +705,167 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
       const rows = await deliveriesFor(id)
       expect(rows.length).toBeGreaterThan(0)
       expect(rows.every((d) => d.status === 'sent')).toBe(true)
+    })
+  })
+
+  /*
+    R12, run 5: one enquiry in a branch of 49 staff was 98 deliveries, every
+    person by email and in the bell, whatever their role. A branch of its own
+    with the same shape, so the other tests' coordinator is not in it.
+  */
+  describe('who on the staff is told', () => {
+    const CROWD_BRANCH = '00000000-0000-7000-8000-00000000bd10'
+    const person = (n: number) => `00000000-0000-7000-8000-0000000c${String(n).padStart(4, '0')}`
+    const LOAD_ROLES = ['coordinator', 'sales', 'read_only'] as const
+    const CROWD: { id: string; role: string }[] = [
+      { id: person(1), role: 'administrator' },
+      { id: person(2), role: 'operations_manager' },
+      { id: person(3), role: 'operations_manager' },
+      { id: person(4), role: 'finance' },
+      { id: person(5), role: 'finance' },
+      { id: person(6), role: 'coordinator' },
+      { id: person(7), role: 'sales' },
+      { id: person(8), role: 'read_only' },
+      { id: person(9), role: 'customs_broker' },
+      ...Array.from({ length: 40 }, (_, i) => ({ id: person(10 + i), role: LOAD_ROLES[i % 3]! })),
+    ]
+    const DESK = CROWD.filter((p) => p.role === 'operations_manager' || p.role === 'sales')
+    const MUTED = person(7)
+    const OWNER = person(6)
+
+    /** Email and the bell, as production registers them. */
+    function bothChannels() {
+      const email = fakeChannel({ accepted: true })
+      const bell: NotificationChannel = {
+        key: 'in_app',
+        send: async () => ({ accepted: true, externalRef: 'bell' }),
+      }
+      registerChannel(email)
+      registerChannel(bell)
+      return email
+    }
+
+    beforeAll(async () => {
+      await withActor(systemActor, async (tx) => {
+        const [calendar] = await tx
+          .select({ id: workingCalendars.id })
+          .from(workingCalendars)
+          .where(eq(workingCalendars.key, 'kuwait'))
+          .limit(1)
+        await tx
+          .insert(branches)
+          .values({
+            id: CROWD_BRANCH,
+            code: 'NDC',
+            legalNameEn: 'Dispatch Crowd',
+            legalNameAr: 'فرع',
+            country: 'KW',
+            baseCurrency: 'KWD',
+            invoiceSeries: 'NDC',
+            calendarId: calendar!.id,
+            timeZone: 'Asia/Kuwait',
+          })
+          .onConflictDoNothing()
+        const roleRows = await tx.select({ id: roles.id, key: roles.key }).from(roles)
+        const roleId = (key: string) => roleRows.find((r) => r.key === key)!.id
+        for (const [i, member] of CROWD.entries()) {
+          await tx
+            .insert(principals)
+            .values({
+              id: member.id,
+              type: 'internal',
+              email: `crowd-${i + 1}@qabandi.test`,
+              nameEn: `Crowd ${i + 1}`,
+              locale: 'en',
+            })
+            .onConflictDoNothing()
+          await tx
+            .insert(principalBranchRoles)
+            .values({ principalId: member.id, branchId: CROWD_BRANCH, roleId: roleId(member.role) })
+            .onConflictDoNothing()
+        }
+        // Stated rather than inserted, so a rerun starts from the same place.
+        await tx
+          .update(principals)
+          .set({ notificationEmailOptOuts: [] })
+          .where(eq(principals.id, OWNER))
+        await tx
+          .update(principals)
+          .set({ notificationEmailOptOuts: ['enquiries'] })
+          .where(eq(principals.id, MUTED))
+      })
+    })
+
+    /** Read as the system: the fixture actor works in the other two branches only. */
+    const crowdDeliveries = (outboxId: string) =>
+      withActor(systemActor, (tx) =>
+        tx
+          .select()
+          .from(notificationDeliveries)
+          .where(eq(notificationDeliveries.outboxId, outboxId)),
+      )
+
+    async function enquiryEvent(ownerId: string | null): Promise<string> {
+      seq += 1
+      const reference = `ND-${RUN}-C${seq}`
+      return withActor(systemActor, async (tx) => {
+        const [enquiry] = await tx
+          .insert(enquiries)
+          .values({ reference, branchId: CROWD_BRANCH, ownerId })
+          .returning({ id: enquiries.id })
+        await raise(tx, {
+          branchId: CROWD_BRANCH,
+          eventKey: 'enquiry.created',
+          enquiryId: enquiry!.id,
+          payload: { reference },
+        })
+        const [row] = await tx
+          .select({ id: notificationOutbox.id })
+          .from(notificationOutbox)
+          .where(eq(notificationOutbox.enquiryId, enquiry!.id))
+        return row!.id
+      })
+    }
+
+    it('tells only operations management and sales about an unowned enquiry, not all 49', async () => {
+      const email = bothChannels()
+      const id = await enquiryEvent(null)
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const rows = await crowdDeliveries(id)
+      const reached = new Set(rows.map((d) => d.principalId))
+      expect(CROWD).toHaveLength(49)
+      expect([...reached].sort()).toEqual(DESK.map((p) => p.id).sort())
+      // Two deliveries a person (mail and bell), not 98 for the branch.
+      expect(rows).toHaveLength(DESK.length * 2)
+      // Nobody from finance, read-only, customs, coordination or administration.
+      for (const member of CROWD.filter((p) => !DESK.includes(p))) {
+        expect(reached.has(member.id), member.role).toBe(false)
+      }
+      expect(email.sent).toHaveLength(DESK.length - 1)
+    })
+
+    it('tells only the owner once the enquiry has one', async () => {
+      bothChannels()
+      const id = await enquiryEvent(OWNER)
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const rows = await crowdDeliveries(id)
+      expect(rows.map((d) => d.principalId)).toEqual([OWNER, OWNER])
+      expect(rows.map((d) => d.channel).sort()).toEqual(['email', 'in_app'])
+    })
+
+    it('keeps the bell for someone who turned enquiry email off, and records why', async () => {
+      bothChannels()
+      const id = await enquiryEvent(null)
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const mine = (await crowdDeliveries(id)).filter((d) => d.principalId === MUTED)
+      const mail = mine.find((d) => d.channel === 'email')
+      const bell = mine.find((d) => d.channel === 'in_app')
+      expect(mail?.status).toBe('suppressed')
+      expect(mail?.suppressedReason).toBe('opted out')
+      expect(bell?.status).toBe('sent')
     })
   })
 

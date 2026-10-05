@@ -20,7 +20,8 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatRelative } from '@/lib/format'
 import { Icon } from '@/ui/icon'
-import { clearNotifications, openNotification } from '../actions'
+import { staffGroupsInUse } from '@qabandi/core'
+import { clearNotifications, openNotification, saveEmailPreferences } from '../actions'
 import type { Inbox } from '../queries'
 
 export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
@@ -116,6 +117,44 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
             ))}
           </ul>
         )}
+
+        {/*
+          The person's own email switches, per group — R12.
+
+          In the bell rather than on a page of its own because this is where
+          somebody drowning in alerts already is, and a staff member with no
+          settings permission has no settings screen to look in. A nested
+          `<details>` keeps it out of the way until asked for, with no script,
+          like the panel around it. The bell itself has no switch: in-app
+          always arrives, which is what makes turning email off safe.
+        */}
+        <details className="border-t border-line">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-caption font-medium text-ink-muted hover:text-ink [&::-webkit-details-marker]:hidden">
+            <Icon name="settings" size={14} />
+            {t('emailTitle')}
+          </summary>
+          <form action={saveEmailPreferences} className="space-y-1.5 px-3 pb-3">
+            <p className="text-micro text-ink-subtle">{t('emailHint')}</p>
+            {staffGroupsInUse().map((group) => (
+              <label key={group} className="flex items-center gap-2 text-body-sm text-ink">
+                <input
+                  type="checkbox"
+                  name="email"
+                  value={group}
+                  defaultChecked={!inbox.emailOptOuts.includes(group)}
+                  className="size-4 accent-brand"
+                />
+                {t(`groups.${group}` as 'groups.enquiries')}
+              </label>
+            ))}
+            <button
+              type="submit"
+              className="mt-1 rounded-sm border border-line px-2.5 py-1 text-caption font-medium text-ink hover:bg-surface-sunken"
+            >
+              {t('emailSave')}
+            </button>
+          </form>
+        </details>
       </div>
     </details>
   )

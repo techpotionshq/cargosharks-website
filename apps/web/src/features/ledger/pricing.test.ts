@@ -27,6 +27,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
+import { quoteConversionDate } from '@qabandi/core'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -391,6 +392,84 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(Number(lines[0]!.rate)).toBeCloseTo(2.5, 6)
       expect(Number(lines[0]!.amount)).toBeCloseTo(5, 3)
       expect(Number(lines[1]!.amount)).toBeCloseTo(0.15, 3)
+
+      // Whose rate it was and when, for the screen; and that a conversion
+      // happened, for the customer's footnote.
+      const snapshot = quote!.snapshot as Record<string, unknown>
+      expect(snapshot.converted).toEqual([
+        expect.objectContaining({
+          from: 'INR',
+          to: 'KWD',
+          source: expect.any(String),
+          effectiveOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          takenAt: expect.any(String),
+        }),
+      ])
+      expect(quoteConversionDate(snapshot, 'KWD')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    })
+
+    it('records no conversion for a card already in the branch currency', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [
+        { chargeTypeId: oceanFreight, basis: 'per_container', rate: '250.000' },
+      ])
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const snapshot = (await quoteFor(id))!.snapshot as Record<string, unknown>
+      expect(snapshot.converted).toEqual([])
+      expect(quoteConversionDate(snapshot, 'KWD')).toBeNull()
+    })
+
+    /*
+      A feed row and a hand-entered row for the same pair and day: pricing
+      takes the person's. It used to take whichever row the scan met first.
+      OMR, on a day just before this suite's readiness date, so no other
+      suite ever converts at either row.
+    */
+    it('prices at a hand-entered rate over the feed on the same day', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      const day = '2031-04-14'
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(fxRates)
+          .values([
+            {
+              fromCurrency: 'OMR',
+              toCurrency: 'KWD',
+              rate: '0.80000000',
+              source: 'er-api',
+              effectiveOn: day,
+            },
+            {
+              fromCurrency: 'OMR',
+              toCurrency: 'KWD',
+              rate: '0.79000000',
+              source: 'manual',
+              effectiveOn: day,
+            },
+          ])
+          .onConflictDoNothing(),
+      )
+      await card(
+        on,
+        'sell',
+        [{ chargeTypeId: documentation, basis: 'flat', rate: '100.000', currency: 'OMR' }],
+        {
+          currency: 'OMR',
+        },
+      )
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const quote = await quoteFor(id)
+      expect(Number(quote!.totalSell)).toBeCloseTo(79, 3)
+      const snapshot = quote!.snapshot as { converted: { source: string; rate: string }[] }
+      expect(snapshot.converted).toEqual([
+        expect.objectContaining({ source: 'manual', rate: '0.79' }),
+      ])
     })
 
     /** Nothing is added to a sell rate — somebody decided that price. */
@@ -656,6 +735,56 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       // D2: on that branch's terms, which need not be the customer's own.
       expect(state.link?.href).toBe(`/customers/${CUSTOMER}?terms=${HOME_BRANCH}#commercial-terms`)
       expect(await quoteFor(id)).toBeUndefined()
+    })
+  })
+
+  /*
+    Opt-in, after the service's `fx-refresh.integration.test.ts` has written
+    today's feed rows into a local database: a USD card priced for a KWD
+    branch converts at today's ExchangeRate-API rate, through the real pricing
+    code, and the quotation records whose rate it was. Skipped everywhere
+    else, because it depends on the feed having run today.
+  */
+  describe.skipIf(process.env.QABANDI_FX_INTEGRATION !== '1')('at today’s feed rate', () => {
+    it('prices a USD card into KWD at the rate the feed wrote today', async () => {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuwait' }).format(new Date())
+      const [feed] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ rate: fxRates.rate, source: fxRates.source })
+          .from(fxRates)
+          .where(
+            sql`${fxRates.fromCurrency} = 'USD' and ${fxRates.toCurrency} = 'KWD'
+                and ${fxRates.effectiveOn} = ${today}::date and ${fxRates.source} = 'er-api'`,
+          ),
+      )
+      expect(feed, 'run fx-refresh.integration.test.ts first').toBeDefined()
+
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'sell',
+        [{ chargeTypeId: oceanFreight, basis: 'per_container', rate: '1000.00', currency: 'USD' }],
+        {
+          currency: 'USD',
+        },
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      const snapshot = quote!.snapshot as { converted: Record<string, string>[] }
+      // Two containers at USD 1,000, at today's rate, rounded to the fils.
+      const expected = (2000 * Number(feed!.rate)).toFixed(3)
+      console.log(
+        `USD 2,000 → KWD ${Number(quote!.totalSell).toFixed(3)} at ${feed!.rate} (${feed!.source}, ${today}); converted: ${JSON.stringify(snapshot.converted)}`,
+      )
+      expect(Number(quote!.totalSell).toFixed(3)).toBe(expected)
+      expect(snapshot.converted).toEqual([
+        expect.objectContaining({ from: 'USD', to: 'KWD', source: 'er-api', effectiveOn: today }),
+      ])
+      expect(quoteConversionDate(snapshot, 'KWD')).toBe(today)
     })
   })
 

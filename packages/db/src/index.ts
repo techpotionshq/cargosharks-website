@@ -16,6 +16,7 @@ export * from './settled'
 export * from './job-credits'
 export * from './branch-time'
 export * from './fx-latest'
+export * from './fx-feed'
 export * from './chargeable'
 export * from './rate-cards'
 export * from './rate-promotion'
@@ -48,3 +49,4 @@ export {
   type NotificationTemplateSeed,
 } from './notification-templates'
 export { loadEnv, workspaceRoot } from './env'
+export * from './vessel-positions'

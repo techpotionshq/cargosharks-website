@@ -31,6 +31,8 @@ import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getMapData, getOpsOverview } from '@/features/dashboard/queries'
+import { getBoardVesselPositions } from '@/features/vessels/queries'
+import { vesselPositionFreshness } from '@qabandi/core'
 import { getSetupState, type SetupStepKey } from '@/features/onboarding/queries'
 import { SetupChecklist } from '@/features/onboarding/ui/setup-checklist'
 import { NewEnquiryButton } from '@/features/enquiries/ui/new-enquiry-dialog'
@@ -80,6 +82,9 @@ export default async function DashboardPage() {
   )
   const setup = await getSetupState(session.actor)
   const map = await getMapData(session.actor)
+  // Last known AIS fixes of live sea jobs' vessels; empty while the feed is off.
+  const vessels = await getBoardVesselPositions(session.actor)
+  const tVessel = await getTranslations('vesselPosition')
 
   const t = await getTranslations('dashboard')
   const tSetup = await getTranslations('setup')
@@ -285,12 +290,27 @@ export default async function DashboardPage() {
             count: row.count,
           }))}
         />
+        {vessels.length > 0 ? (
+          <p className="-mt-1.5 mb-3 flex items-center gap-1.5 text-caption text-ink-muted">
+            <span aria-hidden className="size-2.5 rounded-full bg-accent ring-2 ring-surface" />
+            {tVessel('boardLegend')}
+            <span className="numeric font-semibold text-ink">{vessels.length}</span>
+          </p>
+        ) : null}
         {map.lanes.length === 0 ? (
           <EmptyState icon="globe" title={t('noLanes')} description={t('mapEmptyHint')} />
         ) : (
           <LaneMap
             lanes={map.lanes.map((lane) => ({ ...lane, href: '/jobs' }))}
             ports={map.ports.map((port) => ({ ...port, href: '/locations' }))}
+            vessels={vessels.map((vessel) => ({
+              id: vessel.jobId,
+              name: `${vessel.vesselName ?? vessel.reference} · ${formatRelative(vessel.receivedAt, locale, now)}`,
+              latitude: vessel.latitude,
+              longitude: vessel.longitude,
+              current: vesselPositionFreshness(vessel.receivedAt, new Date(now)) === 'current',
+              href: `/jobs/${vessel.jobId}`,
+            }))}
           />
         )}
       </Panel>

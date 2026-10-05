@@ -26,7 +26,13 @@
  */
 
 import { eq } from 'drizzle-orm'
-import { INTEGRATIONS, integrationSpec, isLiveDriver, type IntegrationSpec } from '@qabandi/core'
+import {
+  INTEGRATIONS,
+  integrationSpec,
+  appliesTo,
+  isLiveDriver,
+  type IntegrationSpec,
+} from '@qabandi/core'
 import type { Tx } from './actor'
 import { integrationSettings, type IntegrationSettings } from './schema/settings'
 
@@ -126,14 +132,23 @@ export function resolveIntegration(
     const envValue = fromEnv(env, field.env)
     settings[field.name] = rowValue ?? envValue
     sources[field.name] = rowValue !== undefined ? 'row' : envValue !== undefined ? 'env' : 'unset'
-    if (live && field.required && settings[field.name] === undefined) missing.push(field.name)
+    if (
+      live &&
+      field.required &&
+      appliesTo(spec, field, driver) &&
+      settings[field.name] === undefined
+    ) {
+      missing.push(field.name)
+    }
   }
 
   for (const secret of spec.secrets) {
     const rowValue = stored(active?.secrets ?? null, secret.name)
     sealed[secret.name] = rowValue
     hasSecret[secret.name] = rowValue !== undefined || fromEnv(env, secret.env) !== undefined
-    if (live && secret.required && !hasSecret[secret.name]) missing.push(secret.name)
+    if (live && secret.required && appliesTo(spec, secret, driver) && !hasSecret[secret.name]) {
+      missing.push(secret.name)
+    }
   }
 
   return {

@@ -67,9 +67,10 @@ import {
 import { resolveCustomsFiling } from './customs'
 import { noTransmit, resolveEInvoiceTransmit } from './einvoice'
 import { resolveFileStore, unavailableFileStore } from './file-store'
-import { manualFxSource, resolveFxSource } from './fx'
+import { manualFxSource, resolveFxSource, type FxLog } from './fx'
 import { modelProviderFrom, noModel } from './model'
 import { KAPSO_DEFAULT_BASE_URL } from './whatsapp'
+import { resolveVesselPositionConfig, type VesselPositionConfig } from './vessel-positions'
 
 export { sendMail } from './smtp'
 export { inAppChannel } from './in-app'
@@ -253,13 +254,14 @@ export function unconfiguredMailChannel(reason: string): NotificationChannel {
  * is a query now, and the whole point of the query is that a key pasted at
  * 09:05 works at 09:06.
  */
-export async function fxSource(log?: (o: unknown, m: string) => void): Promise<FxRateSource> {
+export async function fxSource(log?: FxLog): Promise<FxRateSource> {
   const settings = await integration('fx')
   return safely(
     'fx',
     () => manualFxSource,
-    () => resolveFxSource(settings),
-    log,
+    // The log reaches the resilient driver, which reports each refused pair.
+    () => resolveFxSource(settings, log),
+    log ? (o, m) => log.warn(o, m) : undefined,
   )
 }
 
@@ -286,6 +288,35 @@ export async function carrierTracking(
     () => resolveCarrierTracking(settings),
     log,
   )
+}
+
+/**
+ * The vessel-position driver, resolved per refresh of the supervisor.
+ *
+ * Degrades to `off` through `safely`, like every row-configured integration:
+ * `aisstream` chosen with no key records the reason on the settings row and
+ * connects nothing, rather than refusing to start the service.
+ */
+export async function vesselPositionConfig(
+  log?: (o: unknown, m: string) => void,
+): Promise<VesselPositionConfig> {
+  const settings = await integration('vesselPositions')
+  return safely(
+    'vesselPositions',
+    () => ({ driver: 'off' }),
+    () => resolveVesselPositionConfig(settings),
+    log,
+  )
+}
+
+/**
+ * What the live connection last said, written to the settings row.
+ *
+ * A refused key arrives on the socket, long after `safely` has accepted the
+ * configuration, so it needs its own way to the screen.
+ */
+export function noteVesselPositionStatus(error: string | null): void {
+  void noteIntegrationResult('vesselPositions', error).catch(() => {})
 }
 
 /** The e-invoice transmitter. `none` until a deployment appoints a provider. */
@@ -541,7 +572,7 @@ export async function describeAdapters(): Promise<Record<string, string>> {
     resolver here falls back to the environment — so this cannot be the thing
     that prevents a service from starting and saying why.
   */
-  const [mail, fx, carrier, einvoice, model, store, whatsapp] = await Promise.all([
+  const [mail, fx, carrier, einvoice, model, store, whatsapp, vessels] = await Promise.all([
     integration('smtp'),
     fxSource(),
     carrierTracking(),
@@ -549,6 +580,7 @@ export async function describeAdapters(): Promise<Record<string, string>> {
     modelProvider(),
     fileStore(),
     integration('whatsapp'),
+    vesselPositionConfig(),
   ])
 
   return {
@@ -601,5 +633,11 @@ export async function describeAdapters(): Promise<Record<string, string>> {
         : whatsapp.secret('kapsoApiKey')
           ? `kapso ${whatsapp.text('baseUrl') || KAPSO_DEFAULT_BASE_URL}`
           : 'kapso — no API key, nothing will be sent',
+    /*
+      `off` is the default and opens no connection. `aisstream` is free and
+      coastal: a fleet that switched it on and sees no positions near Kuwait
+      is seeing the coverage, not a fault.
+    */
+    vesselPositions: vessels.driver,
   }
 }

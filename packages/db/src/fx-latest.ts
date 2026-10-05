@@ -16,10 +16,11 @@
  * rate published for the 1st applies from midnight in Kuwait.
  */
 
-import { and, desc, eq, lte, sql } from 'drizzle-orm'
+import { and, eq, lte, sql } from 'drizzle-orm'
 import { dec, todayIn } from '@qabandi/core'
 import type { Tx } from './actor'
 import { fxRates } from './schema/reference'
+import { fxRateOrder } from './fx-feed'
 
 export async function latestFxRate(tx: Tx, from: string, to: string): Promise<string | null> {
   if (from === to) return '1'
@@ -35,7 +36,8 @@ export async function latestFxRate(tx: Tx, from: string, to: string): Promise<st
         lte(fxRates.effectiveOn, today),
       ),
     )
-    .orderBy(desc(fxRates.effectiveOn), desc(fxRates.takenAt))
+    // Newest day; on the same day a hand-entered rate beats the feed (`fx-feed.ts`).
+    .orderBy(...fxRateOrder())
     .limit(1)
   if (direct) return direct.rate
 
@@ -51,7 +53,8 @@ export async function latestFxRate(tx: Tx, from: string, to: string): Promise<st
         sql`${fxRates.rate} <> 0`,
       ),
     )
-    .orderBy(desc(fxRates.effectiveOn), desc(fxRates.takenAt))
+    // Newest day; on the same day a hand-entered rate beats the feed (`fx-feed.ts`).
+    .orderBy(...fxRateOrder())
     .limit(1)
   if (!inverse) return null
 

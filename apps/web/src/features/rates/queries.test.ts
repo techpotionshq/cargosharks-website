@@ -27,11 +27,11 @@ describe('rate register tab counts on the pilot branch', () => {
       const { cards } = await rateCardSummary(bothBranchesActor)
       const all = await listRateCards(bothBranchesActor)
       const sell = await listRateCards(bothBranchesActor, 'sell')
-      expect(cards.all).toBe(all.length)
-      expect(cards.buy).toBe(all.filter((r) => r.direction === 'buy').length)
-      expect(cards.sell).toBe(sell.length)
+      expect(cards.all).toBe(all.total)
+      expect(cards.buy).toBe(all.rows.filter((r) => r.direction === 'buy').length)
+      expect(cards.sell).toBe(sell.total)
       // The bug in one line: the sell tab's rows hold no buy card at all.
-      expect(sell.some((r) => r.direction === 'buy')).toBe(false)
+      expect(sell.rows.some((r) => r.direction === 'buy')).toBe(false)
       expect(cards.buy).toBeGreaterThan(0)
     } finally {
       pilot.on = false
@@ -49,8 +49,9 @@ describe.skipIf(!enabled)('rate register tab counts against the database', () =>
     const buy = await listRateCards(bothBranchesActor, 'buy')
     const sell = await listRateCards(bothBranchesActor, 'sell')
     expect(cards.buy + cards.sell).toBe(cards.all)
-    // The list is capped at 200; below the cap the two must agree exactly.
-    if (buy.length < 200) expect(cards.buy).toBe(buy.length)
-    if (sell.length < 200) expect(cards.sell).toBe(sell.length)
+    // The register's own total, so the two agree exactly however many cards
+    // there are; while it was capped at 200 this could only be checked below it.
+    expect(cards.buy).toBe(buy.total)
+    expect(cards.sell).toBe(sell.total)
   })
 })

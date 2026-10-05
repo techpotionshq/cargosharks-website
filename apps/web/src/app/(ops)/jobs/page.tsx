@@ -11,7 +11,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { listJobs, listRunningClocks } from '@/features/jobs/queries'
+import {
+  ARRIVING_WITHIN_DAYS,
+  accruingTotals,
+  countJobBoard,
+  listJobs,
+  listRunningClocks,
+} from '@/features/jobs/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay, formatMoney, formatNumber, formatRelative } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -22,9 +28,11 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneDots } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { StandIn, TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
 import { pickName } from '@/lib/named'
-import { formatByCurrency, sumByCurrency } from '@/lib/by-currency'
+import { formatByCurrency } from '@/lib/by-currency'
 
 type Filter = 'live' | 'exceptions' | 'arriving' | 'all'
 
@@ -47,7 +55,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function JobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; status?: string }>
+  searchParams: Promise<{ filter?: string; status?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
@@ -63,32 +71,39 @@ export default async function JobsPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
-  const [rows, clocks] = await Promise.all([
-    listJobs(session.actor, {
-      status: params.status ?? (filter === 'all' ? undefined : 'live'),
-      exceptionsOnly: filter === 'exceptions',
-      limit: 100,
-      locale,
-    }),
+  /*
+    A page of the filtered board, and the tiles counted separately (R9).
+
+    This fetched a hundred rows and drew every tile from them, so the board
+    stopped at the hundredth shipment by ETA with no way on, and "Live" read
+    100 against 336. Each filter is now part of the query, the table pages,
+    and the tiles come from counts over every live job.
+  */
+  const page = pageRequest(params.page)
+  const [jobsPage, counts, clocks, accruingByCurrency] = await Promise.all([
+    listJobs(
+      session.actor,
+      {
+        status: params.status ?? (filter === 'all' ? undefined : 'live'),
+        exceptionsOnly: filter === 'exceptions',
+        arrivingWithinDays: filter === 'arriving' ? ARRIVING_WITHIN_DAYS : undefined,
+        locale,
+      },
+      page,
+    ),
+    countJobBoard(session.actor),
     listRunningClocks(session.actor),
+    accruingTotals(session.actor),
   ])
 
-  const arriving = rows.filter(
-    (r) => r.eta !== null && r.eta.getTime() > now && r.eta.getTime() < now + 7 * 86_400_000,
-  )
-  const visible = filter === 'arriving' ? arriving : rows
-  const held = rows.filter((r) => r.customsStatus === 'held' || r.status === 'on_hold').length
+  const visible = jobsPage.rows
+  const held = counts.held
   /*
     Per currency, never one sum (O15). The clocks are each in their own
     currency, and adding a USD per-diem to a KWD one and printing "KWD" was
-    the same mistake the finance summaries made.
+    the same mistake the finance summaries made. Summed in the database over
+    every running clock (`accruingTotals`), not over the panel's worst twenty.
   */
-  const accruingByCurrency = sumByCurrency(
-    clocks.map((clock) => ({
-      currency: clock.accrued.currency,
-      amount: String(clock.accrued.amount),
-    })),
-  )
   const accruing = accruingByCurrency.length > 0
 
   return (
@@ -108,10 +123,10 @@ export default async function JobsPage({
       />
 
       <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
-        <StatTile label={t('filterLive')} value={formatNumber(rows.length, locale)} icon="jobs" />
+        <StatTile label={t('filterLive')} value={formatNumber(counts.live, locale)} icon="jobs" />
         <StatTile
           label={t('filterArriving')}
-          value={formatNumber(arriving.length, locale)}
+          value={formatNumber(counts.arriving, locale)}
           icon="calendar"
           href="/jobs?filter=arriving"
         />
@@ -227,7 +242,7 @@ export default async function JobsPage({
             )
           })}
           <span className="ms-auto text-caption text-ink-subtle">
-            {tc('showing', { count: visible.length })}
+            {tc('showing', { count: formatNumber(jobsPage.total, locale) })}
           </span>
         </div>
 
@@ -385,6 +400,11 @@ export default async function JobsPage({
             </TBody>
           </TableShell>
         )}
+        <Pager
+          page={jobsPage}
+          path="/jobs"
+          params={{ filter: params.filter, status: params.status }}
+        />
       </Card>
     </>
   )

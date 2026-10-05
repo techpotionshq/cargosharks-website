@@ -30,7 +30,7 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
-import type { Mode, QuoteComparison, QuoteOptionView } from '@/lib/pilot/types'
+import type { Mode, QuoteComparison, QuoteFxView, QuoteOptionView } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotQuote } from '@/lib/pilot/fixtures'
 
@@ -68,6 +68,38 @@ function buyRates(snapshot: Record<string, unknown>): Map<string, number> {
     if (!rates.has(chargeTypeKey)) rates.set(chargeTypeKey, Number(rate))
   }
   return rates
+}
+
+/**
+ * The rates a quotation was converted at, from its snapshot.
+ *
+ * `converted` is what pricing records now: only the rates a line used, each
+ * with its source and moment. A quotation priced before that has `fx` with
+ * rates alone, which still says which rate it was, and not whose.
+ */
+function convertedAt(snapshot: Record<string, unknown>): QuoteFxView[] {
+  const list = Array.isArray(snapshot.converted)
+    ? (snapshot.converted as unknown[])
+    : Array.isArray(snapshot.lineCosts) && Array.isArray(snapshot.fx)
+      ? (snapshot.fx as unknown[]).filter((entry) =>
+          (snapshot.lineCosts as unknown[]).some(
+            (cost) =>
+              !!cost &&
+              !!entry &&
+              (cost as Record<string, unknown>).cardCurrency ===
+                (entry as Record<string, unknown>).from,
+          ),
+        )
+      : []
+  return list.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const r = entry as Record<string, unknown>
+    const from = text(r.from)
+    const to = text(r.to)
+    const rate = text(r.rate)
+    if (!from || !to || !rate || from === to) return []
+    return [{ from, to, rate, source: text(r.source), takenAt: text(r.takenAt) }]
+  })
 }
 
 /**
@@ -223,6 +255,7 @@ export async function getQuoteComparison(
         marginPct: sell === 0 ? 0 : Math.round(((sell - cost) / sell) * 1000) / 10,
         validUntil: row.validUntil ? new Date(row.validUntil) : new Date(),
         isRecommended: row.id === cheapest?.id,
+        fx: convertedAt(snapshot),
         lines: lineRows
           .filter((line) => line.quoteId === row.id)
           .map((line) => ({

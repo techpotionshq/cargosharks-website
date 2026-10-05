@@ -17,7 +17,20 @@
  * here goes through `withActor`, and the trigger records it.
  */
 
-import { and, asc, desc, eq, gte, ilike, lt, notInArray, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lt,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm'
 import {
   auditLog,
   branches,
@@ -34,13 +47,21 @@ import {
   principalBranchRoles,
   principals,
   roles,
+  FX_RATE_ORDER_SQL,
+  fxFeedStatus,
+  readIntegrationRow,
+  resolveIntegration,
+  systemActor,
   withActor,
   workingCalendars,
   type Actor,
+  type Tx,
 } from '@qabandi/db'
+import { integrationSpec, todayIn } from '@qabandi/core'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import { named } from '@/lib/named'
-import type { FxRateRow } from '@/lib/pilot/types'
+import type { FxFeedPanel, FxRateRow } from '@/lib/pilot/types'
 import {
   pilotAudit,
   pilotAuditTableCounts,
@@ -50,6 +71,7 @@ import {
   pilotChargeTypes,
   pilotDutyRates,
   pilotEngineRules,
+  pilotFxFeed,
   pilotFxRates,
   pilotMilestoneTemplates,
   pilotReferenceCounts,
@@ -92,10 +114,62 @@ export interface UserRow {
   }[]
 }
 
-export async function listUsers(actor: Actor): Promise<UserRow[]> {
-  if (usePilotFixtures()) return pilotUsers()
+/** Staff only — see `listUsers`. */
+const STAFF = notInArray(principals.type, ['customer_contact', 'agent_contact'])
+
+/**
+ * The staff register, a page at a time.
+ *
+ * It was `limit(200)` with the headline figures read off the rows. A hundred
+ * staff at launch plus the people who have left (deactivated, never deleted)
+ * reaches two hundred within a year, and then "People" would have read 200 and
+ * the people after the two-hundredth name would have had no row to edit.
+ */
+export async function listUsers(
+  actor: Actor,
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<UserRow>> {
+  if (usePilotFixtures()) return pageOf(pilotUsers(), request)
+
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) => readUsers(tx, limit, offset),
+      async () => {
+        const [row] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(principals)
+          .where(STAFF)
+        return row?.n ?? 0
+      },
+    ),
+  )
+}
+
+/** The users register's figures, counted over every member of staff. */
+export async function countUsers(actor: Actor): Promise<{ people: number; withLogin: number }> {
+  if (usePilotFixtures()) {
+    const people = pilotUsers()
+    return { people: people.length, withLogin: people.filter((p) => p.hasPassword).length }
+  }
 
   return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        people: sql<number>`count(*)::int`,
+        withLogin: sql<number>`(count(*) filter (where exists (
+          select 1 from auth_account a
+           where a.user_id = "principals"."auth_user_id" and a.provider_id = 'credential'
+        )))::int`,
+      })
+      .from(principals)
+      .where(STAFF)
+    return { people: row?.people ?? 0, withLogin: row?.withLogin ?? 0 }
+  })
+}
+
+async function readUsers(tx: Tx, limit: number, offset: number): Promise<UserRow[]> {
+  {
     const people = await tx
       .select({
         id: principals.id,
@@ -119,9 +193,10 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       // Staff only. Portal and agent logins became readable to staff (A7) so
       // the customer page can show who has access; they are managed there,
       // per company, and listing them here would bury the staff register.
-      .where(notInArray(principals.type, ['customer_contact', 'agent_contact']))
-      .orderBy(asc(principals.nameEn))
-      .limit(200)
+      .where(STAFF)
+      .orderBy(asc(principals.nameEn), asc(principals.id))
+      .limit(limit)
+      .offset(offset)
 
     // One extra query rather than one per person: the role grid is small, and
     // an N+1 against a distant database is the difference between 300ms and
@@ -140,7 +215,18 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       .innerJoin(roles, eq(roles.id, principalBranchRoles.roleId))
       // A revoked grant is a deactivated row (nothing is deleted), and it
       // was still drawn as a role pill after the branch had been taken away.
-      .where(eq(principalBranchRoles.isActive, true))
+      // Only this page's people: the grid for everyone grows with the staff.
+      .where(
+        and(
+          eq(principalBranchRoles.isActive, true),
+          people.length > 0
+            ? inArray(
+                principalBranchRoles.principalId,
+                people.map((person) => person.id),
+              )
+            : sql`false`,
+        ),
+      )
       .orderBy(asc(branches.code))
 
     const byPrincipal = new Map<string, UserRow['assignments']>()
@@ -160,7 +246,7 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       ...person,
       assignments: byPrincipal.get(person.id) ?? [],
     }))
-  })
+  }
 }
 
 export interface PortalContactRow {
@@ -547,6 +633,72 @@ export async function listAudit(actor: Actor, filters: AuditFilters = {}): Promi
   const limit = filters.limit ?? 150
   if (usePilotFixtures()) return pilotAudit(Date.now(), filters)
 
+  return withActor(actor, async (tx) => auditRows(tx, auditWhere(filters)).limit(limit))
+}
+
+/**
+ * The audit screen's page, with the total its "Entries" figure prints.
+ *
+ * `listAudit` above stays as it is for the CSV export, which wants one long
+ * read with its own explicit ceiling and says so in the file when it hits it.
+ * The screen read the same 150 rows and printed `rows.length` as "Entries", so
+ * on any real trail the figure was 150 and nothing past the hundred and
+ * fiftieth entry could be reached without the export (the audit after live run
+ * 5). It pages now, over the same filter.
+ */
+export async function listAuditPage(
+  actor: Actor,
+  filters: Omit<AuditFilters, 'limit'> = {},
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<AuditRow>> {
+  if (usePilotFixtures()) {
+    return pageOf(pilotAudit(Date.now(), { ...filters, limit: Number.POSITIVE_INFINITY }), request)
+  }
+
+  const where = auditWhere(filters)
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) => auditRows(tx, where).limit(limit).offset(offset),
+      async () => {
+        const [row] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(auditLog)
+          .leftJoin(principals, eq(principals.id, auditLog.principalId))
+          .where(where)
+        return row?.n ?? 0
+      },
+    ),
+  )
+}
+
+/** The trail's rows, newest first, under a filter — shared by the export and the screen. */
+function auditRows(tx: Tx, where: SQL | undefined) {
+  return (
+    tx
+      .select({
+        id: auditLog.id,
+        at: auditLog.at,
+        op: auditLog.op,
+        tableName: auditLog.tableName,
+        rowId: auditLog.rowId,
+        principalName: principals.nameEn,
+        principalNameAr: principals.nameAr,
+        principalType: auditLog.principalType,
+        branchCode: branches.code,
+        ip: auditLog.ip,
+      })
+      .from(auditLog)
+      .leftJoin(principals, eq(principals.id, auditLog.principalId))
+      .leftJoin(branches, eq(branches.id, auditLog.branchId))
+      .where(where)
+      // `id` breaks ties: a trigger writes several rows in one statement, at
+      // one timestamp, and without it a row could sit on two pages.
+      .orderBy(desc(auditLog.at), desc(auditLog.id))
+  )
+}
+
+function auditWhere(filters: AuditFilters): SQL | undefined {
   /*
     `to` is exclusive of the day *after* rather than inclusive of `to`.
 
@@ -577,28 +729,7 @@ export async function listAudit(actor: Actor, filters: AuditFilters = {}): Promi
         )
       : undefined,
   ].filter(Boolean)
-
-  return withActor(actor, async (tx) =>
-    tx
-      .select({
-        id: auditLog.id,
-        at: auditLog.at,
-        op: auditLog.op,
-        tableName: auditLog.tableName,
-        rowId: auditLog.rowId,
-        principalName: principals.nameEn,
-        principalNameAr: principals.nameAr,
-        principalType: auditLog.principalType,
-        branchCode: branches.code,
-        ip: auditLog.ip,
-      })
-      .from(auditLog)
-      .leftJoin(principals, eq(principals.id, auditLog.principalId))
-      .leftJoin(branches, eq(branches.id, auditLog.branchId))
-      .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(auditLog.at))
-      .limit(limit),
-  )
+  return conditions.length ? and(...conditions) : undefined
 }
 
 export async function auditTableCounts(
@@ -789,17 +920,66 @@ export async function listFxRates(actor: Actor): Promise<FxRateRow[]> {
   if (usePilotFixtures()) return pilotFxRates()
 
   return withActor(actor, async (tx) => {
+    /*
+      Who typed a manual rate comes from the audit trail, which only a reader
+      with `admin.audit.read` can see — RLS answers null for everybody else,
+      and the screen then says when without saying who.
+    */
     const result = await tx.execute(sql`
       select distinct on (from_currency, to_currency)
              from_currency as "fromCurrency", to_currency as "toCurrency",
-             rate::text as rate, effective_on::text as "effectiveOn", source
+             rate::text as rate, effective_on::text as "effectiveOn", source,
+             taken_at as "takenAt",
+             case when source = 'manual' then (
+               select p.name_en from audit_log a join principals p on p.id = a.principal_id
+                where a.table_name = 'fx_rates' and a.row_id = fx_rates.id::text
+                order by a.at desc limit 1
+             ) end as "enteredBy"
         from fx_rates
        where effective_on <= current_date
-       order by from_currency, to_currency, effective_on desc, taken_at desc
+       order by from_currency, to_currency, ${FX_RATE_ORDER_SQL}
        limit 200
     `)
-    return result.rows as unknown as FxRateRow[]
+    return (result.rows as unknown as (FxRateRow & { takenAt: Date | string | null })[]).map(
+      (row) => ({ ...row, takenAt: row.takenAt ? new Date(row.takenAt).toISOString() : null }),
+    )
   })
+}
+
+/**
+ * Whether the rate feed is on, and whether it has stopped.
+ *
+ * The driver is read with the system actor, as `assistant/queries.ts` reads
+ * the model key: `integration_settings` answers only to
+ * `admin.integrations.write`, and a coordinator reading the reference page
+ * under their own actor would be told the feed is manual on a deployment
+ * where it runs. Only the driver leaves this function; nothing is decrypted.
+ *
+ * The staleness is read under the reader's own actor, from `fx_rates`, which
+ * every reader of the rates may see.
+ */
+export async function getFxFeedPanel(actor: Actor): Promise<FxFeedPanel> {
+  if (usePilotFixtures()) return pilotFxFeed()
+
+  const spec = integrationSpec('fx')!
+  let driver = spec.defaultDriver ?? 'manual'
+  try {
+    const row = await withActor(systemActor(), (tx) => readIntegrationRow(tx, 'fx'))
+    driver = resolveIntegration(spec, row).driver ?? driver
+  } catch {
+    // An unreadable settings row is not a configuration answer; say manual,
+    // which shows no feed warning rather than a false one.
+  }
+
+  const status = await withActor(actor, (tx) => fxFeedStatus(tx, todayIn()))
+  return {
+    driver,
+    stale:
+      driver !== 'manual' && status.stale
+        ? { ageDays: status.ageDays, pairs: status.stalePairs }
+        : null,
+    lastFetchedAt: status.lastFetchedAt?.toISOString() ?? null,
+  }
 }
 
 /**

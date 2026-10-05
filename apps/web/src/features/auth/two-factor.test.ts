@@ -107,4 +107,18 @@ describe('the challenge', () => {
   it('names both kinds of code when the field is neither', async () => {
     expect((await submit('12'))?.error).toBe('twoFactor.errorMissingOrBackup')
   })
+
+  /** Five wrong codes lock the user; they are told so, in the password step's words. */
+  it('says the user is locked, and for how long, when the guard locked them', async () => {
+    const { APIError } = await import('better-auth/api')
+    harness.verifyTOTP.mockRejectedValue(
+      new APIError('FORBIDDEN', { code: 'ACCOUNT_LOCKED', minutesRemaining: 12 }),
+    )
+    expect((await submit('123456'))?.error).toBe('signIn.errorLocked')
+  })
+
+  it('still says only "wrong code" for an ordinary wrong code', async () => {
+    harness.verifyTOTP.mockRejectedValue(new Error('APIError: invalid code'))
+    expect((await submit('123456'))?.error).toBe('twoFactor.errorInvalid')
+  })
 })

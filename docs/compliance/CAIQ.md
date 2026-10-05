@@ -87,7 +87,7 @@ here from what it prints.
 | DCS-01 | Is physical security managed? | **N/A** | Inherited from the hosting provider, which is not chosen |
 | DSP-01 | Is data classified? | **Partial** | Implicit in the schema and the ROPA; no formal classification scheme |
 | DSP-02 | Is there a data inventory? | **Yes** | [`ROPA.md`](ROPA.md), derived from the schema |
-| DSP-03 | Is data segregated between tenants? | **Yes** | Enforced by the database: row-level security `ENABLE` **and** `FORCE` on 87 of 93 tables, 211 policies, and a database per customer in the fleet tooling |
+| DSP-03 | Is data segregated between tenants? | **Yes** | Enforced by the database: row-level security `ENABLE` **and** `FORCE` on 88 of 94 tables, 225 policies, and a database per customer in the fleet tooling |
 | DSP-04 | Is secure deletion supported? | **No** | The system is built on "nothing is deleted". See the erasure note in `ROPA.md` |
 | DSP-05 | Are retention periods defined? | **No** | Open, and blocked on the erasure decision |
 | DSP-06 | Is a DPIA performed where required? | **No** | Blocked on which law applies |
@@ -120,7 +120,7 @@ here from what it prints.
 | IAM-02 | Is least privilege enforced? | **Yes** | Application role holds `NOBYPASSRLS`, owns nothing, and `DELETE` is revoked. Migrations run as a separate role |
 | IAM-03 | Is multi-factor authentication supported? | **Yes** | TOTP, and **mandatory** for Administrator and Finance — enforced in both internal shells. Backup codes are accepted at the challenge |
 | IAM-04 | Are strong passwords enforced? | **Yes** | Twelve characters minimum |
-| IAM-05 | Is there protection against brute force? | **Yes** | Five failures locks the account for fifteen minutes; ten attempts per address per fifteen minutes. Both enforced inside Better Auth's request hooks, so its raw endpoints are covered too. The address is the one the trusted proxy hops report, never the caller-written leftmost `X-Forwarded-For` entry |
+| IAM-05 | Is there protection against brute force? | **Yes** | Five failures locks the account for fifteen minutes (answered alike for unknown addresses); fifty failed attempts per address per fifteen minutes, with correct passwords spending nothing. Both enforced inside Better Auth's request hooks, so its raw endpoints are covered too. The address is the one the trusted proxy hops report, never the caller-written leftmost `X-Forwarded-For` entry |
 | IAM-06 | Are sessions managed securely? | **Yes** | Database-backed and opaque, never JWTs. Revocation takes effect on the next request; sign-out deletes the session and a password reset revokes all of the account's sessions. Twelve-hour expiry, `__Secure-` prefixed cookies |
 | IAM-07 | Are privileged accesses logged? | **Yes** | 85 audit triggers; vendor support access is separately granted, time-boxed, read-only unless the customer grants write scope (updates only, never inserts or deletes), and logged per transaction |
 | IAM-08 | Are access reviews performed periodically? | **No** | No cadence defined |
