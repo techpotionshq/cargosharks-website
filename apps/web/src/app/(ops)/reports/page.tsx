@@ -41,6 +41,7 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { formatByCurrency } from '@/lib/by-currency'
 import { Button, EmptyState, Grid, PageHeader } from '@/ui/layout'
+import { DateInput } from '@/ui/date-input'
 import { Metric } from '@/ui/metric'
 import { Card } from '@/ui/card'
 import { Badge } from '@/ui/status'
@@ -186,12 +187,13 @@ export default async function ReportsPage({
         ))}
       </nav>
 
+      {/* `DateInput`: "10/05/2026" in the browser's format was a different
+          day to different readers. */}
       <form method="get" action="/reports" className="mb-4 flex flex-wrap items-end gap-3">
         <input type="hidden" name="dimension" value={dimension} />
         <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
           {t('from')}
-          <input
-            type="date"
+          <DateInput
             name="from"
             defaultValue={period.from}
             className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
@@ -199,8 +201,7 @@ export default async function ReportsPage({
         </label>
         <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
           {t('to')}
-          <input
-            type="date"
+          <DateInput
             name="to"
             defaultValue={period.to}
             className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
