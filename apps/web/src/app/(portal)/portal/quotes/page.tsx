@@ -15,7 +15,9 @@ import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { todayIn } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
-import { listPortalQuotes } from '@/features/portal/queries'
+import { listPortalQuotes, portalQuoteCounts } from '@/features/portal/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { QUOTE_STATE_TONE, portalQuoteState } from '@/features/portal/status'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatNumber } from '@/lib/format'
@@ -31,17 +33,26 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
-export default async function PortalQuotesPage() {
+export default async function PortalQuotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const quotes = await listPortalQuotes(session.actor, locale)
+  const { page } = await searchParams
 
   const t = await getTranslations('portalQuotes')
   const tMode = await getTranslations('mode')
   // Validity is a day in Kuwait, where the offer was made, whatever zone the
   // reader's browser is in, the rule the server refuses an answer by.
   const today = todayIn()
+  const [quotesPage, counts] = await Promise.all([
+    listPortalQuotes(session.actor, locale, pageRequest(page)),
+    portalQuoteCounts(session.actor, today),
+  ])
+  const quotes = quotesPage.rows
 
   const label = {
     sent: t('statusSent'),
@@ -49,9 +60,8 @@ export default async function PortalQuotesPage() {
     accepted: t('statusAccepted'),
     rejected: t('statusRejected'),
   }
-  const states = quotes.map((quote) => portalQuoteState(quote, today))
-  const awaiting = states.filter((state) => state === 'sent').length
-  const accepted = states.filter((state) => state === 'accepted').length
+  // The tiles count every offer the customer holds, not the page shown below.
+  const { awaiting, accepted } = counts
 
   return (
     <>
@@ -67,14 +77,14 @@ export default async function PortalQuotesPage() {
         <StatTile label={t('accepted')} value={formatNumber(accepted, locale)} icon="check" />
       </div>
 
-      {quotes.length === 0 ? (
+      {quotesPage.total === 0 ? (
         <Card>
           <EmptyState icon="quotes" title={t('empty')} description={t('emptyHint')} />
         </Card>
       ) : (
         <ul className="flex flex-col gap-3">
-          {quotes.map((quote, index) => {
-            const state = states[index]!
+          {quotes.map((quote) => {
+            const state = portalQuoteState(quote, today)
             const href = `/portal/quotes/${quote.id}`
             return (
               <li key={quote.id}>
@@ -138,6 +148,11 @@ export default async function PortalQuotesPage() {
           })}
         </ul>
       )}
+      <Pager
+        page={quotesPage}
+        path="/portal/quotes"
+        className="mt-3 rounded-card border border-line bg-surface"
+      />
     </>
   )
 }

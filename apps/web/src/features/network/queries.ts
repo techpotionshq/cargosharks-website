@@ -14,6 +14,7 @@ import { jobMilestones, jobs, locations, partners, withActor, type Actor } from 
 import type { Mode, PortalShipment } from '@/lib/pilot/types'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import { demoPartnerName } from '@/lib/pilot/demo'
 import {
   pilotAgentShipments,
@@ -21,7 +22,6 @@ import {
   pilotNetworkCounts,
   pilotPartner,
   pilotPartnerCredentials,
-  pilotPartnerTypeCounts,
   pilotPartners,
 } from '@/lib/pilot/fixtures'
 
@@ -40,40 +40,75 @@ export interface PartnerRow {
   readonly openJobs: number
 }
 
-export async function listPartners(actor: Actor, search?: string): Promise<PartnerRow[]> {
-  // Search carried through, on the same two columns the `where` below matches.
-  if (usePilotFixtures()) return pilotPartners(search)
+export interface PartnerFilters {
+  readonly search?: string
+  readonly type?: string
+}
 
-  return withActor(actor, async (tx) => {
-    const term = search?.trim()
-    return tx
-      .select({
-        id: partners.id,
-        code: partners.code,
-        type: partners.type,
-        legalNameEn: partners.legalNameEn,
-        legalNameAr: partners.legalNameAr,
-        countryCode: partners.countryCode,
-        currency: partners.currency,
-        paymentTermsDays: partners.paymentTermsDays,
-        scac: partners.scac,
-        isActive: partners.isActive,
-        openJobs: sql<number>`(
+/** The fixture register, filtered as `partnersWhere` filters the table. */
+function pilotPartnersMatching(filters: PartnerFilters): PartnerRow[] {
+  const rows = pilotPartners(filters.search)
+  return filters.type ? rows.filter((row) => row.type === filters.type) : rows
+}
+
+/** The register's filter as SQL, shared by the page, its total and the type counts. */
+function partnersWhere(filters: PartnerFilters) {
+  const term = filters.search?.trim()
+  return and(
+    term
+      ? or(ilike(partners.legalNameEn, `%${term}%`), ilike(partners.code, `%${term}%`))
+      : undefined,
+    filters.type ? sql`${partners.type}::text = ${filters.type}` : undefined,
+  )
+}
+
+/*
+  The type filter is in the query now. It was applied to the page in memory —
+  "the register is capped at 200 rows, and a second round trip costs more than
+  the filter" — which was true until there were two hundred partners, after
+  which a type filter could only find that type among the first two hundred by
+  name, and "All" counted the page.
+*/
+export async function listPartners(
+  actor: Actor,
+  filters: PartnerFilters = {},
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<PartnerRow>> {
+  // Search carried through, on the same two columns the `where` below matches.
+  if (usePilotFixtures()) return pageOf(pilotPartnersMatching(filters), request)
+
+  const where = partnersWhere(filters)
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: partners.id,
+            code: partners.code,
+            type: partners.type,
+            legalNameEn: partners.legalNameEn,
+            legalNameAr: partners.legalNameAr,
+            countryCode: partners.countryCode,
+            currency: partners.currency,
+            paymentTermsDays: partners.paymentTermsDays,
+            scac: partners.scac,
+            isActive: partners.isActive,
+            openJobs: sql<number>`(
           select count(*)::int from job_partners jp
             join jobs j on j.id = jp.job_id
            where jp.partner_id = "partners"."id"
              and j.status not in ('closed', 'cancelled')
         )`,
-      })
-      .from(partners)
-      .where(
-        term
-          ? or(ilike(partners.legalNameEn, `%${term}%`), ilike(partners.code, `%${term}%`))
-          : undefined,
-      )
-      .orderBy(asc(partners.legalNameEn))
-      .limit(200)
-  })
+          })
+          .from(partners)
+          .where(where)
+          .orderBy(asc(partners.legalNameEn), asc(partners.id))
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, partners, where),
+    ),
+  )
 }
 
 export interface LocationRow {
@@ -87,35 +122,81 @@ export interface LocationRow {
   readonly useCount: number
 }
 
-export async function listLocations(actor: Actor, search?: string): Promise<LocationRow[]> {
-  if (usePilotFixtures()) return pilotLocations(search)
+function locationsWhere(search?: string) {
+  const term = search?.trim()
+  return term
+    ? or(ilike(locations.nameEn, `%${term}%`), ilike(locations.unlocode, `%${term}%`))
+    : undefined
+}
+
+/** How often a place is used, either end of a lane. */
+const locationUseCount = sql<number>`(
+  select count(*)::int from jobs j
+   where j.origin_id = "locations"."id" or j.destination_id = "locations"."id"
+)`
+
+/**
+ * The locations register, a page at a time (it was `limit(300)` against a
+ * UN/LOCODE list that runs to thousands once an administrator imports it).
+ */
+export async function listLocations(
+  actor: Actor,
+  search?: string,
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<LocationRow>> {
+  if (usePilotFixtures()) return pageOf(pilotLocations(search), request)
+
+  const where = locationsWhere(search)
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      (limit, offset) =>
+        tx
+          .select({
+            id: locations.id,
+            unlocode: locations.unlocode,
+            nameEn: locations.nameEn,
+            nameAr: locations.nameAr,
+            countryCode: locations.countryCode,
+            kind: locations.kind,
+            isActive: locations.isActive,
+            // How often the place is actually used, either end of a lane. It is
+            // the only column that tells you which of four hundred ports matter.
+            useCount: locationUseCount,
+          })
+          .from(locations)
+          .where(where)
+          .orderBy(asc(locations.nameEn), asc(locations.id))
+          .limit(limit)
+          .offset(offset),
+      () => countRows(tx, locations, where),
+    ),
+  )
+}
+
+/**
+ * The locations register's two figures — every place the search matches, and
+ * how many of them a shipment uses — counted rather than read off the page,
+ * which made "in use" a count of the first three hundred names.
+ */
+export async function locationCounts(
+  actor: Actor,
+  search?: string,
+): Promise<{ total: number; inUse: number }> {
+  if (usePilotFixtures()) {
+    const rows = pilotLocations(search)
+    return { total: rows.length, inUse: rows.filter((row) => row.useCount > 0).length }
+  }
 
   return withActor(actor, async (tx) => {
-    const term = search?.trim()
-    return tx
+    const [row] = await tx
       .select({
-        id: locations.id,
-        unlocode: locations.unlocode,
-        nameEn: locations.nameEn,
-        nameAr: locations.nameAr,
-        countryCode: locations.countryCode,
-        kind: locations.kind,
-        isActive: locations.isActive,
-        // How often the place is actually used, either end of a lane. It is
-        // the only column that tells you which of four hundred ports matter.
-        useCount: sql<number>`(
-          select count(*)::int from jobs j
-           where j.origin_id = "locations"."id" or j.destination_id = "locations"."id"
-        )`,
+        total: sql<number>`count(*)::int`,
+        inUse: sql<number>`(count(*) filter (where ${locationUseCount} > 0))::int`,
       })
       .from(locations)
-      .where(
-        term
-          ? or(ilike(locations.nameEn, `%${term}%`), ilike(locations.unlocode, `%${term}%`))
-          : undefined,
-      )
-      .orderBy(asc(locations.nameEn))
-      .limit(300)
+      .where(locationsWhere(search))
+    return { total: row?.total ?? 0, inUse: row?.inUse ?? 0 }
   })
 }
 
@@ -133,14 +214,31 @@ export async function countNetwork(actor: Actor): Promise<{ partners: number; lo
 }
 
 /** Partner types, for the filter strip. Derived so a new enum value shows up. */
-export async function partnerTypeCounts(actor: Actor): Promise<{ type: string; count: number }[]> {
-  if (usePilotFixtures()) return pilotPartnerTypeCounts()
+/**
+ * The partner register's type filter counts, over the same search the table
+ * shows.
+ *
+ * Every partner, active or not, because the register lists both: these counted
+ * active partners only while the list beside them held the inactive ones too,
+ * so a tab's number and its rows disagreed whenever a partner was switched off.
+ */
+export async function partnerTypeCounts(
+  actor: Actor,
+  search?: string,
+): Promise<{ type: string; count: number }[]> {
+  if (usePilotFixtures()) {
+    const counts = new Map<string, number>()
+    for (const row of pilotPartners(search)) counts.set(row.type, (counts.get(row.type) ?? 0) + 1)
+    return [...counts.entries()]
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => a.type.localeCompare(b.type))
+  }
 
   return withActor(actor, async (tx) =>
     tx
       .select({ type: partners.type, count: sql<number>`count(*)::int` })
       .from(partners)
-      .where(eq(partners.isActive, true))
+      .where(partnersWhere({ search }))
       .groupBy(partners.type)
       .orderBy(asc(partners.type)),
   )
@@ -315,9 +413,12 @@ export async function agentPartnerName(actor: Actor, locale: 'en' | 'ar'): Promi
 export async function listAgentShipments(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<PortalShipment[]> {
-  if (!actor.partnerId) return []
-  if (usePilotFixtures()) return pilotAgentShipments(actor.partnerId, Date.now(), locale)
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<PortalShipment>> {
+  if (!actor.partnerId) return pageOf([], request)
+  if (usePilotFixtures()) {
+    return pageOf(pilotAgentShipments(actor.partnerId, Date.now(), locale), request)
+  }
 
   const ar = locale === 'ar'
   const origin = alias(locations, 'origin')
@@ -325,26 +426,32 @@ export async function listAgentShipments(
   const name = (en: AnyColumn, arabic: AnyColumn) =>
     ar ? sql<string | null>`coalesce(nullif(${arabic}, ''), ${en})` : sql<string | null>`${en}`
 
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: jobs.id,
-        reference: jobs.reference,
-        status: jobs.status,
-        mode: jobs.mode,
-        eta: jobs.eta,
-        originName: name(origin.nameEn, origin.nameAr),
-        destinationName: name(destination.nameEn, destination.nameAr),
-        milestonesTotal: sql<number>`(
+  const visible = and(isNull(jobs.cancelledAt), sql`${jobs.status} <> 'draft'`)
+  // Paged with a count where this was `limit(50)`: an agent on a busy lane is
+  // named on more than fifty shipments in a season.
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: jobs.id,
+            reference: jobs.reference,
+            status: jobs.status,
+            mode: jobs.mode,
+            eta: jobs.eta,
+            originName: name(origin.nameEn, origin.nameAr),
+            destinationName: name(destination.nameEn, destination.nameAr),
+            milestonesTotal: sql<number>`(
           select count(*)::int from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
         )`,
-        milestonesDone: sql<number>`(
+            milestonesDone: sql<number>`(
           select count(*)::int from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.actualAt} is not null
         )`,
-        nextMilestone: sql<string | null>`(
+            nextMilestone: sql<string | null>`(
           select ${ar ? sql`coalesce(nullif(${jobMilestones.nameAr}, ''), ${jobMilestones.nameEn})` : jobMilestones.nameEn}
             from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
@@ -352,29 +459,33 @@ export async function listAgentShipments(
            order by ${jobMilestones.seq}
            limit 1
         )`,
-      })
-      .from(jobs)
-      .leftJoin(origin, eq(origin.id, jobs.originId))
-      .leftJoin(destination, eq(destination.id, jobs.destinationId))
-      .where(and(isNull(jobs.cancelledAt), sql`${jobs.status} <> 'draft'`))
-      .orderBy(asc(jobs.eta))
-      .limit(50)
+          })
+          .from(jobs)
+          .leftJoin(origin, eq(origin.id, jobs.originId))
+          .leftJoin(destination, eq(destination.id, jobs.destinationId))
+          .where(visible)
+          .orderBy(asc(jobs.eta), asc(jobs.id))
+          .limit(limit)
+          .offset(offset)
 
-    return rows.map((row) => ({
-      id: row.id,
-      reference: row.reference,
-      customerReference: null,
-      status: row.status,
-      mode: row.mode as Mode,
-      originName: row.originName ?? '—',
-      destinationName: row.destinationName ?? '—',
-      eta: row.eta,
-      milestonesTotal: row.milestonesTotal,
-      milestonesDone: row.milestonesDone,
-      documentsReleased: 0,
-      nextMilestone: row.nextMilestone,
-    }))
-  })
+        return rows.map((row) => ({
+          id: row.id,
+          reference: row.reference,
+          customerReference: null,
+          status: row.status,
+          mode: row.mode as Mode,
+          originName: row.originName ?? '—',
+          destinationName: row.destinationName ?? '—',
+          eta: row.eta,
+          milestonesTotal: row.milestonesTotal,
+          milestonesDone: row.milestonesDone,
+          documentsReleased: 0,
+          nextMilestone: row.nextMilestone,
+        }))
+      },
+      () => countRows(tx, jobs, visible),
+    ),
+  )
 }
 
 export interface PartnerCoverageRow {

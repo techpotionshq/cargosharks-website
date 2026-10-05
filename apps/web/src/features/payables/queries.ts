@@ -66,6 +66,7 @@ import {
 } from '@qabandi/core'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
   pilotPartnerAccount,
   pilotPayableAgeing,
@@ -107,7 +108,8 @@ export async function listSupplierInvoices(
   actor: Actor,
   filters: { readonly status?: string; readonly partnerId?: string } = {},
   locale: 'en' | 'ar' = 'en',
-): Promise<SupplierInvoiceRow[]> {
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<SupplierInvoiceRow>> {
   /*
     Narrowed before the fixtures branch, not after.
 
@@ -119,23 +121,33 @@ export async function listSupplierInvoices(
   const status = enumFilter(supplierInvoiceStatusEnum.enumValues, filters.status)
   const partnerId = uuidFilter(filters.partnerId)
 
-  if (usePilotFixtures()) return pilotSupplierInvoices(Date.now(), { status, partnerId }, locale)
+  if (usePilotFixtures()) {
+    return pageOf(pilotSupplierInvoices(Date.now(), { status, partnerId }, locale), request)
+  }
 
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: supplierInvoices.id,
-        reference: supplierInvoices.reference,
-        partnerId: supplierInvoices.partnerId,
-        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
-        status: supplierInvoices.status,
-        currency: supplierInvoices.currency,
-        total: supplierInvoices.total,
-        amountPaid: supplierInvoices.amountPaid,
-        invoiceDate: supplierInvoices.invoiceDate,
-        dueOn: supplierInvoices.dueOn,
-        baseCurrency: branches.baseCurrency,
-        /*
+  const where = and(
+    status ? eq(supplierInvoices.status, status) : sql`${supplierInvoices.status} <> 'void'`,
+    partnerId ? eq(supplierInvoices.partnerId, partnerId) : undefined,
+  )
+  // Paged with a count where this was `limit(200)` (the audit after live run 5).
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: supplierInvoices.id,
+            reference: supplierInvoices.reference,
+            partnerId: supplierInvoices.partnerId,
+            partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
+            status: supplierInvoices.status,
+            currency: supplierInvoices.currency,
+            total: supplierInvoices.total,
+            amountPaid: supplierInvoices.amountPaid,
+            invoiceDate: supplierInvoices.invoiceDate,
+            dueOn: supplierInvoices.dueOn,
+            baseCurrency: branches.baseCurrency,
+            /*
           The variance, in one scalar, so the list can be scanned for trouble.
 
           Written as explicit qualified SQL rather than interpolating the
@@ -143,7 +155,7 @@ export async function listSupplierInvoices(
           `${supplierInvoices.id}` emits a bare `"id"` here and binds to the
           inner table instead of the outer one.
         */
-        /*
+            /*
           The subtraction happens *inside* the sum, and it has to.
 
           Written the other way round — `sum(billed) - (select … where
@@ -157,7 +169,7 @@ export async function listSupplierInvoices(
           is wanted: the variance on a bill is the sum of the variances on its
           lines.
         */
-        varianceBase: sql<string>`(
+            varianceBase: sql<string>`(
           select coalesce(sum(
             l.amount * "supplier_invoices"."fx_rate"
             - coalesce((
@@ -171,11 +183,11 @@ export async function listSupplierInvoices(
             from supplier_invoice_lines l
            where l.supplier_invoice_id = "supplier_invoices"."id"
         )`,
-        lineCount: sql<number>`(
+            lineCount: sql<number>`(
           select count(*)::int from supplier_invoice_lines l
            where l.supplier_invoice_id = "supplier_invoices"."id"
         )`,
-        unmatchedCount: sql<number>`(
+            unmatchedCount: sql<number>`(
           select count(*)::int from supplier_invoice_lines l
            where l.supplier_invoice_id = "supplier_invoices"."id"
              and not exists (
@@ -183,21 +195,24 @@ export async function listSupplierInvoices(
                 where m.supplier_invoice_line_id = l.id and m.retracted_at is null
              )
         )`,
-      })
-      .from(supplierInvoices)
-      .innerJoin(partners, eq(partners.id, supplierInvoices.partnerId))
-      .innerJoin(branches, eq(branches.id, supplierInvoices.branchId))
-      .where(
-        and(
-          status ? eq(supplierInvoices.status, status) : sql`${supplierInvoices.status} <> 'void'`,
-          partnerId ? eq(supplierInvoices.partnerId, partnerId) : undefined,
-        ),
-      )
-      .orderBy(desc(supplierInvoices.invoiceDate), desc(supplierInvoices.createdAt))
-      .limit(200)
+          })
+          .from(supplierInvoices)
+          .innerJoin(partners, eq(partners.id, supplierInvoices.partnerId))
+          .innerJoin(branches, eq(branches.id, supplierInvoices.branchId))
+          .where(where)
+          .orderBy(
+            desc(supplierInvoices.invoiceDate),
+            desc(supplierInvoices.createdAt),
+            desc(supplierInvoices.id),
+          )
+          .limit(limit)
+          .offset(offset)
 
-    return rows as SupplierInvoiceRow[]
-  })
+        return rows as SupplierInvoiceRow[]
+      },
+      () => countRows(tx, supplierInvoices, where),
+    ),
+  )
 }
 
 export interface PayablesSummary {
@@ -654,33 +669,67 @@ export interface SupplierPaymentRow {
 export async function listSupplierPayments(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
-): Promise<SupplierPaymentRow[]> {
-  if (usePilotFixtures()) return pilotSupplierPayments(Date.now(), locale)
+  /*
+    `withBalanceOnly` is the payables board's "not yet put against a bill"
+    list. The board fetched the newest two hundred payments and kept those
+    with a balance, so an advance paid before the two-hundredth most recent
+    payment could never be allocated from it. In the `where` now, and paged.
+  */
+  filters: { readonly withBalanceOnly?: boolean } = {},
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<SupplierPaymentRow>> {
+  if (usePilotFixtures()) {
+    const rows = pilotSupplierPayments(Date.now(), locale)
+    return pageOf(
+      filters.withBalanceOnly
+        ? rows.filter((row) => new D(row.amount).minus(row.allocated).gt(0))
+        : rows,
+      request,
+    )
+  }
 
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: supplierPayments.id,
-        partnerId: supplierPayments.partnerId,
-        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
-        amount: supplierPayments.amount,
-        currency: supplierPayments.currency,
-        paidOn: supplierPayments.paidOn,
-        method: supplierPayments.method,
-        reference: supplierPayments.reference,
-        allocated: sql<string>`(
+  const where = filters.withBalanceOnly
+    ? sql`${supplierPayments.amount} > (
+        select coalesce(sum(a.amount), 0) from supplier_payment_allocations a
+         where a.supplier_payment_id = "supplier_payments"."id"
+      )`
+    : undefined
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: supplierPayments.id,
+            partnerId: supplierPayments.partnerId,
+            partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
+            amount: supplierPayments.amount,
+            currency: supplierPayments.currency,
+            paidOn: supplierPayments.paidOn,
+            method: supplierPayments.method,
+            reference: supplierPayments.reference,
+            allocated: sql<string>`(
           select coalesce(sum(a.amount), 0)::text
             from supplier_payment_allocations a
            where a.supplier_payment_id = "supplier_payments"."id"
         )`,
-      })
-      .from(supplierPayments)
-      .innerJoin(partners, eq(partners.id, supplierPayments.partnerId))
-      .orderBy(desc(supplierPayments.paidOn), desc(supplierPayments.createdAt))
-      .limit(200)
+          })
+          .from(supplierPayments)
+          .innerJoin(partners, eq(partners.id, supplierPayments.partnerId))
+          .where(where)
+          .orderBy(
+            desc(supplierPayments.paidOn),
+            desc(supplierPayments.createdAt),
+            desc(supplierPayments.id),
+          )
+          .limit(limit)
+          .offset(offset)
 
-    return rows as SupplierPaymentRow[]
-  })
+        return rows as SupplierPaymentRow[]
+      },
+      () => countRows(tx, supplierPayments, where),
+    ),
+  )
 }
 
 /** Bills of that partner with something still open, for the allocation form. */
@@ -921,46 +970,58 @@ export async function listSettlements(
   actor: Actor,
   filters: { readonly partnerId?: string; readonly status?: string } = {},
   locale: 'en' | 'ar' = 'en',
-): Promise<SettlementRow[]> {
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<SettlementRow>> {
   const status = enumFilter(settlementStatusEnum.enumValues, filters.status)
   const partnerId = uuidFilter(filters.partnerId)
 
-  if (usePilotFixtures()) return pilotSettlements(Date.now(), { status, partnerId }, locale)
+  if (usePilotFixtures()) {
+    return pageOf(pilotSettlements(Date.now(), { status, partnerId }, locale), request)
+  }
 
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: partnerSettlements.id,
-        reference: partnerSettlements.reference,
-        partnerId: partnerSettlements.partnerId,
-        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
-        status: partnerSettlements.status,
-        currency: partnerSettlements.currency,
-        periodFrom: partnerSettlements.periodFrom,
-        periodTo: partnerSettlements.periodTo,
-        receivableTotal: partnerSettlements.receivableTotal,
-        payableTotal: partnerSettlements.payableTotal,
-        offsetAmount: partnerSettlements.offsetAmount,
-        residualAmount: partnerSettlements.residualAmount,
-        residualDirection: partnerSettlements.residualDirection,
-        agreedAt: partnerSettlements.agreedAt,
-        settledAt: partnerSettlements.settledAt,
-      })
-      .from(partnerSettlements)
-      .innerJoin(partners, eq(partners.id, partnerSettlements.partnerId))
-      .where(
-        and(
-          partnerId ? eq(partnerSettlements.partnerId, partnerId) : undefined,
-          status
-            ? eq(partnerSettlements.status, status)
-            : sql`${partnerSettlements.status} <> 'void'`,
-        ),
-      )
-      .orderBy(desc(partnerSettlements.periodTo), desc(partnerSettlements.createdAt))
-      .limit(200)
+  const where = and(
+    partnerId ? eq(partnerSettlements.partnerId, partnerId) : undefined,
+    status ? eq(partnerSettlements.status, status) : sql`${partnerSettlements.status} <> 'void'`,
+  )
+  // Paged with a count where this was `limit(200)` (the audit after live run 5).
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: partnerSettlements.id,
+            reference: partnerSettlements.reference,
+            partnerId: partnerSettlements.partnerId,
+            partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
+            status: partnerSettlements.status,
+            currency: partnerSettlements.currency,
+            periodFrom: partnerSettlements.periodFrom,
+            periodTo: partnerSettlements.periodTo,
+            receivableTotal: partnerSettlements.receivableTotal,
+            payableTotal: partnerSettlements.payableTotal,
+            offsetAmount: partnerSettlements.offsetAmount,
+            residualAmount: partnerSettlements.residualAmount,
+            residualDirection: partnerSettlements.residualDirection,
+            agreedAt: partnerSettlements.agreedAt,
+            settledAt: partnerSettlements.settledAt,
+          })
+          .from(partnerSettlements)
+          .innerJoin(partners, eq(partners.id, partnerSettlements.partnerId))
+          .where(where)
+          .orderBy(
+            desc(partnerSettlements.periodTo),
+            desc(partnerSettlements.createdAt),
+            desc(partnerSettlements.id),
+          )
+          .limit(limit)
+          .offset(offset)
 
-    return rows as SettlementRow[]
-  })
+        return rows as SettlementRow[]
+      },
+      () => countRows(tx, partnerSettlements, where),
+    ),
+  )
 }
 
 export interface SettlementLineRow {

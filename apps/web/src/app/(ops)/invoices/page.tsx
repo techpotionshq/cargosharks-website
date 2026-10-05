@@ -16,6 +16,8 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { invoiceSummary, listInvoices } from '@/features/ledger/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
@@ -34,7 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ status?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
@@ -43,7 +45,7 @@ export default async function InvoicesPage({
   // role, read-only included, open it. Not found rather than forbidden, as
   // with every screen a principal has no business knowing about.
   if (!can(session, 'receivable.read')) notFound()
-  const { status } = await searchParams
+  const { status, page } = await searchParams
   const t = await getTranslations('invoices')
   const tc = await getTranslations('common')
   const resolved = await getLocale()
@@ -52,25 +54,32 @@ export default async function InvoicesPage({
 
   /*
     `overdue` is not a status in the enum — it is a status *and* a date — so it
-    cannot be asked of the query. It reads every invoice and keeps the ones
-    the rule below flags, which is the same rule that draws the red rule on a
-    row, so the filter and the flags cannot disagree.
+    is asked of the query as its own filter (`overdueOn`), written as the same
+    rule `isOverdue` applies below to draw the red rule on a row, so the filter
+    and the flags cannot disagree. It used to read two hundred invoices and
+    filter them here, which could only find the overdue among the newest two
+    hundred; as a query filter it pages over every invoice.
   */
   const overdueView = status === 'overdue'
-  const [all, summary] = await Promise.all([
-    listInvoices(session.actor, overdueView ? undefined : status, locale),
+  const [invoicesPage, summary] = await Promise.all([
+    listInvoices(
+      session.actor,
+      overdueView ? { overdueOn: today } : { status },
+      locale,
+      pageRequest(page),
+    ),
     invoiceSummary(session.actor),
   ])
+  const rows = invoicesPage.rows
 
   // Decimal: a balance is money minus money (see the money rule in CLAUDE.md),
   // and a partial credit note (F9) is off it as surely as a receipt.
-  const balanceOf = (row: (typeof all)[number]) =>
+  const balanceOf = (row: (typeof rows)[number]) =>
     dec(row.total ?? 0)
       .minus(dec(row.amountPaid ?? 0))
       .minus(dec(row.amountCredited ?? 0))
-  const isOverdue = (row: (typeof all)[number]) =>
+  const isOverdue = (row: (typeof rows)[number]) =>
     row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balanceOf(row).gt(0)
-  const rows = overdueView ? all.filter(isOverdue) : all
 
   return (
     <Register
@@ -119,7 +128,7 @@ export default async function InvoicesPage({
           active: status === 'paid',
         },
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={invoicesPage.total === 0}
       empty={{
         icon: 'invoices',
         title: status ? t('noneMatching') : t('noneYet'),
@@ -226,6 +235,7 @@ export default async function InvoicesPage({
           })}
         </TBody>
       </TableShell>
+      <Pager page={invoicesPage} path="/invoices" params={{ status }} />
     </Register>
   )
 }

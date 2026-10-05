@@ -33,6 +33,7 @@ import {
 import { enumFilter } from '@/lib/filters'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { countRows, pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import {
   pilotAllocationShares,
   pilotAttachableJobs,
@@ -69,74 +70,90 @@ export async function listConsolidations(
   actor: Actor,
   filters: { readonly status?: string } = {},
   locale: 'en' | 'ar' = 'en',
-): Promise<ConsolidationSummary[]> {
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<ConsolidationSummary>> {
   // Narrowed before the fixtures branch so both modes answer an unknown filter
   // the same way — see `lib/filters.ts`.
   const status = enumFilter(consolidationStatusEnum.enumValues, filters.status)
 
-  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status }, locale)
+  if (usePilotFixtures()) {
+    return pageOf(pilotConsolidations(Date.now(), { status }, locale), request)
+  }
 
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: consolidations.id,
-        reference: consolidations.reference,
-        status: consolidations.status,
-        mode: consolidations.mode,
-        tradeDirection: consolidations.tradeDirection,
-        masterBillNumber: consolidations.masterBillNumber,
-        vesselName: consolidations.vesselName,
-        voyageNumber: consolidations.voyageNumber,
-        flightNumber: consolidations.flightNumber,
-        originName: named(locale, origin.nameEn, origin.nameAr),
-        destinationName: named(locale, destination.nameEn, destination.nameAr),
-        etd: consolidations.etd,
-        eta: consolidations.eta,
-        /*
+  const where = status
+    ? eq(consolidations.status, status)
+    : sql`${consolidations.status} <> 'cancelled'`
+  // Paged with a count where this was `limit(200)` — the audit after live run 5.
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: consolidations.id,
+            reference: consolidations.reference,
+            status: consolidations.status,
+            mode: consolidations.mode,
+            tradeDirection: consolidations.tradeDirection,
+            masterBillNumber: consolidations.masterBillNumber,
+            vesselName: consolidations.vesselName,
+            voyageNumber: consolidations.voyageNumber,
+            flightNumber: consolidations.flightNumber,
+            originName: named(locale, origin.nameEn, origin.nameAr),
+            destinationName: named(locale, destination.nameEn, destination.nameAr),
+            etd: consolidations.etd,
+            eta: consolidations.eta,
+            /*
           Counted in SQL rather than by loading the houses.
 
           A list of thirty consolidations would otherwise be thirty-one
           queries, and the count is the only thing the row needs.
         */
-        houseCount: sql<number>`(
+            houseCount: sql<number>`(
           select count(*)::int from jobs j where j.consolidation_id = "consolidations"."id"
         )`,
-        /*
+            /*
           Each house's cargo lines, or its own header where it has none — the
           same figure the allocation splits by (O12), so the total here is
           the one the split will see.
         */
-        volumeCbm: sql<string>`(
+            volumeCbm: sql<string>`(
           select coalesce(sum(coalesce(
                    (select sum(c.volume_cbm) from job_cargo c where c.job_id = j.id),
                    j.volume_cbm)), 0)::text
             from jobs j
            where j.consolidation_id = "consolidations"."id"
         )`,
-        grossWeightKg: sql<string>`(
+            grossWeightKg: sql<string>`(
           select coalesce(sum(coalesce(
                    (select sum(c.gross_weight_kg) from job_cargo c where c.job_id = j.id),
                    j.gross_weight_kg)), 0)::text
             from jobs j
            where j.consolidation_id = "consolidations"."id"
         )`,
-        unallocatedCount: sql<number>`(
+            unallocatedCount: sql<number>`(
           select count(*)::int from consol_charge_lines l
            where l.consolidation_id = "consolidations"."id" and l.allocated_at is null
              and l.withdrawn_at is null
         )`,
-      })
-      .from(consolidations)
-      .leftJoin(origin, eq(origin.id, consolidations.originId))
-      .leftJoin(destination, eq(destination.id, consolidations.destinationId))
-      .where(
-        status ? eq(consolidations.status, status) : sql`${consolidations.status} <> 'cancelled'`,
-      )
-      .orderBy(desc(consolidations.etd), desc(consolidations.createdAt))
-      .limit(200)
+          })
+          .from(consolidations)
+          .leftJoin(origin, eq(origin.id, consolidations.originId))
+          .leftJoin(destination, eq(destination.id, consolidations.destinationId))
+          .where(where)
+          .orderBy(
+            desc(consolidations.etd),
+            desc(consolidations.createdAt),
+            desc(consolidations.id),
+          )
+          .limit(limit)
+          .offset(offset)
 
-    return rows as ConsolidationSummary[]
-  })
+        return rows as ConsolidationSummary[]
+      },
+      () => countRows(tx, consolidations, where),
+    ),
+  )
 }
 
 export interface ConsolidationHouse {

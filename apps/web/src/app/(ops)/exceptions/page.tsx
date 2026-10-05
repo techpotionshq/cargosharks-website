@@ -11,6 +11,8 @@
 
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { requireSession } from '@/lib/session'
 import { exceptionCounts, listExceptions } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -29,10 +31,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ExceptionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string }>
+  searchParams: Promise<{ scope?: string; page?: string }>
 }) {
   const session = await requireSession()
-  const { scope } = await searchParams
+  const { scope, page } = await searchParams
   const view = scope === 'closed' ? 'closed' : scope === 'all' ? 'all' : 'open'
 
   const t = await getTranslations('exceptions')
@@ -41,8 +43,8 @@ export default async function ExceptionsPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
-  const [rows, counts] = await Promise.all([
-    listExceptions(session.actor, view, locale),
+  const [exceptionsPage, counts] = await Promise.all([
+    listExceptions(session.actor, view, locale, pageRequest(page)),
     exceptionCounts(session.actor),
   ])
 
@@ -67,7 +69,7 @@ export default async function ExceptionsPage({
         },
         { label: tc('all'), href: '/exceptions?scope=all', active: view === 'all' },
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={exceptionsPage.total === 0}
       empty={{
         icon: 'check',
         title: view === 'open' ? t('noneOpen') : t('noneMatching'),
@@ -93,7 +95,7 @@ export default async function ExceptionsPage({
           </TR>
         </THead>
         <TBody>
-          {rows.map((row) => {
+          {exceptionsPage.rows.map((row) => {
             const overdue = !row.closedAt && row.dueAt !== null && row.dueAt.getTime() < now
             return (
               <TR key={row.id} flag={overdue ? 'critical' : undefined}>
@@ -164,6 +166,7 @@ export default async function ExceptionsPage({
           })}
         </TBody>
       </TableShell>
+      <Pager page={exceptionsPage} path="/exceptions" params={{ scope }} />
     </Register>
   )
 }
