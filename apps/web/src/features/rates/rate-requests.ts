@@ -20,7 +20,7 @@ import type {
   RateRequestView,
   RenewalView,
 } from '@/lib/pilot/types'
-import { convertToBase, D, todayIn } from '@qabandi/core'
+import { convertToBase, D, rateReplyReview, todayIn } from '@qabandi/core'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotCoveringAgents, pilotRateRequests, pilotRenewals } from '@/lib/pilot/fixtures'
@@ -132,6 +132,13 @@ export async function getEnquiryRateRequests(
       )
 
       /*
+        What a person must check before trusting the figure (R1): a line kept
+        as "other", lines that did not read, a stated total the lines do not
+        reach. A declined reply has no figure to doubt.
+      */
+      const review = row.status === 'declined' ? null : rateReplyReview(row.response)
+
+      /*
         A reply that priced another lane than the one asked about is shown,
         with the mismatch, and never offered as this enquiry's buy rate (S14):
         accepted, it wrote a card for a lane nobody asked to cover.
@@ -162,6 +169,15 @@ export async function getEnquiryRateRequests(
         declinedReason: row.declinedReason,
         canPromote,
         rateCardId: row.rateCardId,
+        review:
+          review && review.needed
+            ? {
+                ranked: review.ranked,
+                unclassified: review.unclassified,
+                rejected: review.rejected,
+                totalMismatch: review.totalMismatch,
+              }
+            : null,
       }
     })
 
@@ -172,13 +188,20 @@ export async function getEnquiryRateRequests(
       partial figure; ranked, it won "Cheapest" on its flat fees alone (F69).
       It is shown, marked partial, and left out, as a reply with no FX rate is.
     */
+    /*
+      Nor one whose total is short or in doubt (R1): lines that did not
+      validate, or a broker's stated total the lines disagree with. A reply
+      whose only flag is a line kept as "other" is whole, and ranks on it.
+      Compared as decimals, not floats, like every amount.
+    */
     const ranked = requests.filter(
       (r) =>
         r.comparable &&
         r.unpricedLines === 0 &&
         r.laneMismatch === null &&
         r.status !== 'declined' &&
-        r.normalizedTotal !== null,
+        r.normalizedTotal !== null &&
+        (r.review?.ranked ?? true),
     )
     if (ranked.length > 0) {
       // Compared as decimals: two totals a fils apart are not equal floats.

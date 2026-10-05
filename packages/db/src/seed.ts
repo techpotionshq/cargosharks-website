@@ -192,6 +192,13 @@ const CHARGE_TYPES = [
   ['demurrage', 'Demurrage', 'أرضيات', 'per_day', 'other'],
   ['detention', 'Detention', 'رسوم التأخير', 'per_day', 'other'],
   ['storage', 'Storage', 'رسوم التخزين', 'per_day', 'other'],
+  /*
+    Where a priced line from an agent's rate reply lands when the model cannot
+    name its charge (R1, `UNCLASSIFIED_CHARGE` in core). Kept rather than
+    dropped so the money stays in the total; the reply is flagged so a person
+    names it. 0065 adds it to databases seeded before it existed.
+  */
+  ['other', 'Other charge', 'رسوم أخرى', 'flat', 'other'],
 ] as const
 
 /**

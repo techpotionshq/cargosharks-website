@@ -396,6 +396,8 @@ export interface SupplierInvoiceDetail {
   readonly notes: string | null
   readonly approvedAt: Date | null
   readonly settlementId: string | null
+  /** The total is the lines' sum, read with no printed total, not yet confirmed (R2). */
+  readonly totalUnconfirmed?: boolean
   readonly lines: readonly SupplierLineRow[]
   readonly summary: InvoiceMatchSummary
 }
@@ -441,6 +443,7 @@ export async function getSupplierInvoice(
         dueOn: supplierInvoices.dueOn,
         assetId: supplierInvoices.assetId,
         varianceAcceptedReason: supplierInvoices.varianceAcceptedReason,
+        totalUnconfirmed: supplierInvoices.totalUnconfirmed,
         disputeReason: supplierInvoices.disputeReason,
         notes: supplierInvoices.notes,
         approvedAt: supplierInvoices.approvedAt,

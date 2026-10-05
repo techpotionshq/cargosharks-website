@@ -30,7 +30,7 @@ import {
   SYSTEM_PRINCIPAL_ID,
   type Tx,
 } from '@qabandi/db'
-import { convertToBase, D, replyIsPartial, todayIn } from '@qabandi/core'
+import { convertToBase, D, rateReplyReview, replyIsPartial, todayIn } from '@qabandi/core'
 import { integration, type LiveIntegration } from '../settings'
 
 const STRATEGIES = ['first', 'all', 'wait'] as const
@@ -240,7 +240,14 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
       response.ok === true &&
       !response.laneMismatch &&
       Array.isArray(response.rows) &&
-      response.rows.length > 0
+      response.rows.length > 0 &&
+      /*
+        A reply a person has to look at is never awarded by the machine (R1):
+        a line kept as "other" for want of a charge code, or a stated total
+        that disagrees with the lines. Even a lone reply waits, because the
+        award is exactly the decision the review is there to inform.
+      */
+      !rateReplyReview(r.response).needed
     )
   })
 

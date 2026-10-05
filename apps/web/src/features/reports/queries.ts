@@ -41,7 +41,7 @@ import 'server-only'
 import { and, eq, gte, lte, sql } from 'drizzle-orm'
 import {
   branches,
-  chargeLines,
+  creditedRevenueByJob,
   customers,
   jobs,
   locations,
@@ -103,6 +103,27 @@ export async function marginByDimension(
 
   return withActor(actor, async (tx) => {
     /*
+      The ledger the report sums: every charge line, and each job's credit
+      notes as one negative revenue figure (R7).
+
+      A credit note writes invoice lines and no charge line, so a report over
+      `charge_lines` alone kept the whole sell figure after a credit — live
+      run 5 showed Rumaithiya's revenue as 575.072 where the job P&L said
+      525.072 "after KWD 50.000 in credit notes". The credited figure comes
+      from `creditedRevenueByJob`, the same SQL the job P&L and the
+      assistant's margin tool read, so the three cannot disagree. It is one
+      row per job, never per charge line, so the join multiplies nothing.
+    */
+    const ledger = sql`(
+      select cl.job_id, cl.direction::text as direction, cl.amount_base, cl.base_currency
+        from charge_lines cl
+      union all
+      select c.job_id, 'revenue', -c.credited, c.base_currency
+        from (${creditedRevenueByJob()}) c
+    ) ledger`
+    const baseCurrency = sql<string | null>`ledger.base_currency`
+
+    /*
       One `sum` per direction rather than a join per direction.
 
       `filter (where ...)` computes both sides in a single pass over the
@@ -111,10 +132,10 @@ export async function marginByDimension(
       which is every job whose supplier bills have not arrived.
     */
     const revenue = sql<string>`
-      coalesce(sum(${chargeLines.amountBase}) filter (where ${chargeLines.direction} = 'revenue'), 0)
+      coalesce(sum(ledger.amount_base) filter (where ledger.direction = 'revenue'), 0)
     `
     const cost = sql<string>`
-      coalesce(sum(${chargeLines.amountBase}) filter (where ${chargeLines.direction} = 'cost'), 0)
+      coalesce(sum(ledger.amount_base) filter (where ledger.direction = 'cost'), 0)
     `
     const jobCount = sql<number>`count(distinct ${jobs.id})::int`
     /*
@@ -128,8 +149,8 @@ export async function marginByDimension(
       orders on the exact value rather than on a lossy copy of it.
     */
     const grossProfit = sql<string>`
-      coalesce(sum(${chargeLines.amountBase}) filter (where ${chargeLines.direction} = 'revenue'), 0)
-      - coalesce(sum(${chargeLines.amountBase}) filter (where ${chargeLines.direction} = 'cost'), 0)
+      coalesce(sum(ledger.amount_base) filter (where ledger.direction = 'revenue'), 0)
+      - coalesce(sum(ledger.amount_base) filter (where ledger.direction = 'cost'), 0)
     `
     const shipmentDate = sql`coalesce(${jobs.etd}::date, ${jobs.createdAt}::date)`
 
@@ -175,18 +196,13 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: chargeLines.baseCurrency,
+            currency: baseCurrency,
           })
           .from(jobs)
-          .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
+          .innerJoin(ledger, sql`ledger.job_id = ${jobs.id}`)
           .innerJoin(branches, eq(branches.id, jobs.branchId))
           .where(where)
-          .groupBy(
-            branches.id,
-            branches.legalNameEn,
-            branches.legalNameAr,
-            chargeLines.baseCurrency,
-          )
+          .groupBy(branches.id, branches.legalNameEn, branches.legalNameAr, baseCurrency)
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
 
@@ -200,18 +216,13 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: chargeLines.baseCurrency,
+            currency: baseCurrency,
           })
           .from(jobs)
-          .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
+          .innerJoin(ledger, sql`ledger.job_id = ${jobs.id}`)
           .innerJoin(customers, eq(customers.id, jobs.customerId))
           .where(where)
-          .groupBy(
-            customers.id,
-            customers.legalNameEn,
-            customers.legalNameAr,
-            chargeLines.baseCurrency,
-          )
+          .groupBy(customers.id, customers.legalNameEn, customers.legalNameAr, baseCurrency)
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
 
@@ -243,10 +254,10 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: chargeLines.baseCurrency,
+            currency: baseCurrency,
           })
           .from(jobs)
-          .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
+          .innerJoin(ledger, sql`ledger.job_id = ${jobs.id}`)
           .leftJoin(sql`${locations} as origin`, sql`origin.id = ${jobs.originId}`)
           .leftJoin(sql`${locations} as destination`, sql`destination.id = ${jobs.destinationId}`)
           .where(where)
@@ -259,7 +270,7 @@ export async function marginByDimension(
             sql`destination.name_en`,
             sql`origin.name_ar`,
             sql`destination.name_ar`,
-            chargeLines.baseCurrency,
+            baseCurrency,
           )
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
@@ -275,12 +286,12 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: chargeLines.baseCurrency,
+            currency: baseCurrency,
           })
           .from(jobs)
-          .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
+          .innerJoin(ledger, sql`ledger.job_id = ${jobs.id}`)
           .where(where)
-          .groupBy(jobs.mode, chargeLines.baseCurrency)
+          .groupBy(jobs.mode, baseCurrency)
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
 
@@ -301,13 +312,13 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: chargeLines.baseCurrency,
+            currency: baseCurrency,
           })
           .from(jobs)
-          .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
+          .innerJoin(ledger, sql`ledger.job_id = ${jobs.id}`)
           .leftJoin(principals, eq(principals.id, jobs.ownerId))
           .where(where)
-          .groupBy(principals.id, principals.nameEn, principals.nameAr, chargeLines.baseCurrency)
+          .groupBy(principals.id, principals.nameEn, principals.nameAr, baseCurrency)
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
     }

@@ -118,10 +118,8 @@ const READY = '2031-04-15'
  * Every test gets a lane of its own, and it has to.
  *
  * `rate_cards_no_overlap` forbids two cards for the same
- * `(direction, partner, customer, mode, lane)` whose validity ranges overlap —
- * and it has no predicate on `superseded_by_id`, so retiring a card does not
- * give its window back. That is the schema being right: a renewal starts where
- * the old card ends (`listExpiringRateCards` looks for exactly that), and two
+ * `(direction, partner, customer, mode, lane)` whose validity ranges overlap.
+ * Only a card superseded by its replacement gives its window back (0066); two
  * live cards for one lane would make "the valid rate" ambiguous.
  *
  * It does mean a suite that reuses one lane can run once. Fresh ports per test
@@ -535,6 +533,84 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(Number(quote!.totalCost)).toBeCloseTo(400, 3)
       expect(Number(quote!.totalSell)).toBeCloseTo(500, 3)
       expect((quote!.snapshot as Record<string, unknown>).source).toBe('buy_card_plus_margin')
+    })
+
+    /*
+      R3, live run 5: an agent's newer reply could not become a card, and
+      Price it costed the enquiry from the older card (KWD 165.501 against
+      the reply's 172.494) with no review flag. A parsed reply newer than the
+      card now holds the draft for a person and names it; an older reply, a
+      declined one and one on another lane do not.
+    */
+    it('flags a draft costed from a card older than a reply on the enquiry', async () => {
+      await setMargin('percent', '20')
+      const on = await lane()
+      const id = await enquiry(on)
+      const buy = await card(on, 'buy', [{ rate: '200.000' }], { partnerId: PARTNER })
+      const [created] = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ at: rateCards.createdAt }).from(rateCards).where(eq(rateCards.id, buy)),
+      )
+      const at = (ms: number) => new Date(created!.at.getTime() + ms)
+      const replyRow = (respondedAt: Date, response: Record<string, unknown>) => ({
+        branchId: HOME_BRANCH,
+        enquiryId: id,
+        partnerId: PARTNER,
+        status: 'parsed' as const,
+        token: `p-${RUN}-${next()}`,
+        respondedAt,
+        quotedTotal: '172.494',
+        quotedCurrency: 'KWD',
+        response: { ok: true, ...response },
+      })
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(rateRequests)
+          .values([
+            replyRow(at(60_000), {}),
+            replyRow(at(-60_000), {}),
+            replyRow(at(120_000), { declined: true }),
+            replyRow(at(180_000), { laneMismatch: 'CNSHA → KWSWK' }),
+          ]),
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const snapshot = (await quoteFor(id))!.snapshot as {
+        buyCardId: string
+        review: { needed: boolean; concerns: Record<string, unknown>[] }
+      }
+      // Still costed from the card — a reply is a proposal until accepted.
+      expect(snapshot.buyCardId).toBe(buy)
+      expect(snapshot.review.needed).toBe(true)
+      const newer = snapshot.review.concerns.filter((c) => c.kind === 'newer_reply')
+      expect(newer).toHaveLength(1)
+      expect(newer[0]).toMatchObject({ quotedTotal: '172.494000', quotedCurrency: 'KWD' })
+    })
+
+    it('does not flag a draft when every reply is older than its card', async () => {
+      await setMargin('percent', '20')
+      const on = await lane()
+      const id = await enquiry(on)
+      await withActor(bothBranchesActor, (tx) =>
+        tx.insert(rateRequests).values({
+          branchId: HOME_BRANCH,
+          enquiryId: id,
+          partnerId: PARTNER,
+          status: 'parsed',
+          token: `p-${RUN}-${next()}`,
+          respondedAt: new Date(Date.now() - 3_600_000),
+          quotedTotal: '400.000',
+          quotedCurrency: 'KWD',
+          response: { ok: true },
+        }),
+      )
+      await card(on, 'buy', [{ rate: '200.000' }], { partnerId: PARTNER })
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const snapshot = (await quoteFor(id))!.snapshot as { review: { needed: boolean } }
+      expect(snapshot.review.needed).toBe(false)
     })
 
     /**

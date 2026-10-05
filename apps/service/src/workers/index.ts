@@ -315,6 +315,7 @@ export async function registerWorkers(log: {
             consistent: result.consistent,
             lines: result.extracted.lines.rows.length,
             supplierInvoiceId: result.supplierInvoiceId,
+            totalFromLines: result.totalFromLines === true,
             refusal: result.refusal,
           },
           result.supplierInvoiceId ? 'supplier invoice extracted' : 'supplier invoice not written',
