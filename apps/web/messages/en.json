@@ -450,6 +450,11 @@
     "documentLanguage": {
       "en": "English",
       "ar": "Arabic"
+    },
+    "mode": "Transport",
+    "noticeHelp": {
+      "customs_hold": "Customs is holding this shipment for checks. Our customs team works to release it, and this page changes when customs releases it. You do not need to do anything unless we contact you.",
+      "vessel_delay": "The carrier has a delay. The arrival date above shows the latest estimate, and this page changes when the carrier gives a new date."
     }
   },
   "public": {
