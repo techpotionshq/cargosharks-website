@@ -397,7 +397,8 @@
     "clockStopped": "توقف في {on}",
     "documentVault": "ملفات الشحنة",
     "weightValue": "{weight} كغم",
-    "volumeValue": "{volume} م³"
+    "volumeValue": "{volume} م³",
+    "etaPassed": "متأخرة، لم تصل بعد"
   },
   "mode": {
     "sea_fcl": "بحري حاوية كاملة",

@@ -45,7 +45,10 @@ import {
   D,
   SEED_CURRENCIES,
   allocate,
+  isBillOverdue,
+  isInvoiceOverdue,
   money,
+  todayIn,
   type AllocationBasis,
   type AllocationTarget,
   type CurrencyCode,
@@ -3031,7 +3034,23 @@ export function pilotInvoiceSummary(now = Date.now()): InvoiceSummary {
   return {
     issued: open.length,
     paid: rows.filter((row) => row.status === 'paid').length,
-    overdue: open.filter((row) => row.dueOn !== null && Date.parse(row.dueOn) < now).length,
+    /*
+      The register's own rule, from `core`, on the register's own rows. This
+      compared the due date as an instant against `now`, which counted an
+      invoice due today as late, so the tile read one more than the rows the
+      register flagged.
+    */
+    overdue: rows.filter((row) =>
+      isInvoiceOverdue(
+        {
+          ...row,
+          balance: new D(row.total ?? '0')
+            .minus(row.amountPaid ?? '0')
+            .minus(row.amountCredited ?? '0'),
+        },
+        todayIn(undefined, new Date(now)),
+      ),
+    ).length,
     // `group by currency having … <> 0 order by sum desc, currency`.
     outstanding: [...byCurrency]
       .map(([currency, balances]) => ({ currency, amount: sum(balances) }))
@@ -4561,11 +4580,16 @@ export function pilotSupplierInvoices(
  * bills whose lines disagree with the accrual at all. Put anywhere else it
  * gets looked at monthly rather than daily.
  */
-export function pilotPayablesSummary(): PayablesSummary {
+export function pilotPayablesSummary(now = Date.now()): PayablesSummary {
   const open = SUPPLIER_INVOICE_SEEDS.filter((s) => OPEN_BILL_STATUSES.includes(s.status))
+  const today = todayIn(undefined, new Date(now))
   return {
     outstanding: open.length,
-    overdue: open.filter((s) => s.due < 0).length,
+    // The rows the board lists and the rule it flags them by (`core`), so the
+    // tile counts exactly the rows that carry the overdue badge.
+    overdue: pilotSupplierInvoices(now).filter((row) =>
+      isBillOverdue({ ...row, balance: new D(row.total).minus(row.amountPaid) }, today),
+    ).length,
     awaitingApproval: SUPPLIER_INVOICE_SEEDS.filter((s) => s.status === 'received').length,
     inDispute: SUPPLIER_INVOICE_SEEDS.filter((s) => s.status === 'disputed').length,
     needingReview: SUPPLIER_INVOICE_SEEDS.filter(

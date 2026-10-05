@@ -397,7 +397,8 @@
     "clockStopped": "Stopped {on}",
     "documentVault": "Shipment files",
     "weightValue": "{weight} kg",
-    "volumeValue": "{volume} cbm"
+    "volumeValue": "{volume} cbm",
+    "etaPassed": "Late, not yet arrived"
   },
   "mode": {
     "sea_fcl": "Sea FCL",
