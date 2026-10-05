@@ -22,7 +22,8 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { jobs, messages, systemActor, withActor } = await import('@qabandi/db')
+const { assets, jobs, messageAttachments, messages, supplierInvoices, systemActor, withActor } =
+  await import('@qabandi/db')
 const { ADMIN_PRINCIPAL, AWAY_BRANCH, HOME_BRANCH, HOME_JOB, PARTNER, adminActor, world } =
   await import('@/lib/testing/fixtures')
 const { partnerMail } = await import('./partner-mail')
@@ -96,6 +97,43 @@ describe.skipIf(!enabled)('partner mail', () => {
       tx.select({ readAt: messages.readAt }).from(messages).where(eq(messages.id, id)),
     )
     expect(kept?.readAt).not.toBeNull()
+  })
+
+  /*
+    Live run 6: two EK mails whose bills the intake had filed were still
+    listed, under a heading that says "not filed as a bill".
+  */
+  it('leaves out a mail whose attachment was filed as a bill', async () => {
+    const id = await filed(`Bill attached ${RUN}`)
+    const other = await filed(`Rate notice ${RUN}`)
+    await withActor(sys, async (tx) => {
+      const [asset] = await tx
+        .insert(assets)
+        .values({
+          branchId: HOME_BRANCH,
+          storageKey: `memory:test/pm-${RUN}.pdf`,
+          fileName: `pm-${RUN}.pdf`,
+          contentType: 'application/pdf',
+          byteSize: 1,
+        })
+        .returning({ id: assets.id })
+      await tx.insert(messageAttachments).values({ messageId: id, assetId: asset!.id })
+      await tx.insert(supplierInvoices).values({
+        branchId: HOME_BRANCH,
+        partnerId: PARTNER,
+        reference: `PM-${RUN}`,
+        status: 'received',
+        currency: 'KWD',
+        invoiceDate: '2026-09-01',
+        subtotal: '10.000',
+        total: '10.000',
+        assetId: asset!.id,
+      })
+    })
+
+    const listed = (await partnerMail(adminActor, PARTNER)).map((m) => m.id)
+    expect(listed).not.toContain(id)
+    expect(listed).toContain(other)
   })
 
   it('attaches a mail to a job of its branch by reference', async () => {

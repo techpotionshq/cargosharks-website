@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/session'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { fileRefusal } from '@/lib/file-refusal'
+import { fileRefusal, reachService } from '@/lib/file-refusal'
 import { mayDownload } from '@/lib/download-access'
 import { isUuid } from '@/lib/ids'
 
@@ -43,7 +43,8 @@ export async function GET(
     return fileRefusal(request, 'not_configured')
   }
 
-  const response = await fetch(
+  // A service that is down or timed out is a failed render, not a 500.
+  const response = await reachService(
     `${serviceUrl.replace(/\/$/, '')}/internal/documents/manifest/${id}`,
     {
       method: 'POST',
@@ -53,8 +54,8 @@ export async function GET(
     },
   )
 
-  if (!response.ok) {
-    return fileRefusal(request, response.status === 404 ? 'not_found' : 'render_failed')
+  if (!response || !response.ok) {
+    return fileRefusal(request, response?.status === 404 ? 'not_found' : 'render_failed')
   }
 
   return new Response(response.body, {

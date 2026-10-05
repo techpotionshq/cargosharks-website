@@ -20,6 +20,7 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { FX_FEED_SOURCES } from '@qabandi/core'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
+import { zoneName } from '@/lib/fx-label'
 import type { FxFeedPanel } from '@/lib/pilot/types'
 import { Notice } from '@/ui/notice'
 
@@ -46,8 +47,13 @@ export async function FxFeedNotice({
   const showAttribution = panel.driver !== 'manual' || feedRowsShown
   if (!showAttribution && !panel.stale) return null
 
-  // In the reader's own zone, like every other time on these screens.
-  const at = panel.lastFetchedAt ? formatDateTime(panel.lastFetchedAt, locale, timeZone) : null
+  /*
+    In the reader's own zone, and named: the quotation's rate label names its
+    zone too, so one fetch reads the same on both (live run 6, N7).
+  */
+  const at = panel.lastFetchedAt
+    ? `${formatDateTime(panel.lastFetchedAt, locale, timeZone)} ${zoneName(timeZone)}`
+    : null
 
   return (
     <div className={['space-y-2', className ?? ''].join(' ')} data-testid="fx-feed-notice">

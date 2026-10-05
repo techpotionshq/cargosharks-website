@@ -12,6 +12,7 @@ import {
   normaliseMmsi,
   vesselNavStatusKey,
   vesselPositionAgeMinutes,
+  vesselNamesDisagree,
   vesselPositionFreshness,
   VESSEL_TRACK_MAX_POINTS,
   type VesselTrackPoint,
@@ -136,5 +137,34 @@ describe('the vesselPositions integration', () => {
     expect(isLiveDriver(spec!, 'off')).toBe(false)
     expect(isLiveDriver(spec!, 'aisstream')).toBe(true)
     expect(spec?.secrets.map((s) => s.env)).toEqual(['AISSTREAM_API_KEY'])
+  })
+})
+
+/*
+  Live run 6 (N3): a mistyped MMSI showed WILSON HIRTSHALS as the current
+  position of a job booked on MAERSK SALALAH.
+*/
+describe('vesselNamesDisagree', () => {
+  it('flags another ship answering to the MMSI', () => {
+    expect(vesselNamesDisagree('MAERSK SALALAH', 'WILSON HIRTSHALS')).toBe(true)
+  })
+
+  it('agrees across case, punctuation, a type prefix and a voyage', () => {
+    expect(vesselNamesDisagree('M/V Wilson Hirtshals', 'WILSON HIRTSHALS')).toBe(false)
+    expect(vesselNamesDisagree('m.v. wilson-hirtshals', 'WILSON HIRTSHALS')).toBe(false)
+    expect(vesselNamesDisagree('MAERSK SALALAH 442W', 'MAERSK SALALAH')).toBe(false)
+  })
+
+  it('agrees with an AIS name cut at twenty characters', () => {
+    expect(vesselNamesDisagree('MEDITERRANEAN EXPRESS', 'MEDITERRANEAN EXPRES')).toBe(false)
+  })
+
+  it('does not take a shorter name inside a longer one for the same ship', () => {
+    expect(vesselNamesDisagree('MAERSK SALALAHX', 'MAERSK SALALAH')).toBe(true)
+  })
+
+  it('judges nothing when either name is unknown', () => {
+    expect(vesselNamesDisagree(null, 'WILSON HIRTSHALS')).toBe(false)
+    expect(vesselNamesDisagree('MAERSK SALALAH', null)).toBe(false)
   })
 })

@@ -453,7 +453,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                           <li key={`${rate.from}-${rate.to}`}>
                             {tFx('convertedAt')}{' '}
                             <bdi dir="ltr" className="numeric">
-                              {fxRateLabel(rate, tFx as unknown as FxTranslate, locale)}
+                              {fxRateLabel(rate, tFx as unknown as FxTranslate, locale, timeZone)}
                             </bdi>
                           </li>
                         ))}

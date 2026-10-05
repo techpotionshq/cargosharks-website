@@ -21,6 +21,7 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
+import { Button } from '@/ui/layout'
 import { getEnquiryRateRequests, listCoveringAgents } from '../rate-requests'
 import { RequestRatesDialog } from './request-rates-dialog'
 import { AcceptRateButton } from './accept-rate-button'
@@ -95,6 +96,15 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                   {row.isCheapest ? (
                     <Badge tone="brand" icon="check">
                       {t('cheapest')}
+                    </Badge>
+                  ) : row.review && !row.review.ranked ? (
+                    /*
+                      Where "Cheapest" would have sat, had the figure been
+                      checked (live run 6): a flagged reply's amount is shown
+                      as it stands, but it is not in the comparison.
+                    */
+                    <Badge tone="caution" icon="alert">
+                      {t('notRanked')}
                     </Badge>
                   ) : null}
                 </div>
@@ -197,6 +207,20 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                 <Badge tone="positive" icon="check">
                   {t('promoted')}
                 </Badge>
+              ) : canRequest && row.status === 'parsed' && row.review?.unclassified.length ? (
+                /*
+                  Disabled rather than missing, with the reason under it: a
+                  button that vanished reads as a bug, and the server refuses
+                  the card anyway until the charge has a name (live run 6).
+                */
+                <div className="flex flex-col items-end gap-1">
+                  <Button type="button" variant="secondary" size="sm" icon="check" disabled>
+                    {t('accept')}
+                  </Button>
+                  <span className="max-w-xs text-end text-micro text-caution">
+                    {t('acceptNeedsName')}
+                  </span>
+                </div>
               ) : null}
             </li>
           ))}

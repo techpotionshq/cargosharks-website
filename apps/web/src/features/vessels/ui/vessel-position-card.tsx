@@ -17,6 +17,7 @@
 
 import { getTranslations } from 'next-intl/server'
 import {
+  vesselNamesDisagree,
   vesselNavStatusKey,
   vesselPositionFreshness,
   type VesselPositionFreshness,
@@ -36,6 +37,7 @@ export async function VesselPositionCard({
   locale,
   timeZone,
   canEdit = false,
+  audience = 'external',
   now = Date.now(),
 }: {
   readonly vessel: JobVessel
@@ -43,10 +45,29 @@ export async function VesselPositionCard({
   readonly timeZone: string
   /** Staff with `job.update`: the identity dialog and the suggestion. */
   readonly canEdit?: boolean
+  /**
+   * Who is reading. Staff are told what is wrong and how to fix it; a
+   * customer or an agent is never given a staff instruction or a doubtful
+   * position (live run 6, N3 and N5). Defaults to the cautious side.
+   */
+  readonly audience?: 'staff' | 'external'
   readonly now?: number
 }) {
   const t = await getTranslations('vesselPosition')
-  const position = vessel.position
+  const staff = audience === 'staff'
+  /*
+    The transponder names the ship its MMSI belongs to. When that name is
+    plainly not the job's vessel, the MMSI was mistyped and the fix is another
+    ship's: a customer was shown WILSON HIRTSHALS off Rotterdam as "Current"
+    for a job on MAERSK SALALAH (live run 6). Outside staff it is not drawn at
+    all; staff see it, marked, with the two names to compare.
+  */
+  const mismatch =
+    vessel.mmsi !== null &&
+    vessel.position !== null &&
+    vesselNamesDisagree(vessel.vesselName, vessel.position.name)
+  const withheld = mismatch && !staff
+  const position = withheld ? null : vessel.position
   const freshness: VesselPositionFreshness = vesselPositionFreshness(
     position?.receivedAt ?? null,
     new Date(now),
@@ -93,7 +114,7 @@ export async function VesselPositionCard({
                   name,
                   latitude: position.latitude!,
                   longitude: position.longitude!,
-                  current: freshness === 'current',
+                  current: freshness === 'current' && !mismatch,
                   track: position.track.map((point) => [point.lon, point.lat] as const),
                 },
               ]}
@@ -105,9 +126,15 @@ export async function VesselPositionCard({
         {/* --- when, and where -------------------------------------------- */}
         {hasFix && position?.receivedAt ? (
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <Badge tone={freshness === 'current' ? 'positive' : 'muted'} dot>
-              {freshness === 'current' ? t('current') : t('lastKnown')}
-            </Badge>
+            {mismatch ? (
+              <Badge tone="critical" icon="alert">
+                {t('nameMismatchBadge')}
+              </Badge>
+            ) : (
+              <Badge tone={freshness === 'current' ? 'positive' : 'muted'} dot>
+                {freshness === 'current' ? t('current') : t('lastKnown')}
+              </Badge>
+            )}
             <span className="text-body-sm text-ink">
               {place
                 ? t('lastSeenNear', { age: age ?? '', place })
@@ -119,7 +146,24 @@ export async function VesselPositionCard({
           </div>
         ) : null}
 
-        {freshness !== 'current' && vessel.mmsi ? (
+        {mismatch && staff && vessel.position ? (
+          <p className="mt-3 flex items-start gap-2 rounded-sm bg-critical-soft px-3 py-2 text-body-sm text-critical">
+            <Icon name="alert" size={15} strokeWidth={2} className="mt-0.5 shrink-0" />
+            <span className="min-w-0">
+              {t('nameMismatch', {
+                mmsi: vessel.mmsi ?? '',
+                ais: vessel.position.name ?? '',
+                job: vessel.vesselName ?? '',
+              })}
+            </span>
+          </p>
+        ) : null}
+
+        {withheld ? (
+          <p className="mt-3 text-body-sm text-ink-muted">{t('noPositionShown')}</p>
+        ) : null}
+
+        {freshness !== 'current' && vessel.mmsi && !withheld ? (
           <p className="mt-3 flex items-start gap-2 rounded-sm bg-caution-soft px-3 py-2 text-body-sm text-caution">
             <Icon name="alert" size={15} strokeWidth={2} className="mt-0.5 shrink-0" />
             <span className="min-w-0">
@@ -129,8 +173,14 @@ export async function VesselPositionCard({
           </p>
         ) : null}
 
+        {/*
+          "Add the vessel's MMSI" is an instruction only staff can follow; a
+          customer was shown it in Arabic on the portal (live run 6, N5).
+        */}
         {!vessel.mmsi ? (
-          <p className="mt-3 text-body-sm text-ink-muted">{t('noIdentity')}</p>
+          <p className="mt-3 text-body-sm text-ink-muted">
+            {staff ? t('noIdentity') : t('noPositionShown')}
+          </p>
         ) : null}
 
         {canEdit && vessel.suggestion ? (
@@ -198,7 +248,7 @@ export async function VesselPositionCard({
         ) : null}
 
         {/* --- which ship, and who said so -------------------------------- */}
-        {vessel.mmsi ? (
+        {vessel.mmsi && !withheld ? (
           <p className="numeric mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-caption text-ink-muted">
             <bdi>{t('identity', { mmsi: vessel.mmsi })}</bdi>
             {(vessel.imo ?? position?.imo) ? (

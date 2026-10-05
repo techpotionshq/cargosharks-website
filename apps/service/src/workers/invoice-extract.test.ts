@@ -125,6 +125,25 @@ describe('refusalCodeFor', () => {
   it('names low confidence when there is nothing to correct', () => {
     expect(refusalCodeFor(read({ confidence: 0.2 }), [])).toBe('low_confidence')
   })
+
+  /*
+    Live run 6: a packing list sent in as "documents" was logged as "the model
+    found no invoice lines" and the person was told the model was unsure.
+    No priced line is not a bill, whatever else the reading says.
+  */
+  it('names a document with no invoice lines before anything else', () => {
+    const none = read({ lines: [], confidence: 0.2 })
+    expect(refusalCodeFor(none, [])).toBe('no_lines')
+    expect(refusalFor(none, [])).toMatch(/No invoice lines were found/)
+  })
+
+  it('names a document whose lines carry no money as having no invoice lines', () => {
+    const goods = read({
+      lines: [line({ unitPrice: null, amount: '0', chargeType: null })],
+      confidence: 0.3,
+    })
+    expect(refusalCodeFor(goods, [])).toBe('no_lines')
+  })
 })
 
 describe('documentPart', () => {

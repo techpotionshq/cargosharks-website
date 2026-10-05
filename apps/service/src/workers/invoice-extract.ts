@@ -54,6 +54,7 @@ import {
   type Tx,
 } from '@qabandi/db'
 import {
+  D,
   describeFinding,
   isSelfConsistent,
   onlyTheTotalIsMissing,
@@ -149,6 +150,8 @@ export interface ExtractInvoiceResult {
  * Why a bill was not written, as a stable code.
  *
  *   `scan_too_large`     refused before the model was called
+ *   `no_lines`           no priced line at all: a packing list, a delivery
+ *                        note, a cover letter, not a bill
  *   `not_reconciled`     the figures do not add up — the findings say where
  *   `unreadable_fields`  a header field or a line did not parse
  *   `low_confidence`     nothing wrong with the reading; the model was unsure
@@ -160,6 +163,7 @@ export interface ExtractInvoiceResult {
  */
 export type InvoiceRefusal =
   | 'scan_too_large'
+  | 'no_lines'
   | 'not_reconciled'
   | 'unreadable_fields'
   | 'low_confidence'
@@ -372,6 +376,7 @@ export function refusalCodeFor(
   extracted: ExtractedInvoice,
   findings: readonly ArithmeticFinding[],
 ): InvoiceRefusal {
+  if (hasNoPricedLines(extracted)) return 'no_lines'
   if (findings.length > 0) return 'not_reconciled'
   if (readingIssues(extracted).length > 0) return 'unreadable_fields'
   return 'low_confidence'
@@ -398,6 +403,28 @@ function refusalValuesFor(
     default:
       return {}
   }
+}
+
+/**
+ * Nothing on the document is a priced line — so it is not a bill at all.
+ *
+ * Checked before every other reason, because the others assume a bill and
+ * describe what is wrong with it. A packing list sent in as "documents" was
+ * logged as "the model found no invoice lines" and told the person "the model
+ * was not confident enough" (live run 6): two readings, two reasons, and the
+ * one on screen sent them to check a figure that was never there. Either the
+ * model returned no lines, or every line it read carries no money (goods
+ * listed with their quantities and no prices), and neither has an amount for
+ * anyone to correct.
+ */
+function hasNoPricedLines(extracted: ExtractedInvoice): boolean {
+  if (extracted.headerIssueDetails.some((issue) => issue.code === 'noLines')) return true
+  const rows = extracted.lines.rows
+  return (
+    rows.length > 0 &&
+    extracted.lines.issues.length === 0 &&
+    rows.every((row) => new D(row.values.amount).isZero())
+  )
 }
 
 /** The header's issues and the lines', in the one form both callers print. */
@@ -427,6 +454,8 @@ export function refusalFor(
   findings: readonly ArithmeticFinding[],
 ): string {
   switch (refusalCodeFor(extracted, findings)) {
+    case 'no_lines':
+      return 'No invoice lines were found, so it was not filed as a bill.'
     case 'not_reconciled':
       return `The invoice does not reconcile: ${findings.map(describeFinding).join('; ')}`
     case 'unreadable_fields':

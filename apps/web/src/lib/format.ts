@@ -30,7 +30,7 @@
  */
 export const TIME_ZONE = DEFAULT_TIME_ZONE
 
-import { fromDb, toScale } from '@qabandi/core'
+import { D, fromDb, toScale } from '@qabandi/core'
 import { DEFAULT_TIME_ZONE } from '@/lib/time'
 
 type Locale = 'en' | 'ar'
@@ -213,6 +213,27 @@ export function trimDecimal(value: string | null | undefined): string | null {
   if (!value.includes('.')) return value
   const trimmed = value.replace(/\.?0+$/, '')
   return trimmed === '' || trimmed === '-' ? '0' : trimmed
+}
+
+/**
+ * An exchange rate for reading, not for arithmetic.
+ *
+ * A feed stores the reciprocal of what it fetched to the column's full
+ * scale, so AED→KWD printed as 0.08418840691961 beside USD→KWD 0.3091796
+ * (live run 6, N7). Six significant digits for a rate below one (so a small
+ * rate such as IDR→KWD keeps its figures) and six decimal places above it,
+ * trailing zeros trimmed. Rounded as Decimal, never through a JS number; the
+ * stored rate is untouched and is what pricing multiplies by.
+ */
+export function formatFxRate(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  try {
+    const rate = new D(value)
+    const shown = rate.abs().lt(1) ? rate.toSignificantDigits(6) : rate.toDecimalPlaces(6)
+    return trimDecimal(shown.toFixed())
+  } catch {
+    return trimDecimal(value)
+  }
 }
 
 /**

@@ -30,7 +30,7 @@ import { NextResponse } from 'next/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { assets, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
-import { fileRefusal } from '@/lib/file-refusal'
+import { fileRefusal, reachService } from '@/lib/file-refusal'
 import { mayDownload } from '@/lib/download-access'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { isUuid } from '@/lib/ids'
@@ -74,14 +74,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return fileRefusal(request, 'not_configured', { fileName: record.fileName })
   }
 
-  const signed = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
+  // Unreachable storage signing is unavailable storage, not a 500.
+  const signed = await reachService(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
     body: JSON.stringify({ storageKey: record.storageKey, fileName: record.fileName }),
     cache: 'no-store',
   })
 
-  if (!signed.ok) {
+  if (!signed || !signed.ok) {
     return fileRefusal(request, 'storage_unavailable', { fileName: record.fileName })
   }
 

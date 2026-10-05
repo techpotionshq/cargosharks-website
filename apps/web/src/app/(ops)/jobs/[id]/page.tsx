@@ -389,6 +389,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               locale={locale}
               timeZone={timeZone}
               canEdit={can(session, 'job.update')}
+              audience="staff"
             />
           ) : null}
 

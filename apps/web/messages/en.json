@@ -3834,7 +3834,9 @@
     "reviewLineNumber": "Line {number}",
     "reviewRejected": "{count, plural, one {# line could not be read, so this total is short and is not ranked.} other {# lines could not be read, so this total is short and is not ranked.}}",
     "reviewTotalMismatch": "The agent states a total of {stated}, but the lines add up to {computed}. It is not ranked until someone checks.",
-    "supersede": "Replace the older rate"
+    "supersede": "Replace the older rate",
+    "acceptNeedsName": "Name every charge before making a rate card.",
+    "notRanked": "Not ranked"
   },
   "renewals": {
     "title": "Renewals in flight",
@@ -4109,7 +4111,8 @@
     "noRateOnFilePayment": "No {from} to {to} rate is on file. Enter the rate the payment was made at.",
     "billAlreadyCaptured": "Bill {reference} from this supplier is already captured, so nothing new was written.",
     "openCapturedBill": "Open the bill",
-    "confirmTotalFirst": "This total was added up from the lines, because the bill printed none. Check it against the PDF and tick the box to confirm it."
+    "confirmTotalFirst": "This total was added up from the lines, because the bill printed none. Check it against the PDF and tick the box to confirm it.",
+    "billNoLines": "No invoice lines were found in this document, so it was not filed as a bill. If it is a packing list or another document, attach it to its job instead."
   },
   "creditValidation": {
     "chooseCustomer": "Choose a customer",
@@ -4133,7 +4136,9 @@
     "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it.",
     "promoteOverlap": "This rate overlaps another card for the same agent and lane. End or replace that card first.",
     "promoteLaneMismatch": "This reply priced a different lane ({lane}), so it cannot become this enquiry's rate.",
-    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Replace it with this reply, or leave the older rate in place."
+    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Replace it with this reply, or leave the older rate in place.",
+    "promoteUnclassified": "“{charge}” on this reply has no charge type. Name the charge first, then make the rate card.",
+    "promoteUnclassifiedLine": "Line {line} on this reply has no charge type. Name the charge first, then make the rate card."
   },
   "enquiriesValidation": {
     "chooseOwner": "Choose who should own this.",
@@ -4438,7 +4443,8 @@
     "totalMismatch": "Net {net} plus tax {tax} does not equal total {total}",
     "overpaid": "Received {paid} exceeds the total {total} — raise a credit note instead",
     "nothingOutstanding": "Nothing outstanding — a settled invoice does not belong in an open receivables file",
-    "unknownCustomer": "No such customer “{value}” — import customers first"
+    "unknownCustomer": "No such customer “{value}” — import customers first",
+    "dueBeforeIssue": "Due date {due} is before the issue date {issued}, check the two columns are not swapped"
   },
   "timeZones": {
     "kuwait": "Kuwait",
@@ -4894,7 +4900,10 @@
     "imoInvalid": "Enter a valid IMO number: seven digits with a correct check digit.",
     "mmsiInvalid": "Enter a valid MMSI: nine digits that start with 2 to 7.",
     "notFound": "The system cannot find this job.",
-    "boardLegend": "Vessel, last known position"
+    "boardLegend": "Vessel, last known position",
+    "nameMismatch": "AIS reports MMSI {mmsi} as {ais}, not {job}. Check the MMSI: customers and agents see no position until the names agree.",
+    "nameMismatchBadge": "Different ship",
+    "noPositionShown": "No vessel position to show yet."
   },
   "fxFeed": {
     "attribution": "Indicative rates from ExchangeRate-API (fallback: currency-api), fetched {at}. Not a bank or central bank rate. Check before quoting.",

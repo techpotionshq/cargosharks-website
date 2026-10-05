@@ -202,6 +202,11 @@ function refusal(
       return tv('promoteLaneMismatch', { lane: values.lane ?? '' })
     case 'overlaps_card':
       return tv('promoteOverlapsCard', { validFrom: values.validFrom ?? '' })
+    case 'unclassified_charge':
+      // The broker's name where there is one; "OTHER" alone gets the line.
+      return values.charge
+        ? tv('promoteUnclassified', { charge: values.charge })
+        : tv('promoteUnclassifiedLine', { line: values.line ?? '' })
     default: {
       const unhandled: never = reason
       return unhandled

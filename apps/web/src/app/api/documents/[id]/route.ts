@@ -47,7 +47,7 @@ import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { assets, documentTypes, documents, systemActor, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
-import { fileRefusal } from '@/lib/file-refusal'
+import { fileRefusal, reachService } from '@/lib/file-refusal'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { isUuid } from '@/lib/ids'
 
@@ -149,14 +149,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
    * it put the object's address in the browser's history whether or not the
    * bytes ever arrived. Signing lives with the credentials, in `apps/service`.
    */
-  const signed = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
+  // Unreachable storage signing is unavailable storage, not a 500.
+  const signed = await reachService(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
     body: JSON.stringify({ storageKey: file.storageKey, fileName: file.fileName }),
     cache: 'no-store',
   })
 
-  if (!signed.ok) {
+  if (!signed || !signed.ok) {
     return fileRefusal(request, 'storage_unavailable', { fileName: file.fileName })
   }
 

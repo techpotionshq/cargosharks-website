@@ -17,7 +17,7 @@
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { type Basis, rateReplyContext, summariseRateReply } from '@qabandi/core'
+import { type Basis, rateReplyContext, rateReplyReview, summariseRateReply } from '@qabandi/core'
 import { groupRateCards, type ImportRow, type RateRowValues } from '@qabandi/core/import'
 import {
   chargeTypes,
@@ -52,6 +52,8 @@ export type PromoteRefusal =
   | 'lane_mismatch'
   /** The agent has a card on this lane starting on or after this one (S5). */
   | 'overlaps_card'
+  /** A line is kept as "other" and nobody has named the charge yet (R1). */
+  | 'unclassified_charge'
 
 export type PromoteResult =
   | { readonly ok: true; readonly cardId: string }
@@ -151,6 +153,24 @@ export async function promoteRateReply(
       ok: false,
       reason: 'no_clean_lines',
       message: 'This reply has no clean lines to promote.',
+    }
+  }
+
+  /*
+    A line kept as "other" is money nobody has named (R1). The comparison
+    showed a note asking for a name "before making a rate card" and the
+    button made the card anyway, with an unnamed line every later quote
+    priced from (live run 6). Refused here so the click and the auto-award
+    are held to the same rule; the sweep already skips flagged replies.
+  */
+  const unnamed = rateReplyReview(request.response).unclassified
+  if (unnamed.length > 0) {
+    const first = unnamed[0]!
+    return {
+      ok: false,
+      reason: 'unclassified_charge',
+      values: { charge: first.description, line: String(first.line) },
+      message: `Line ${first.line}${first.description ? ` (${first.description})` : ''} has no charge type. Name it before making a rate card.`,
     }
   }
 

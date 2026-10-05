@@ -1358,6 +1358,16 @@ export function compareLane(
   const differs = (text: string | undefined, code: string, side: string): boolean => {
     if (!text) return false
     if (asLocode(text) === asLocode(code)) return false
+    /*
+      "Ningbo (CNNGB)": our own RFQ subject's form, which the model copies
+      back. The code in the brackets is the claim; the name beside it was
+      looked up whole, missed, and stored a false "not a place we hold" on
+      every such reply (live run 6, N6). Judged on the code, as a bare one is.
+    */
+    const bracketed = /\(([^()]+)\)\s*$/.exec(text.trim())?.[1]
+    if (bracketed && LOCODE.test(asLocode(bracketed))) {
+      return asLocode(bracketed) !== asLocode(code)
+    }
     const codes = lane.places?.[text.trim().toLowerCase()]
     if (codes && codes.length > 0) return !codes.some((c) => asLocode(c) === asLocode(code))
     if (LOCODE.test(text.trim())) return true
@@ -1586,10 +1596,19 @@ export function readExtractedRateReply(
   const unclassified: UnclassifiedRateLine[] = []
   const chargeFor = (line: RawRateLine, index: number): string => {
     const written = cell(line.chargeType).trim()
-    if (written !== '' && known.has(written.toUpperCase())) return written
+    /*
+      The model writing "OTHER" itself is the same line as the model writing
+      nothing: a charge nobody has named. It used to pass as a known code, so
+      the reply carried an unnamed line with no review note, ranked Cheapest
+      and promoted into a card (live run 6, R1). Only the fallback names it.
+    */
+    const codedOther = written.toUpperCase() === UNCLASSIFIED_CHARGE.toUpperCase()
+    if (written !== '' && !codedOther && known.has(written.toUpperCase())) return written
     if (!canFallBack) return written
     const named = typeof line.description === 'string' ? line.description.trim() : ''
-    unclassified.push({ line: index + 1, description: (named || written).slice(0, 200) })
+    // "OTHER" is not a name for the note to quote; the line number is.
+    const description = named || (codedOther ? '' : written)
+    unclassified.push({ line: index + 1, description: description.slice(0, 200) })
     return UNCLASSIFIED_CHARGE
   }
 
@@ -1649,8 +1668,10 @@ export function readExtractedRateReply(
  * re-summarised reply (a container count entered later) is judged on its new
  * totals with no second copy of the verdict to fall out of step.
  *
- *   - `unclassified`: lines kept as "other". The total is whole, so the reply
- *     still ranks, but somebody should name the charge before it is a card.
+ *   - `unclassified`: lines kept as "other". The total is whole and is shown
+ *     as it stands, but the reply is not ranked or awarded, and does not
+ *     promote, until somebody names the charge (live run 6): "Cheapest" on a
+ *     figure with an unnamed line in it was a recommendation nobody checked.
  *   - `rejected`: lines that did not validate at all. The total is short by
  *     them, so the reply is not ranked or awarded.
  *   - `totalMismatch`: the broker's own total disagrees with the lines. One of
@@ -1677,12 +1698,13 @@ export function rateReplyReview(response: unknown): RateReplyReview {
     ok?: unknown
     issues?: unknown
     unclassified?: unknown
+    rows?: unknown
     statedTotal?: unknown
     currency?: unknown
     totals?: unknown
   }
 
-  const unclassified = Array.isArray(r.unclassified)
+  const listed = Array.isArray(r.unclassified)
     ? (r.unclassified as unknown[]).flatMap((u) => {
         const v = u as { line?: unknown; description?: unknown }
         return typeof v?.line === 'number'
@@ -1690,6 +1712,21 @@ export function rateReplyReview(response: unknown): RateReplyReview {
           : []
       })
     : []
+  /*
+    A reply read before the model's own "OTHER" counted as unclassified (live
+    run 6) stored no list, but its rows still carry the code. Read from the
+    rows then, by position among them: the reply's own line number is not
+    stored, so the note may say "line 2" of the priced lines.
+  */
+  const unclassified =
+    listed.length > 0
+      ? listed
+      : (Array.isArray(r.rows) ? (r.rows as { chargeCode?: unknown }[]) : []).flatMap((row, i) =>
+          typeof row?.chargeCode === 'string' &&
+          row.chargeCode.toUpperCase() === UNCLASSIFIED_CHARGE.toUpperCase()
+            ? [{ line: i + 1, description: '' }]
+            : [],
+        )
 
   // Rows refused by the validator. `ok: false` with no issue list (an older
   // row) still counts, as one, so the reply is never ranked on a short total.
@@ -1702,7 +1739,7 @@ export function rateReplyReview(response: unknown): RateReplyReview {
 
   return {
     needed: unclassified.length > 0 || rejected > 0 || totalMismatch !== null,
-    ranked: rejected === 0 && totalMismatch === null,
+    ranked: rejected === 0 && totalMismatch === null && unclassified.length === 0,
     unclassified,
     rejected,
     totalMismatch,

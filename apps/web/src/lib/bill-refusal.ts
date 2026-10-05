@@ -51,6 +51,7 @@ interface BillFinding {
  */
 const BILL_REFUSALS = [
   'scan_too_large',
+  'no_lines',
   'not_reconciled',
   'unreadable_fields',
   'low_confidence',
@@ -78,6 +79,8 @@ export function billRefusal(tv: Translate<'payablesValidation'>, body: BillReadi
   switch (code) {
     case 'scan_too_large':
       return tv('scanTooLarge', { sizeMb: values.sizeMb ?? '', limitMb: values.limitMb ?? '' })
+    case 'no_lines':
+      return tv('billNoLines')
     case 'not_reconciled': {
       const details = (body.findings ?? [])
         .map((finding) => billFinding(tv, finding))
