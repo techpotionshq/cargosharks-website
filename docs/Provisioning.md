@@ -308,6 +308,7 @@ list, and says plainly that it reads no database and so cannot see the rows.
 | Maersk | `carrierMaersk` | `DCSA_MAERSK_BASE_URL` `DCSA_MAERSK_EVENTS_PATH` `DCSA_MAERSK_CONSUMER_KEY` `DCSA_MAERSK_CLIENT_SECRET` |
 | Hapag-Lloyd | `carrierHapag` | `DCSA_HAPAG_BASE_URL` `DCSA_HAPAG_EVENTS_PATH` `DCSA_HAPAG_CLIENT_ID` `DCSA_HAPAG_CLIENT_SECRET` |
 | CMA CGM | `carrierCmacgm` | `DCSA_CMACGM_BASE_URL` `DCSA_CMACGM_EVENTS_PATH` `DCSA_CMACGM_API_KEY` |
+| Vessel positions (AIS) | `vesselPositions` | `VESSEL_POSITIONS_DRIVER` `AISSTREAM_API_KEY` |
 | WhatsApp Business | `whatsapp` | `WHATSAPP_PHONE_NUMBER_ID` `WHATSAPP_ACCESS_TOKEN` `WHATSAPP_WEBHOOK_VERIFY_TOKEN` `WHATSAPP_APP_SECRET` |
 | E-invoice transmission | `einvoice` | `EINVOICE_DRIVER` `EINVOICE_ASP_URL` `EINVOICE_ASP_API_KEY` |
 | Inbound mail webhook | `inboundEmail` | `INBOUND_MAIL_CRON` `INBOUND_EMAIL_WEBHOOK_SECRET` |
@@ -337,6 +338,32 @@ deployment that never tuned them is unaffected; one that did re-enters them on
 the row. `FR-NT-07`'s quiet hours moved the same way, from constants in the
 dispatcher to `branches.quiet_hours_*`, whose `time_zone` the comparison was
 already made in.
+
+### Vessel positions
+
+Off by default (`VESSEL_POSITIONS_DRIVER=off`), and off means no connection is
+opened. To switch it on, an administrator opens Settings → Integrations →
+Vessel positions, chooses `aisstream`, pastes the aisstream.io API key and
+saves. Within three minutes the service opens one websocket per 50 vessels and
+follows the MMSI of every vessel on an open sea job (booked, in transit or on
+hold). A job only has a vessel to follow once someone has entered its MMSI on
+the job file, or confirmed the suggestion the card offers.
+
+aisstream is free and uses **terrestrial receivers only**. A 120-second global
+sample on 2026-10-05 held 10,790 positions and none at all in the Arabian Gulf,
+the Gulf of Oman, the Red Sea or the Arabian Sea, against 165 vessels at the
+China ports, 26 at Singapore and 3,499 in North Europe. So it covers origin
+legs and goes quiet before arrival in Kuwait or Dubai. The screens say "No
+recent position. The vessel may be outside receiver coverage." once a fix is
+six hours old, which is the expected state on the arrival leg and not a fault.
+
+A refused key is written to the card's last error, like every other
+integration. `pnpm --filter @qabandi/service verify:vessels`, with
+`AISSTREAM_API_KEY` set and a local `DATABASE_URL`, proves the key and the
+write path end to end; it refuses any database that is not on the machine.
+
+A satellite provider for the Gulf leg is a further driver value here and a
+further adapter behind `VesselPositionSource` (`apps/service/src/ports`).
 
 ### When a row is wrong
 

@@ -18,7 +18,7 @@ Section 6 lists what is missing, deliberately and in full.
 
 | Measure | How | Where |
 | --- | --- | --- |
-| Separation enforced by the database | Row-level security, `ENABLE` **and** `FORCE`, on 87 of 93 tables. 211 policies. Reading a table and writing it are separate policies where the two differ: a principal can read its own grants but writing one needs `admin.users.write` in that branch, and a trigger refuses changes to a principal's own type, customer, partner or credential link. | `migrations/0004_rls.sql`, `0050_fix_pass_policies.sql` |
+| Separation enforced by the database | Row-level security, `ENABLE` **and** `FORCE`, on 88 of 94 tables. 225 policies. Reading a table and writing it are separate policies where the two differ: a principal can read its own grants but writing one needs `admin.users.write` in that branch, and a trigger refuses changes to a principal's own type, customer, partner or credential link. | `migrations/0004_rls.sql`, `0050_fix_pass_policies.sql` |
 | No unscoped path to data | `db` is not exported for query use. Every read opens one transaction through `withActor`, which stamps the principal into transaction-local settings the policies read. | `packages/db/src/actor.ts` |
 | Safe under connection pooling | `set_config(..., true)` makes each setting transaction-local, so a pooled connection cannot carry one tenant's identity into the next request. | `actor.ts` |
 | Least privilege at the role level | The application connects as `app_user`: `NOBYPASSRLS`, owns nothing, and `DELETE` is revoked. Migrations run as a separate `app_migrator`. | `migrations/01-roles.sql` |
@@ -28,10 +28,13 @@ Section 6 lists what is missing, deliberately and in full.
 The six tables without row-level security are the five `auth_*` credential
 tables and `inbound_webhook_events`, which holds provider delivery receipts for
 deduplication and no business data. `audit_log` has row-level security: reading
-it needs `admin.audit.read`, which only Administrator holds. Eight tables carry
+it needs `admin.audit.read`, which only Administrator holds. Nine tables carry
 no audit trigger — the five `auth_*` tables, because a trigger over credential
 rows would copy secrets into the log; `audit_log` and `support_access_log`,
-because a trigger on them would recurse; and `inbound_webhook_events`. Each
+because a trigger on them would recurse; `inbound_webhook_events`; and
+`vessel_positions`, AIS telemetry rewritten every few minutes per vessel, whose
+audited fact is the vessel recorded on the job (it keeps row-level security,
+scoped through `jobs`). Each
 exclusion is declared with its reason in `packages/db/src/schema/` and recorded
 in the migrations.
 
@@ -136,20 +139,20 @@ everything above.
 ## How the numbers are produced
 
 Counted against a freshly migrated and seeded database (migrations through
-`0057`), 2026-10-02:
+`0066`), 2026-10-05:
 
 ```sql
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
- where n.nspname = 'public' and c.relkind = 'r';                    -- 93
+ where n.nspname = 'public' and c.relkind = 'r';                    -- 94
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relkind = 'r'
-   and c.relrowsecurity and c.relforcerowsecurity;                  -- 87
-select count(*) from pg_policies where schemaname = 'public';       -- 211
+   and c.relrowsecurity and c.relforcerowsecurity;                  -- 88
+select count(*) from pg_policies where schemaname = 'public';       -- 225
 select count(*) from pg_trigger
  where tgname like '%\_audit' and not tgisinternal;                 -- 85
 ```
 
-The permission count is `node scripts/check-permissions.mjs` ("38 enforced
+The permission count is `node scripts/check-permissions.mjs` ("39 enforced
 keys, all declared"). `pnpm test:db` asserts that every business table has row-level security enabled
 *and* forced and an audit trigger attached, walking the table registry in
 `packages/db/src/schema/table.ts`. A table that nobody remembered to protect

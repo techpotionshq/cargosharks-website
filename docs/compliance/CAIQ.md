@@ -87,7 +87,7 @@ here from what it prints.
 | DCS-01 | Is physical security managed? | **N/A** | Inherited from the hosting provider, which is not chosen |
 | DSP-01 | Is data classified? | **Partial** | Implicit in the schema and the ROPA; no formal classification scheme |
 | DSP-02 | Is there a data inventory? | **Yes** | [`ROPA.md`](ROPA.md), derived from the schema |
-| DSP-03 | Is data segregated between tenants? | **Yes** | Enforced by the database: row-level security `ENABLE` **and** `FORCE` on 87 of 93 tables, 211 policies, and a database per customer in the fleet tooling |
+| DSP-03 | Is data segregated between tenants? | **Yes** | Enforced by the database: row-level security `ENABLE` **and** `FORCE` on 88 of 94 tables, 225 policies, and a database per customer in the fleet tooling |
 | DSP-04 | Is secure deletion supported? | **No** | The system is built on "nothing is deleted". See the erasure note in `ROPA.md` |
 | DSP-05 | Are retention periods defined? | **No** | Open, and blocked on the erasure decision |
 | DSP-06 | Is a DPIA performed where required? | **No** | Blocked on which law applies |
