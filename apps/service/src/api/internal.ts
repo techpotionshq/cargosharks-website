@@ -26,13 +26,14 @@
  */
 
 import type { FastifyInstance } from 'fastify'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { assets, principals, systemActor, withActor, type Actor } from '@qabandi/db'
 import { fileStore, mailSettings, modelProvider, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { ModelError } from '../adapters/model'
 import { config } from '../config'
+import { secretMatches } from './internal-secret'
 import { DocumentNotFoundError, renderInvoicePdf, renderQuotationPdf } from '../pdf/documents'
 import {
   JOB_DOCUMENT_KINDS,
@@ -245,14 +246,6 @@ const MAX_UPLOAD_BODY_BYTES = Math.ceil(MAX_UPLOAD_BYTES * (4 / 3)) + 64 * 1024
  * it, long enough to survive a slow connection on a large document.
  */
 const DEFAULT_DOWNLOAD_EXPIRY_SECONDS = 300
-
-/** Constant-time compare, so a wrong secret leaks nothing about the right one. */
-function secretMatches(header: unknown): boolean {
-  if (typeof header !== 'string') return false
-  const a = Buffer.from(header)
-  const b = Buffer.from(config.INTERNAL_API_SECRET)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
 
 /**
  * Did this request come through a reverse proxy?

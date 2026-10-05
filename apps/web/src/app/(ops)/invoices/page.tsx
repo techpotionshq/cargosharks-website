@@ -20,7 +20,7 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, PAST_DUE_TEXT, PAST_DUE_TONE, invoiceTone } from '@/ui/status'
-import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { StandIn, TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Money } from '@/ui/money'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 import { todayIn } from '@/lib/time'
@@ -185,6 +185,10 @@ export default async function InvoicesPage({
                     <span className="mt-1 block @3xl:ms-2 @3xl:mt-0 @3xl:inline">
                       <Badge tone="caution">{t('creditNote')}</Badge>
                     </span>
+                  ) : null}
+                  {/* Whose invoice, on a phone, where the column below is gone. */}
+                  {row.customerName ? (
+                    <StandIn className="font-medium text-ink">{row.customerName}</StandIn>
                   ) : null}
                 </TD>
                 <TD priority="low" className="font-medium text-ink">

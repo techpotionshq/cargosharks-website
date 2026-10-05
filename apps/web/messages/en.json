@@ -51,7 +51,9 @@
     "payables": "Payables",
     "settlements": "Settlements",
     "reports": "Reports",
-    "assistant": "Assistant"
+    "assistant": "Assistant",
+    "menu": "Menu",
+    "moreBelow": "More sections below"
   },
   "common": {
     "search": "Search",
@@ -481,7 +483,8 @@
     "subtitle": "Shipments where your company is named as a partner.",
     "empty": "Nothing assigned to you.",
     "rateRequests": "Rate requests",
-    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email."
+    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email.",
+    "backToShipments": "All assigned shipments"
   },
   "rates": {
     "title": "Rate cards",
@@ -521,7 +524,8 @@
     "daysLeft": "Days left",
     "noneYet": "No rate cards yet.",
     "noneYetHint": "Load your carrier contracts and a quotation prices itself instead of being worked out by hand.",
-    "noneMatching": "No rate cards of that type."
+    "noneMatching": "No rate cards of that type.",
+    "importCards": "Import rate cards"
   },
   "admin": {
     "title": "Administration",

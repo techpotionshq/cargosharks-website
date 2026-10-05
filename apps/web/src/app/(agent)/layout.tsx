@@ -53,7 +53,14 @@ export default async function AgentLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex min-h-16 max-w-4xl items-center gap-4 px-4 py-2 sm:px-6">
+        {/*
+          \`max-w-5xl\`, as the portal is. At \`4xl\` the wordmark, the agency
+          and three controls shared 848px: the controls wrapped to two lines
+          each ("Sign / out") and the agency's name was cut to "Hongqiao
+          Logistics (Shangh…" at 1440, on a screen with 500px of canvas either
+          side of it.
+        */}
+        <div className="mx-auto flex min-h-16 max-w-5xl items-center gap-4 px-4 py-2 sm:px-6">
           {/*
             The small wordmark on a phone, without the tagline. At `md` beside
             three or four controls the name was given ~90px, wrapped to three
@@ -75,19 +82,28 @@ export default async function AgentLayout({ children }: { children: React.ReactN
               <span className="hidden h-6 w-px bg-line sm:block" />
               {/* `min-w-0` so it truncates; without it the agency's name kept
                   its full width and pushed the wordmark onto two lines at 1440. */}
-              <span className="hidden min-w-0 truncate text-body-sm font-medium text-ink-muted sm:block">
+              {/* \`title\`: where it still has to truncate, on a tablet, the
+                  full name is a hover away. */}
+              <span
+                title={partnerName}
+                className="hidden min-w-0 truncate text-body-sm font-medium text-ink-muted sm:block"
+              >
                 {partnerName}
               </span>
             </>
           ) : null}
 
-          <nav className="ms-auto flex items-center gap-1">
+          {/* \`shrink-0\` and \`whitespace-nowrap\` below: the controls keep their
+              one-line width, and the agency name is what gives way. */}
+          <nav className="ms-auto flex shrink-0 items-center gap-1">
             <Link
               href="/agent"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              title={t('agent')}
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="jobs" size={16} />
-              <span className="hidden sm:inline">{t('agent')}</span>
+              {/* Read on a phone too, where the icon stands alone. */}
+              <span className="sr-only sm:not-sr-only">{t('agent')}</span>
             </Link>
             <LanguageSwitch />
             <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
@@ -103,7 +119,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
                 type="submit"
                 title={tc('signOut')}
                 aria-label={tc('signOut')}
-                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
+                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
               >
                 <Icon name="sign-out" size={16} />
                 <span className="hidden sm:inline">{tc('signOut')}</span>
@@ -113,7 +129,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
         </div>
       </header>
 
-      <main className="@container mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
+      <main className="@container mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
         {children}
       </main>
     </div>

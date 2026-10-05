@@ -21,7 +21,7 @@ import { Badge, PAST_DUE_TEXT, customsTone, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneDots } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
-import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { StandIn, TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
 import { pickName } from '@/lib/named'
 import { formatByCurrency, sumByCurrency } from '@/lib/by-currency'
@@ -279,6 +279,17 @@ export default async function JobsPage({
                           </span>
                         ) : null}
                       </span>
+                      {/* The customer and the lane, at the widths where their
+                          columns have gone — a 768 tablet as well as a phone. */}
+                      <StandIn className="text-ink">
+                        {pickName(locale, job.customerName, job.customerNameAr)}
+                      </StandIn>
+                      <StandIn className="text-micro">
+                        <Lane
+                          origin={pickName(locale, job.originName, job.originNameAr)}
+                          destination={pickName(locale, job.destinationName, job.destinationNameAr)}
+                        />
+                      </StandIn>
                     </TD>
 
                     {/* Customer and vessel wrap rather than truncate: the

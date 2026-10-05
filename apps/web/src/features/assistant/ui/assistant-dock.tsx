@@ -151,26 +151,13 @@ export function AssistantDock({
   */
   if (!configured) return null
 
-  if (size === 'closed') {
-    /*
-      Phones only. From `md` up the launcher is in the top bar
-      (`assistant-launcher.tsx`); here it is a 48px icon in the corner, named
-      for screen readers, with no ⌘K hint — a phone has no keyboard to press
-      it on. Navy rather than the brand red, so the one thing floating over
-      every screen is not the colour of an alarm.
-    */
-    return (
-      <button
-        type="button"
-        onClick={() => resize('docked')}
-        aria-label={labels.title}
-        title={labels.title}
-        className="fixed end-4 bottom-4 z-40 flex size-12 items-center justify-center rounded-full bg-accent text-on-brand shadow-pop transition-transform active:scale-95 md:hidden"
-      >
-        <Icon name="assistant" size={20} />
-      </button>
-    )
-  }
+  /*
+    Closed is nothing at all, at every width. The way in is the launcher in
+    the top bar (\`assistant-launcher.tsx\`) — labelled from \`md\`, an icon on a
+    phone. A phone used to get a 48px button floating in the corner here, and
+    it covered the last column of whatever table was scrolling beneath it.
+  */
+  if (size === 'closed') return null
 
   const expanded = size === 'expanded'
 

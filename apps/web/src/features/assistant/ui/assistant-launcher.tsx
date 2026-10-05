@@ -11,8 +11,11 @@
  * sits beside the other things that are always available (the bell, the
  * language), and the ⌘K hint has somewhere to be read.
  *
- * Phones keep a floating button — icon-only, drawn by the dock itself — because
- * a 390px bar has no room for one more labelled control.
+ * Phones get the same button, icon-only, in the same bar. They kept a floating
+ * one for a while, on the grounds that a 390px bar had no room for another
+ * control, and it sat over the balance column of every register while the
+ * page scrolled under it. The theme switch moved into the phone's menu sheet
+ * and made the room.
  *
  * The dock owns the state; this only asks it to toggle and listens for what
  * it became, so `aria-expanded` tells the truth whichever way the panel was
@@ -39,23 +42,42 @@ export function AssistantLauncher({ label }: { readonly label: string }) {
   // On its own page the assistant already fills the screen.
   if (pathname?.startsWith('/assistant')) return null
 
+  const toggle = () => window.dispatchEvent(new CustomEvent(ASSISTANT_TOGGLE_EVENT))
+
   return (
-    <button
-      type="button"
-      onClick={() => window.dispatchEvent(new CustomEvent(ASSISTANT_TOGGLE_EVENT))}
-      aria-expanded={open}
-      className={`hidden h-8 items-center gap-1.5 rounded-full border px-3 text-body-sm font-medium transition-colors md:inline-flex ${
-        open
-          ? 'border-accent/30 bg-accent-soft text-accent'
-          : 'border-line bg-surface text-ink-muted hover:bg-surface-sunken hover:text-ink'
-      }`}
-    >
-      <Icon name="assistant" size={15} />
-      {label}
-      {/* Muted ink: the subtle one on the sunken chip was 4.4:1 at 11px. */}
-      <kbd className="numeric hidden rounded-sm bg-surface-sunken px-1.5 py-px text-micro font-medium text-ink-muted lg:inline">
-        ⌘K
-      </kbd>
-    </button>
+    <>
+      {/* Phones: named for screen readers, 40px, no ⌘K — there is no keyboard. */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        className={`flex size-10 items-center justify-center rounded-sm transition-colors md:hidden ${
+          open
+            ? 'bg-accent-soft text-accent'
+            : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+        }`}
+      >
+        <Icon name="assistant" size={19} />
+      </button>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className={`hidden h-8 items-center gap-1.5 rounded-full border px-3 text-body-sm font-medium transition-colors md:inline-flex ${
+          open
+            ? 'border-accent/30 bg-accent-soft text-accent'
+            : 'border-line bg-surface text-ink-muted hover:bg-surface-sunken hover:text-ink'
+        }`}
+      >
+        <Icon name="assistant" size={15} />
+        {label}
+        {/* Muted ink: the subtle one on the sunken chip was 4.4:1 at 11px. */}
+        <kbd className="numeric hidden rounded-sm bg-surface-sunken px-1.5 py-px text-micro font-medium text-ink-muted lg:inline">
+          ⌘K
+        </kbd>
+      </button>
+    </>
   )
 }
