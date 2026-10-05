@@ -124,7 +124,9 @@ function walk(dir, out = []) {
   for (const n of readdirSync(dir)) {
     const p = join(dir, n)
     if (statSync(p).isDirectory()) walk(p, out)
-    else if (!n.includes('-frames') && !n.endsWith('.tmp')) out.push(p)
+    // Contact sheets are for checking a build, not for readers.
+    else if (!n.includes('-frames') && !/-sheet-\d+\.jpg$/.test(n) && !n.endsWith('.tmp'))
+      out.push(p)
   }
   return out
 }
