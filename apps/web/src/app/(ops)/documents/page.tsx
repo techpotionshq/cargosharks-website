@@ -5,6 +5,10 @@
  * rather than being filtered away: a house bill that was reissued is exactly
  * the record someone goes looking for when the customer is holding the old
  * one, and hiding it is how two versions end up in circulation.
+ *
+ * Paged, with a search box and a released / not-released filter. Live run 5
+ * found a hundred and five documents in one list with nothing to narrow it,
+ * and every shipment adds several more.
  */
 
 import type { Metadata } from 'next'
@@ -13,6 +17,8 @@ import { requireSession } from '@/lib/session'
 import { documentCounts, listDocuments } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
+import { pageHref, pageRequest } from '@/lib/paging'
+import { Pager } from '@/ui/pager'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
@@ -29,7 +35,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
-export default async function DocumentsPage() {
+export default async function DocumentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; state?: string; page?: string }>
+}) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
@@ -38,10 +48,17 @@ export default async function DocumentsPage() {
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const [rows, counts] = await Promise.all([
-    listDocuments(session.actor, locale),
-    documentCounts(session.actor),
+  const params = await searchParams
+  const q = params.q?.trim() || undefined
+  // An unknown state is no filter, not an error (`lib/filters.ts`).
+  const state = params.state === 'released' || params.state === 'draft' ? params.state : undefined
+
+  const [documentsPage, counts] = await Promise.all([
+    listDocuments(session.actor, locale, { search: q, state }, pageRequest(params.page)),
+    documentCounts(session.actor, q),
   ])
+  const rows = documentsPage.rows
+  const hrefFor = (next: string | undefined) => pageHref('/documents', { q, state: next }, 1)
 
   return (
     <Register
@@ -53,8 +70,35 @@ export default async function DocumentsPage() {
         { label: t('released'), value: counts.released },
         { label: t('draft'), value: counts.draft },
       ]}
-      isEmpty={rows.length === 0}
-      empty={{ icon: 'document', title: t('noneYet'), description: t('noneYetHint') }}
+      search={{
+        action: '/documents',
+        value: q,
+        placeholder: t('searchPlaceholder'),
+        label: tc('search'),
+        // The filter survives a new search term, as the register's box promises.
+        hidden: { state },
+      }}
+      filters={[
+        { label: tc('all'), href: hrefFor(undefined), count: counts.total, active: !state },
+        {
+          label: t('released'),
+          href: hrefFor('released'),
+          count: counts.released,
+          active: state === 'released',
+        },
+        {
+          label: t('draft'),
+          href: hrefFor('draft'),
+          count: counts.draft,
+          active: state === 'draft',
+        },
+      ]}
+      isEmpty={documentsPage.total === 0}
+      empty={
+        q || state
+          ? { icon: 'document', title: t('noneMatching'), description: t('noneMatchingHint') }
+          : { icon: 'document', title: t('noneYet'), description: t('noneYetHint') }
+      }
     >
       <TableShell>
         <THead>
@@ -126,6 +170,7 @@ export default async function DocumentsPage() {
           ))}
         </TBody>
       </TableShell>
+      <Pager page={documentsPage} path="/documents" params={{ q, state }} />
     </Register>
   )
 }

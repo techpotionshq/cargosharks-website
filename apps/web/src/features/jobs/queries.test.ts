@@ -21,7 +21,11 @@ const { AWAY_JOB, CUSTOMER, HOME_BRANCH, HOME_JOB, bothBranchesActor, homeActor,
   await import('@/lib/testing/fixtures')
 const { commodities, freeTimeClocks, jobs, withActor } = await import('@qabandi/db')
 const { shiftDay, todayIn } = await import('@qabandi/core')
-const { listJobs, getJobDetail, listOpenExceptions, listRunningClocks } = await import('./queries')
+const { countJobBoard, listJobs, getJobDetail, listOpenExceptions, listRunningClocks } =
+  await import('./queries')
+
+/** One wide page: these tests ask what the filter matches, not how it pages. */
+const WIDE = { page: 1, size: 200 }
 
 describe.skipIf(!enabled)('job register', () => {
   beforeAll(async () => {
@@ -44,7 +48,7 @@ describe.skipIf(!enabled)('job register', () => {
       only for shipments this system raised itself.
     */
     it('lists the actor’s own branch and not another', async () => {
-      const rows = await listJobs(homeActor, { limit: 200 })
+      const rows = (await listJobs(homeActor, {}, WIDE)).rows
       expect(rows.length).toBeGreaterThan(0)
       expect(rows.every((job) => job.branchCode === 'FXH')).toBe(true)
     })
@@ -61,8 +65,8 @@ describe.skipIf(!enabled)('job register', () => {
         is proved by reading it directly, which no amount of accumulated
         history can push out of reach.
       */
-      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
-      const away = await listJobs(bothBranchesActor, { branchCode: 'FXA', limit: 200 })
+      const home = (await listJobs(bothBranchesActor, { branchCode: 'FXH' }, WIDE)).rows
+      const away = (await listJobs(bothBranchesActor, { branchCode: 'FXA' }, WIDE)).rows
 
       expect(home.length).toBeGreaterThan(0)
       expect(away.length).toBeGreaterThan(0)
@@ -84,7 +88,7 @@ describe.skipIf(!enabled)('job register', () => {
      * should be excluded is present to be excluded.
      */
     it('filters by mode, excluding the others', async () => {
-      const sea = await listJobs(bothBranchesActor, { mode: 'sea_fcl', limit: 200 })
+      const sea = (await listJobs(bothBranchesActor, { mode: 'sea_fcl' }, WIDE)).rows
       expect(sea.length).toBeGreaterThan(0)
       expect(sea.every((j) => j.mode === 'sea_fcl')).toBe(true)
       expect(sea.map((j) => j.reference)).not.toContain('FXA-JOB-FIXTURE-1')
@@ -92,7 +96,7 @@ describe.skipIf(!enabled)('job register', () => {
       // Asserted from the thin side too: the air list holds the air fixture,
       // which a predicate matching everything could not produce and exclude
       // at the same time.
-      const air = await listJobs(bothBranchesActor, { mode: 'air', limit: 200 })
+      const air = (await listJobs(bothBranchesActor, { mode: 'air' }, WIDE)).rows
       expect(air.map((j) => j.reference)).toContain('FXA-JOB-FIXTURE-1')
     })
 
@@ -104,7 +108,7 @@ describe.skipIf(!enabled)('job register', () => {
      * keep their old file number on purpose.
      */
     it('labels a branch from the branch, not from the reference', async () => {
-      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
+      const home = (await listJobs(bothBranchesActor, { branchCode: 'FXH' }, WIDE)).rows
       const imported = home.find((job) => !job.reference.startsWith('FXH-'))
 
       expect(home.length).toBeGreaterThan(0)
@@ -112,24 +116,24 @@ describe.skipIf(!enabled)('job register', () => {
     })
 
     it('filters by branch code', async () => {
-      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
+      const home = (await listJobs(bothBranchesActor, { branchCode: 'FXH' }, WIDE)).rows
       expect(home.length).toBeGreaterThan(0)
       expect(home.every((j) => j.branchCode === 'FXH')).toBe(true)
 
-      const away = await listJobs(bothBranchesActor, { branchCode: 'FXA', limit: 200 })
+      const away = (await listJobs(bothBranchesActor, { branchCode: 'FXA' }, WIDE)).rows
       expect(away.length).toBeGreaterThan(0)
       expect(away.every((j) => j.branchCode === 'FXA')).toBe(true)
     })
 
     it('filters by explicit status', async () => {
-      const inTransit = await listJobs(bothBranchesActor, { status: 'in_transit', limit: 200 })
+      const inTransit = (await listJobs(bothBranchesActor, { status: 'in_transit' }, WIDE)).rows
       expect(inTransit.length).toBeGreaterThan(0)
       expect(inTransit.every((j) => j.status === 'in_transit')).toBe(true)
     })
 
     /** `live` is a set of statuses rather than one — the board's default. */
     it('treats live as the working set, not a single status', async () => {
-      const live = await listJobs(bothBranchesActor, { status: 'live', limit: 200 })
+      const live = (await listJobs(bothBranchesActor, { status: 'live' }, WIDE)).rows
       expect(live.length).toBeGreaterThan(0)
       expect(live.every((j) => j.status !== 'cancelled' && j.status !== 'closed')).toBe(true)
       // More than one status, or `live` is a spelling of `in_transit`.
@@ -137,7 +141,39 @@ describe.skipIf(!enabled)('job register', () => {
     })
 
     it('returns nothing for a filter nothing matches', async () => {
-      expect(await listJobs(bothBranchesActor, { branchCode: 'NOPE' })).toEqual([])
+      expect((await listJobs(bothBranchesActor, { branchCode: 'NOPE' }, WIDE)).rows).toEqual([])
+    })
+  })
+
+  /*
+    R9: the board stopped at a hundred shipments and its "Live" tile counted
+    the page. One row a page reaches page two on any database with two live
+    jobs, and the total has to be the same set whichever page is asked for.
+  */
+  describe('paging and counts — R9', () => {
+    /*
+      Over every status rather than the live ones: which suites have left
+      live shipments in the home branch varies, and this asks about paging,
+      not about the live filter (the fixture-mode half in `board.test.ts`
+      walks a known dataset to page two regardless).
+    */
+    it('reaches the second page, without repeating the first', async () => {
+      const one = await listJobs(bothBranchesActor, {}, { page: 1, size: 1 })
+      const two = await listJobs(bothBranchesActor, {}, { page: 2, size: 1 })
+
+      expect(one.total).toBeGreaterThan(1)
+      expect(two.total).toBe(one.total)
+      expect(two.rows).toHaveLength(1)
+      expect(two.rows[0]!.id).not.toBe(one.rows[0]!.id)
+    })
+
+    it('counts the live tile over every live job, not over a page', async () => {
+      const counts = await countJobBoard(homeActor)
+      const live = await listJobs(homeActor, { status: 'live' }, { page: 1, size: 1 })
+
+      expect(counts.live).toBe(live.total)
+      expect(counts.arriving).toBeLessThanOrEqual(counts.live)
+      expect(counts.held).toBeLessThanOrEqual(counts.live)
     })
   })
 

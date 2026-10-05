@@ -13,11 +13,12 @@
 
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
-import { D, todayIn } from '@qabandi/core'
+import { todayIn } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
-import { listPortalInvoices } from '@/features/portal/queries'
+import { listPortalInvoices, portalInvoiceSummary } from '@/features/portal/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { isOverdue } from '@/features/portal/status'
-import { sumByCurrency } from '@/lib/by-currency'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatNumber } from '@/lib/format'
 import { Card } from '@/ui/card'
@@ -31,14 +32,23 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
-export default async function PortalInvoicesPage() {
+export default async function PortalInvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const invoices = await listPortalInvoices(session.actor, locale)
+  const { page } = await searchParams
 
   const t = await getTranslations('portalInvoices')
   const today = todayIn()
+  const [invoicesPage, summary] = await Promise.all([
+    listPortalInvoices(session.actor, locale, pageRequest(page)),
+    portalInvoiceSummary(session.actor, today),
+  ])
+  const invoices = invoicesPage.rows
 
   const statusLabel: Record<string, string> = {
     issued: t('statusIssued'),
@@ -46,12 +56,8 @@ export default async function PortalInvoicesPage() {
     paid: t('statusPaid'),
     credited: t('statusCredited'),
   }
-  const owing = sumByCurrency(
-    invoices
-      .filter((invoice) => !invoice.isCreditNote)
-      .map((invoice) => ({ currency: invoice.currency, amount: invoice.balance })),
-  ).filter((entry) => new D(entry.amount).greaterThan(0))
-  const overdue = invoices.filter((invoice) => isOverdue(invoice, today)).length
+  // Over every issued invoice, summed in SQL — not over the page shown below.
+  const { owing, overdue } = summary
 
   return (
     <>
@@ -82,7 +88,7 @@ export default async function PortalInvoicesPage() {
         />
       </div>
 
-      {invoices.length === 0 ? (
+      {invoicesPage.total === 0 ? (
         <Card>
           <EmptyState icon="invoices" title={t('empty')} description={t('emptyHint')} />
         </Card>
@@ -165,6 +171,11 @@ export default async function PortalInvoicesPage() {
           })}
         </ul>
       )}
+      <Pager
+        page={invoicesPage}
+        path="/portal/invoices"
+        className="mt-3 rounded-card border border-line bg-surface"
+      />
     </>
   )
 }

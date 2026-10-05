@@ -7,7 +7,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const harness = vi.hoisted(() => ({ redirected: null as string | null, read: [] as string[] }))
+const harness = vi.hoisted(() => ({
+  redirected: null as string | null,
+  read: [] as string[],
+  optOuts: null as readonly string[] | null,
+  actorType: 'internal' as string,
+}))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/navigation', () => ({
@@ -16,15 +21,22 @@ vi.mock('next/navigation', () => ({
     throw new Error(`NEXT_REDIRECT:${to}`)
   },
 }))
-vi.mock('@/lib/session', () => ({ requireSession: async () => ({ actor: {} }) }))
+vi.mock('@/lib/session', () => ({
+  requireSession: async () => ({ actor: { type: harness.actorType } }),
+}))
+// A database deployment: the demo answers before it writes anything.
+vi.mock('@/lib/pilot/source', () => ({ usePilotFixtures: () => false }))
 vi.mock('./queries', () => ({
   markRead: async (_actor: unknown, id: string) => {
     harness.read.push(id)
   },
   markAllRead: async () => {},
+  setEmailOptOuts: async (_actor: unknown, groups: readonly string[]) => {
+    harness.optOuts = groups
+  },
 }))
 
-const { openNotification } = await import('./actions')
+const { openNotification, saveEmailPreferences } = await import('./actions')
 
 async function open(href: string) {
   const form = new FormData()
@@ -40,6 +52,8 @@ async function open(href: string) {
 beforeEach(() => {
   harness.redirected = null
   harness.read = []
+  harness.optOuts = null
+  harness.actorType = 'internal'
 })
 
 describe('opening an alert', () => {
@@ -60,5 +74,35 @@ describe('opening an alert', () => {
     await open(href)
     expect(harness.redirected).toBeNull()
     expect(harness.read).toEqual(['n1'])
+  })
+})
+
+/** R12: a member of staff turns email off per group; the bell stays on. */
+describe('choosing which alerts arrive by email', () => {
+  const save = async (ticked: string[]) => {
+    const form = new FormData()
+    for (const group of ticked) form.append('email', group)
+    await saveEmailPreferences(form)
+  }
+
+  it('stores the groups left unticked as the ones to stop', async () => {
+    await save(['quotes', 'operations', 'rates', 'suppliers', 'finance'])
+    expect(harness.optOuts).toEqual(['enquiries'])
+  })
+
+  it('stores nothing when every box is ticked', async () => {
+    await save(['enquiries', 'quotes', 'operations', 'rates', 'suppliers', 'finance'])
+    expect(harness.optOuts).toEqual([])
+  })
+
+  it('ignores a value that is not a group', async () => {
+    await save(['enquiries', 'quotes', 'operations', 'rates', 'suppliers', 'finance', 'x'])
+    expect(harness.optOuts).toEqual([])
+  })
+
+  it('writes nothing for a customer or agent contact', async () => {
+    harness.actorType = 'customer_contact'
+    await save([])
+    expect(harness.optOuts).toBeNull()
   })
 })

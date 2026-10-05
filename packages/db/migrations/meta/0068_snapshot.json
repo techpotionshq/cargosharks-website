@@ -1,5 +1,5 @@
 {
-  "id": "53a41f11-1a0c-4236-9128-72374a7a0364",
+  "id": "c6611c6d-1eb1-4578-b537-22349e883ee1",
   "prevId": "79f16690-fb98-4326-a12b-693ac47ecfd9",
   "version": "7",
   "dialect": "postgresql",
@@ -1200,6 +1200,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "notification_email_opt_outs": {
+          "name": "notification_email_opt_outs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "created_at": {
           "name": "created_at",
@@ -7780,18 +7787,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "vessel_imo": {
-          "name": "vessel_imo",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vessel_mmsi": {
-          "name": "vessel_mmsi",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "flight_number": {
           "name": "flight_number",
           "type": "text",
@@ -7990,21 +7985,6 @@
           "columns": [
             {
               "expression": "consolidation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "jobs_vessel_mmsi_idx": {
-          "name": "jobs_vessel_mmsi_idx",
-          "columns": [
-            {
-              "expression": "vessel_mmsi",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -15462,200 +15442,6 @@
           "tableTo": "messages",
           "columnsFrom": [
             "reply_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.vessel_positions": {
-      "name": "vessel_positions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "uuidv7()"
-        },
-        "mmsi": {
-          "name": "mmsi",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "imo": {
-          "name": "imo",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "call_sign": {
-          "name": "call_sign",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ship_type": {
-          "name": "ship_type",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "static_at": {
-          "name": "static_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latitude": {
-          "name": "latitude",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "longitude": {
-          "name": "longitude",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "speed_knots": {
-          "name": "speed_knots",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "course_degrees": {
-          "name": "course_degrees",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "heading_degrees": {
-          "name": "heading_degrees",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "nav_status": {
-          "name": "nav_status",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reported_destination": {
-          "name": "reported_destination",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reported_eta": {
-          "name": "reported_eta",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "position_at": {
-          "name": "position_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "near_location_id": {
-          "name": "near_location_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "track": {
-          "name": "track",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "vessel_positions_mmsi_idx": {
-          "name": "vessel_positions_mmsi_idx",
-          "columns": [
-            {
-              "expression": "mmsi",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "vessel_positions_imo_idx": {
-          "name": "vessel_positions_imo_idx",
-          "columns": [
-            {
-              "expression": "imo",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "vessel_positions_near_location_id_locations_id_fk": {
-          "name": "vessel_positions_near_location_id_locations_id_fk",
-          "tableFrom": "vessel_positions",
-          "tableTo": "locations",
-          "columnsFrom": [
-            "near_location_id"
           ],
           "columnsTo": [
             "id"

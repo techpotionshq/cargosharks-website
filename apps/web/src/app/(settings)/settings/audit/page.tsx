@@ -27,7 +27,9 @@ import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
-import { auditTableCounts, listAudit } from '@/features/admin/queries'
+import { auditTableCounts, listAuditPage } from '@/features/admin/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { Button, EmptyState, PageHeader } from '@/ui/layout'
@@ -55,7 +57,14 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AuditPage({
   searchParams,
 }: {
-  searchParams: Promise<{ table?: string; op?: string; q?: string; from?: string; to?: string }>
+  searchParams: Promise<{
+    table?: string
+    op?: string
+    q?: string
+    from?: string
+    to?: string
+    page?: string
+  }>
 }) {
   const timeZone = await getTimeZone()
 
@@ -104,8 +113,8 @@ export default async function AuditPage({
         ? t(`principalTypes.${value}` as 'principalTypes.internal')
         : value
 
-  const [rows, tables] = await Promise.all([
-    listAudit(session.actor, filters),
+  const [auditPage, tables] = await Promise.all([
+    listAuditPage(session.actor, filters, pageRequest(params.page)),
     auditTableCounts(session.actor),
   ])
 
@@ -191,8 +200,8 @@ export default async function AuditPage({
           active: table === row.tableName,
         })),
       ]}
-      summary={[{ label: t('entries'), value: rows.length }]}
-      isEmpty={rows.length === 0}
+      summary={[{ label: t('entries'), value: auditPage.total }]}
+      isEmpty={auditPage.total === 0}
       empty={
         q || table || op || from
           ? { icon: 'search', title: t('noMatch'), description: t('noMatchHint') }
@@ -239,7 +248,7 @@ export default async function AuditPage({
           </TR>
         </THead>
         <TBody>
-          {rows.map((row) => (
+          {auditPage.rows.map((row) => (
             <TR key={row.id}>
               <TD className="whitespace-nowrap">
                 <span className="text-ink">{formatRelative(row.at, locale, now)}</span>
@@ -283,6 +292,7 @@ export default async function AuditPage({
           ))}
         </TBody>
       </TableShell>
+      <Pager page={auditPage} path="/settings/audit" params={filters} />
     </Register>
   )
 }

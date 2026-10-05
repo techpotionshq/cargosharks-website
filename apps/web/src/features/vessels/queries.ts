@@ -2,7 +2,7 @@
  * Vessel positions, read for the job file, the portal and the board.
  *
  * Two reads, each with its fixture branch. Both run under the person's own
- * actor, and `vessel_positions_read` (0069) does the scoping: a vessel is
+ * actor, and `vessel_positions_read` (0070) does the scoping: a vessel is
  * visible exactly when a job sailing on it is. Nothing here filters by branch
  * or customer, for the same reason no other slice does.
  */

@@ -53,6 +53,8 @@ import type {
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotExceptions, pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
 import { named, pickName } from '@/lib/named'
+import { sumByCurrency, type CurrencyAmount } from '@/lib/by-currency'
+import { pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -63,7 +65,14 @@ export interface JobListFilters {
   readonly branchCode?: string
   /** Only jobs carrying an open exception or a customs hold. */
   readonly exceptionsOnly?: boolean
-  readonly limit?: number
+  /**
+   * Only jobs due within this many days from now.
+   *
+   * The board's "Arriving" filter used to be a `rows.filter` over the hundred
+   * rows it had fetched, so it could only ever find arrivals among the first
+   * hundred by ETA. In the `where` now, so it searches every live job.
+   */
+  readonly arrivingWithinDays?: number
   /** Names the owner as they write it — `principals.name_ar` on an Arabic screen. */
   readonly locale?: 'en' | 'ar'
 }
@@ -114,90 +123,177 @@ const accruingAmount = sql<{ amount: string; currency: string } | null>`(
    limit 1
 )`
 
-export async function listJobs(actor: Actor, filters: JobListFilters = {}): Promise<JobSummary[]> {
+/** The fixture board, filtered exactly as the `where` below filters the table. */
+function pilotJobsMatching(filters: JobListFilters, now: number): JobSummary[] {
+  let rows = pilotJobs(now, filters.locale)
+  if (filters.status === 'live') {
+    rows = rows.filter((r) => (LIVE_STATUSES as readonly string[]).includes(r.status))
+  } else if (filters.status) {
+    rows = rows.filter((r) => r.status === filters.status)
+  }
+  if (filters.mode) rows = rows.filter((r) => r.mode === filters.mode)
+  if (filters.branchCode) rows = rows.filter((r) => r.branchCode === filters.branchCode)
+  if (filters.exceptionsOnly) {
+    rows = rows.filter((r) => r.openExceptions > 0 || r.customsStatus === 'held')
+  }
+  if (filters.arrivingWithinDays !== undefined) {
+    const until = now + filters.arrivingWithinDays * 86_400_000
+    rows = rows.filter((r) => r.eta !== null && r.eta.getTime() > now && r.eta.getTime() < until)
+  }
+  return rows.sort((a, b) => (a.eta?.getTime() ?? Infinity) - (b.eta?.getTime() ?? Infinity))
+}
+
+/**
+ * The board's filter as SQL — shared by the page and its count, so the total
+ * under the table can never describe a different set from the rows above it.
+ */
+function jobsWhere(filters: JobListFilters) {
+  return and(
+    filters.status === 'live'
+      ? sql`${jobs.status} in ('booked','in_transit','arrived','customs','on_hold')`
+      : filters.status
+        ? sql`${jobs.status} = ${filters.status}`
+        : undefined,
+    filters.mode ? sql`${jobs.mode} = ${filters.mode}` : undefined,
+    filters.branchCode ? eq(branches.code, filters.branchCode) : undefined,
+    filters.exceptionsOnly
+      ? sql`(${openExceptions} > 0 or ${customsStages.status} = 'held')`
+      : undefined,
+    filters.arrivingWithinDays !== undefined
+      ? sql`${jobs.eta} > now() and ${jobs.eta} < now() + make_interval(days => ${filters.arrivingWithinDays})`
+      : undefined,
+  )
+}
+
+export async function listJobs(
+  actor: Actor,
+  filters: JobListFilters = {},
+  request: PageRequest = pageRequest(undefined),
+): Promise<Page<JobSummary>> {
+  if (usePilotFixtures()) return pageOf(pilotJobsMatching(filters, Date.now()), request)
+
+  return withActor(actor, (tx) =>
+    readPage(
+      request,
+      async (limit, offset) => {
+        const rows = await tx
+          .select({
+            id: jobs.id,
+            reference: jobs.reference,
+            status: jobs.status,
+            mode: jobs.mode,
+            direction: jobs.tradeDirection,
+            etd: jobs.etd,
+            eta: jobs.eta,
+            ata: jobs.ata,
+            vesselName: jobs.vesselName,
+            voyageNumber: jobs.voyageNumber,
+            flightNumber: jobs.flightNumber,
+            updatedAt: jobs.updatedAt,
+            /*
+              The branch's own code, joined rather than stubbed.
+
+              This was a literal empty string, and the `where` below carried no
+              branch condition — so on a real database the register's branch column
+              rendered blank and `filters.branchCode` silently matched everything.
+              Both halves work in `usePilotFixtures()` mode above, which is why the
+              demo and the offline end-to-end run never showed it.
+            */
+            branchCode: branches.code,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            originName: origin.nameEn,
+            originNameAr: origin.nameAr,
+            originCode: origin.unlocode,
+            destinationName: destination.nameEn,
+            destinationNameAr: destination.nameAr,
+            destinationCode: destination.unlocode,
+            owner: named(filters.locale ?? 'en', principals.nameEn, principals.nameAr),
+            customsStatus: customsStages.status,
+            containerCount,
+            milestonesTotal,
+            milestonesDone,
+            openExceptions,
+            accruingAmount,
+          })
+          .from(jobs)
+          .leftJoin(branches, eq(branches.id, jobs.branchId))
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(principals, eq(principals.id, jobs.ownerId))
+          .leftJoin(origin, eq(origin.id, jobs.originId))
+          .leftJoin(destination, eq(destination.id, jobs.destinationId))
+          .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
+          .where(jobsWhere(filters))
+          // `id` last: ETA and updated-at tie across an import of four hundred
+          // jobs, and without a unique tail a row can appear on two pages.
+          .orderBy(asc(jobs.eta), desc(jobs.updatedAt), asc(jobs.id))
+          .limit(limit)
+          .offset(offset)
+
+        return rows.map(toJobSummary)
+      },
+      async () => {
+        const [row] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(jobs)
+          .leftJoin(branches, eq(branches.id, jobs.branchId))
+          .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
+          .where(jobsWhere(filters))
+        return row?.n ?? 0
+      },
+    ),
+  )
+}
+
+export interface JobBoardCounts {
+  /** Every live job — the board's "Live" tile. */
+  readonly live: number
+  /** Live jobs due in the next seven days. */
+  readonly arriving: number
+  /** Live jobs held at customs or on hold. */
+  readonly held: number
+}
+
+/** The window the "Arriving" tile and filter both mean. */
+export const ARRIVING_WITHIN_DAYS = 7
+
+/**
+ * The board's tiles, counted in the database.
+ *
+ * They were `rows.length` and two `rows.filter`s over the page the board had
+ * fetched, so with 336 live jobs the "Live" tile read 100 — the page limit,
+ * presented as a fact about the branch (R9). Counted here over every live job,
+ * independent of which filter or page the board is showing, because a tile is
+ * a headline about the branch rather than about the table under it.
+ */
+export async function countJobBoard(actor: Actor): Promise<JobBoardCounts> {
   if (usePilotFixtures()) {
-    let rows = pilotJobs(Date.now(), filters.locale)
-    if (filters.status === 'live') {
-      rows = rows.filter((r) => (LIVE_STATUSES as readonly string[]).includes(r.status))
-    } else if (filters.status) {
-      rows = rows.filter((r) => r.status === filters.status)
+    const now = Date.now()
+    const live = pilotJobsMatching({ status: 'live' }, now)
+    return {
+      live: live.length,
+      arriving: pilotJobsMatching({ status: 'live', arrivingWithinDays: ARRIVING_WITHIN_DAYS }, now)
+        .length,
+      held: live.filter((r) => r.customsStatus === 'held' || r.status === 'on_hold').length,
     }
-    if (filters.mode) rows = rows.filter((r) => r.mode === filters.mode)
-    if (filters.branchCode) rows = rows.filter((r) => r.branchCode === filters.branchCode)
-    if (filters.exceptionsOnly) {
-      rows = rows.filter((r) => r.openExceptions > 0 || r.customsStatus === 'held')
-    }
-    return rows
-      .sort((a, b) => (a.eta?.getTime() ?? Infinity) - (b.eta?.getTime() ?? Infinity))
-      .slice(0, filters.limit ?? 50)
   }
 
-  const limit = Math.min(filters.limit ?? 50, 200)
-
   return withActor(actor, async (tx) => {
-    const rows = await tx
+    const [row] = await tx
       .select({
-        id: jobs.id,
-        reference: jobs.reference,
-        status: jobs.status,
-        mode: jobs.mode,
-        direction: jobs.tradeDirection,
-        etd: jobs.etd,
-        eta: jobs.eta,
-        ata: jobs.ata,
-        vesselName: jobs.vesselName,
-        voyageNumber: jobs.voyageNumber,
-        flightNumber: jobs.flightNumber,
-        updatedAt: jobs.updatedAt,
-        /*
-          The branch's own code, joined rather than stubbed.
-
-          This was a literal empty string, and the `where` below carried no
-          branch condition — so on a real database the register's branch column
-          rendered blank and `filters.branchCode` silently matched everything.
-          Both halves work in `usePilotFixtures()` mode above, which is why the
-          demo and the offline end-to-end run never showed it.
-        */
-        branchCode: branches.code,
-        customerName: customers.legalNameEn,
-        customerNameAr: customers.legalNameAr,
-        originName: origin.nameEn,
-        originNameAr: origin.nameAr,
-        originCode: origin.unlocode,
-        destinationName: destination.nameEn,
-        destinationNameAr: destination.nameAr,
-        destinationCode: destination.unlocode,
-        owner: named(filters.locale ?? 'en', principals.nameEn, principals.nameAr),
-        customsStatus: customsStages.status,
-        containerCount,
-        milestonesTotal,
-        milestonesDone,
-        openExceptions,
-        accruingAmount,
+        live: sql<number>`count(*)::int`,
+        arriving: sql<number>`(count(*) filter (
+          where ${jobs.eta} > now()
+            and ${jobs.eta} < now() + make_interval(days => ${ARRIVING_WITHIN_DAYS})
+        ))::int`,
+        held: sql<number>`(count(*) filter (
+          where ${customsStages.status} = 'held' or ${jobs.status} = 'on_hold'
+        ))::int`,
       })
       .from(jobs)
-      .leftJoin(branches, eq(branches.id, jobs.branchId))
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(principals, eq(principals.id, jobs.ownerId))
-      .leftJoin(origin, eq(origin.id, jobs.originId))
-      .leftJoin(destination, eq(destination.id, jobs.destinationId))
       .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
-      .where(
-        and(
-          filters.status === 'live'
-            ? sql`${jobs.status} in ('booked','in_transit','arrived','customs','on_hold')`
-            : filters.status
-              ? sql`${jobs.status} = ${filters.status}`
-              : undefined,
-          filters.mode ? sql`${jobs.mode} = ${filters.mode}` : undefined,
-          filters.branchCode ? eq(branches.code, filters.branchCode) : undefined,
-          filters.exceptionsOnly ? sql`${openExceptions} > 0` : undefined,
-        ),
-      )
-      .orderBy(asc(jobs.eta), desc(jobs.updatedAt))
-      .limit(limit)
-
-    return rows.map(toJobSummary)
+      .where(sql`${jobs.status} in ('booked','in_transit','arrived','customs','on_hold')`)
+    return { live: row?.live ?? 0, arriving: row?.arriving ?? 0, held: row?.held ?? 0 }
   })
 }
 
@@ -694,6 +790,41 @@ export async function listRunningClocks(
       jobId: row.clock.jobId,
       jobReference: row.jobReference,
     }))
+  })
+}
+
+/**
+ * What every running clock has accrued, per currency — the board's
+ * "Accruing" tile.
+ *
+ * The tile summed `listRunningClocks`, which is the panel's twenty worst
+ * clocks: past twenty, the figure was the twenty largest rather than the
+ * branch's exposure, presented as the total. Summed here over every running
+ * clock, from the same stored `accrued_amount` each clock's row shows, as
+ * `numeric` text so no float touches it.
+ */
+export async function accruingTotals(actor: Actor): Promise<CurrencyAmount[]> {
+  if (usePilotFixtures()) {
+    return sumByCurrency(
+      (await listRunningClocks(actor)).map((clock) => ({
+        currency: clock.accrued.currency,
+        amount: String(clock.accrued.amount),
+      })),
+    )
+  }
+
+  return withActor(actor, async (tx) => {
+    const rows = await tx
+      .select({
+        currency: freeTimeClocks.currency,
+        amount: sql<string>`coalesce(sum(${freeTimeClocks.accruedAmount}), 0)::text`,
+      })
+      .from(freeTimeClocks)
+      .innerJoin(jobs, eq(jobs.id, freeTimeClocks.jobId))
+      .where(and(isNull(freeTimeClocks.endsOn), gt(freeTimeClocks.accruedDays, 0)))
+      .groupBy(freeTimeClocks.currency)
+      .orderBy(desc(sql`sum(${freeTimeClocks.accruedAmount})`), asc(freeTimeClocks.currency))
+    return rows.map(({ currency, amount }) => ({ currency, amount }))
   })
 }
 

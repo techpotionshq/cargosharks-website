@@ -20,6 +20,8 @@ import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listAgentShipments } from '@/features/network/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { pickName } from '@/lib/named'
 import { formatDay, formatRelative } from '@/lib/format'
@@ -35,19 +37,25 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('agent') }
 }
 
-export default async function AgentHome() {
+export default async function AgentHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const session = await requireSession()
   const timeZone = await getTimeZone()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const [shipments, t, tJob, tMode, tPortal] = await Promise.all([
-    listAgentShipments(session.actor, locale),
+  const { page } = await searchParams
+  const [shipmentsPage, t, tJob, tMode, tPortal] = await Promise.all([
+    listAgentShipments(session.actor, locale, pageRequest(page)),
     getTranslations('agent'),
     getTranslations('job'),
     getTranslations('mode'),
     getTranslations('portal'),
   ])
   const now = Date.now()
+  const shipments = shipmentsPage.rows
 
   return (
     /* The shell owns the page frame now — `(agent)/layout.tsx`. */
@@ -58,7 +66,7 @@ export default async function AgentHome() {
         description={t('subtitle')}
       />
 
-      {shipments.length === 0 ? (
+      {shipmentsPage.total === 0 ? (
         <Card>
           <EmptyState icon="partners" title={t('empty')} description={t('emptyHint')} />
         </Card>
@@ -132,6 +140,11 @@ export default async function AgentHome() {
           ))}
         </ul>
       )}
+      <Pager
+        page={shipmentsPage}
+        path="/agent"
+        className="mt-3 rounded-card border border-line bg-surface"
+      />
     </>
   )
 }

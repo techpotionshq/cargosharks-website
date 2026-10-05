@@ -61,6 +61,7 @@ vi.mock('next-intl/server', () => ({
 
 const {
   authAccount,
+  authSession,
   authUser,
   branches,
   chargeTypes,
@@ -752,6 +753,129 @@ describe.skipIf(!enabled)('administration', () => {
       const after = await principalByEmail(email)
       expect(after).toBeDefined()
       expect(after!.isActive).toBe(false)
+    })
+
+    /*
+      O4: suspension used to leave the session rows, so re-enabling the
+      account revived the old cookie on whatever machine still held it.
+    */
+    it('ends every session the person has, so re-enabling revives none', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Signed In',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+      const [login] = await withActor(adminActor, (tx) =>
+        tx
+          .select({ authUserId: principals.authUserId })
+          .from(principals)
+          .where(eq(principals.id, principal!.id)),
+      )
+      const userId = login!.authUserId!
+      const sessionsOf = () =>
+        withActor(adminActor, (tx) =>
+          tx.select({ id: authSession.id }).from(authSession).where(eq(authSession.userId, userId)),
+        )
+      const tomorrow = new Date(Date.now() + 86_400_000)
+      await withActor(adminActor, (tx) =>
+        tx.insert(authSession).values([
+          { id: randomUUID(), token: randomUUID(), userId, expiresAt: tomorrow },
+          { id: randomUUID(), token: randomUUID(), userId, expiresAt: tomorrow },
+        ]),
+      )
+      expect(await sessionsOf()).toHaveLength(2)
+
+      await setUserActive({}, form({ principalId: principal!.id }))
+      expect(await sessionsOf()).toHaveLength(0)
+
+      // Back on: the account works again, and no old session comes with it.
+      await setUserActive({}, form({ principalId: principal!.id, isActive: 'on' }))
+      expect((await principalByEmail(email))!.isActive).toBe(true)
+      expect(await sessionsOf()).toHaveLength(0)
+    })
+
+    it('leaves the sessions of somebody else alone', async () => {
+      const invite = async (nameEn: string) => {
+        const email = nextEmail()
+        await saveUser(
+          {},
+          form({
+            nameEn,
+            email,
+            locale: 'en',
+            roleId: coordinatorRoleId,
+            branchIds: [HOME_BRANCH],
+            isActive: 'on',
+          }),
+        )
+        const principal = await principalByEmail(email)
+        const [login] = await withActor(adminActor, (tx) =>
+          tx
+            .select({ authUserId: principals.authUserId })
+            .from(principals)
+            .where(eq(principals.id, principal!.id)),
+        )
+        return { principalId: principal!.id, userId: login!.authUserId! }
+      }
+      const colleague = await invite('Colleague')
+      const suspended = await invite('Suspended')
+      const id = randomUUID()
+      await withActor(adminActor, (tx) =>
+        tx.insert(authSession).values({
+          id,
+          token: randomUUID(),
+          userId: colleague.userId,
+          expiresAt: new Date(Date.now() + 86_400_000),
+        }),
+      )
+      await setUserActive({}, form({ principalId: suspended.principalId }))
+      const left = await withActor(adminActor, (tx) =>
+        tx.select({ id: authSession.id }).from(authSession).where(eq(authSession.id, id)),
+      )
+      expect(left).toHaveLength(1)
+    })
+
+    it('ends the sessions when "Can sign in" is unticked on the edit form', async () => {
+      const email = nextEmail()
+      const fields = {
+        nameEn: 'Edited Off',
+        email,
+        locale: 'en',
+        roleId: coordinatorRoleId,
+        branchIds: [HOME_BRANCH],
+      }
+      await saveUser({}, form({ ...fields, isActive: 'on' }))
+      const principal = await principalByEmail(email)
+      const [login] = await withActor(adminActor, (tx) =>
+        tx
+          .select({ authUserId: principals.authUserId })
+          .from(principals)
+          .where(eq(principals.id, principal!.id)),
+      )
+      await withActor(adminActor, (tx) =>
+        tx.insert(authSession).values({
+          id: randomUUID(),
+          token: randomUUID(),
+          userId: login!.authUserId!,
+          expiresAt: new Date(Date.now() + 86_400_000),
+        }),
+      )
+      await saveUser({}, form({ ...fields, principalId: principal!.id }))
+      const left = await withActor(adminActor, (tx) =>
+        tx
+          .select({ id: authSession.id })
+          .from(authSession)
+          .where(eq(authSession.userId, login!.authUserId!)),
+      )
+      expect(left).toHaveLength(0)
     })
 
     /** Locking yourself out of the only administrator account. */
