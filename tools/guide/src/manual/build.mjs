@@ -15,7 +15,7 @@
 // Body is pandoc Markdown with three additions: `{app:key}` and `{brand}` (see
 // catalog.mjs), screenshot directives (see shots.mjs), and the house blocks as
 // fenced divs (::: tip, ::: warn, ::: steps, ::: intro, ::: phone).
-import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FONT_DIR, GUIDE, OUT } from '../paths.mjs'
 import { brand, brandName, colors, markSvg } from '../brand.mjs'
@@ -290,6 +290,15 @@ export async function buildManual({ locales = ['en'], pdf = true, sections: only
       chapters.push({ id: s.id, title: expand(title, locale).text, html })
     }
     await closeShots()
+    // Pictures from earlier builds that no section uses any more would
+    // otherwise pile up in assets/ and be published with the rest.
+    if (!only.length) {
+      const used = new Set(
+        chapters.flatMap((c) => [...c.html.matchAll(/assets\/([0-9a-f]+\.jpg)/g)].map((m) => m[1])),
+      )
+      for (const f of readdirSync(assets))
+        if (f.endsWith('.jpg') && !used.has(f)) rmSync(join(assets, f))
+    }
     const html = page({
       title: `The ${brandName} Guide`,
       lead: 'How to run enquiries, quotations, shipments, documents and money in one system, written for the people who use it every day.',
