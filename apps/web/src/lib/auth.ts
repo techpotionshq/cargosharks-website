@@ -245,7 +245,7 @@ export const auth = betterAuth({
   hooks: authHooks,
 
   /*
-    Better Auth's own limiter, minus the one path the hooks above govern.
+    Better Auth's own limiter, minus the two paths the hooks above govern.
 
     Its default for `/sign-in/*` is three requests per ten seconds per address,
     counting successes, and it runs before the hooks. Behind one office NAT, or
@@ -253,8 +253,11 @@ export const auth = betterAuth({
     colleagues signing in together (run 5, R11). The hooks count failures per
     address and lock per account, which protects a password without spending a
     budget on people who type theirs correctly, so the library's rule is
-    turned off for `/sign-in/email` only. Everything else — the two-factor
-    challenge, password reset, the other `/sign-in/*` paths — keeps the
+    turned off for `/sign-in/email`. The TOTP check after it had the same
+    problem (the two-factor plugin's 3 per 10 s on `/two-factor/*`) and gets
+    the same treatment: off for `/two-factor/verify-totp`, with failures per
+    address and a lock per user in the hooks instead. Everything else — backup
+    codes, enrolment, password reset, the other `/sign-in/*` paths — keeps the
     library's defaults. `enabled` is left alone: on in production, off in
     development, as the library decides.
   */

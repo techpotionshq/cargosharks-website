@@ -34,17 +34,25 @@ import 'server-only'
  * limiter is switched off for this one path (`auth.ts`). Forty colleagues
  * behind one office address, or one Cloudflare edge, signing in at nine are
  * forty successes, and none of them is refused.
+ *
+ * The TOTP step after it is held to the same terms: failures only per
+ * address, five wrong codes lock that one user (`lib/throttle.ts`), and the
+ * library's three-per-ten-seconds rule is off for `/two-factor/verify-totp`.
  */
 
-import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware, getSessionFromCtx, isAPIError } from 'better-auth/api'
 import { clientAddressFrom } from './client-address'
 import { clearSignInFailures, readLockout, recordSignInFailure } from './lockout'
 import {
   checkSignInAddress,
+  checkTwoFactorAddress,
   clearSignInFailuresInMemory,
+  clearTwoFactorFailures,
   readEmailLock,
+  readTwoFactorLock,
   recordResetRequest,
   recordSignInFailureInMemory,
+  recordTwoFactorFailureInMemory,
 } from './throttle'
 
 /** The codes the forms translate. Stated once so the two sides cannot drift. */
@@ -60,7 +68,55 @@ export interface GuardContext {
   readonly body?: unknown
   readonly headers?: { get(name: string): string | null }
   readonly request?: { headers: { get(name: string): string | null } }
-  readonly context?: { returned?: unknown }
+  readonly context?: {
+    returned?: unknown
+    secret?: string
+    createAuthCookie?: (name: string) => { name: string }
+    internalAdapter?: {
+      findVerificationValue(identifier: string): Promise<{ value: string } | null | undefined>
+    }
+  }
+  readonly getSignedCookie?: (name: string, secret: string) => Promise<string | null | false>
+}
+
+/** The TOTP check, the one two-factor path these hooks govern. */
+export const TWO_FACTOR_VERIFY_PATH = '/two-factor/verify-totp'
+
+/**
+ * Whose six digits these are.
+ *
+ * Read the way the two-factor plugin reads it (`verifyTwoFactor`): the
+ * signed-in session during enrolment, otherwise the signed `two_factor`
+ * challenge cookie the password step set, which names a verification row
+ * holding the user id. Nothing in the body names an account, by design, so
+ * this is the only honest source. Null when neither resolves — a stale or
+ * forged cookie — and then only the address is counted.
+ */
+async function twoFactorUserOf(ctx: GuardContext): Promise<string | null> {
+  try {
+    const session = await getSessionFromCtx(ctx as never)
+    if (session?.user?.id) return session.user.id
+  } catch {
+    // No session is the ordinary case at sign-in; fall through to the cookie.
+  }
+  try {
+    const auth = ctx.context
+    if (!auth?.createAuthCookie || !auth.secret || !auth.internalAdapter || !ctx.getSignedCookie) {
+      return null
+    }
+    const token = await ctx.getSignedCookie(auth.createAuthCookie('two_factor').name, auth.secret)
+    if (!token) return null
+    const row = await auth.internalAdapter.findVerificationValue(token)
+    return row?.value ?? null
+  } catch {
+    return null
+  }
+}
+
+/** The user a successful verification answered with — the challenge is spent by then. */
+function userOfResponse(returned: unknown): string | null {
+  const user = (returned as { user?: { id?: unknown } } | null)?.user
+  return typeof user?.id === 'string' ? user.id : null
 }
 
 function emailOf(ctx: GuardContext): string | null {
@@ -112,6 +168,16 @@ export async function guardBefore(ctx: GuardContext): Promise<void> {
     return
   }
 
+  if (ctx.path === TWO_FACTOR_VERIFY_PATH) {
+    const throttle = checkTwoFactorAddress(addressOf(ctx))
+    if (!throttle.allowed) {
+      refuse('TOO_MANY_REQUESTS', AUTH_REFUSAL.signInThrottled, throttle.minutesRemaining)
+    }
+    const lock = readTwoFactorLock(await twoFactorUserOf(ctx))
+    if (!lock.allowed) refuse('FORBIDDEN', AUTH_REFUSAL.accountLocked, lock.minutesRemaining)
+    return
+  }
+
   if (ctx.path === '/request-password-reset') {
     const verdict = recordResetRequest(addressOf(ctx), emailOf(ctx))
     if (!verdict.allowed) {
@@ -133,6 +199,7 @@ export async function guardBefore(ctx: GuardContext): Promise<void> {
  * something they do not have.
  */
 export async function recordAfter(ctx: GuardContext): Promise<void> {
+  if (ctx.path === TWO_FACTOR_VERIFY_PATH) return recordTwoFactorAfter(ctx)
   if (ctx.path !== '/sign-in/email') return
   const email = emailOf(ctx)
   if (!email) return
@@ -161,13 +228,37 @@ export async function recordAfter(ctx: GuardContext): Promise<void> {
 }
 
 /**
+ * After a TOTP check: a 401 is a wrong code (or a dead challenge) and counts
+ * against the address and the user; anything that is not an error clears the
+ * user's run. A refusal these hooks raised is a 403 or 429 and counts nothing,
+ * so a locked user's further tries do not extend their own lock.
+ */
+async function recordTwoFactorAfter(ctx: GuardContext): Promise<void> {
+  const returned = ctx.context?.returned
+  if (isAPIError(returned)) {
+    if (returned.statusCode === 401) {
+      recordTwoFactorFailureInMemory(addressOf(ctx), await twoFactorUserOf(ctx))
+    }
+    return
+  }
+  clearTwoFactorFailures(userOfResponse(returned))
+}
+
+/**
  * Better Auth's `rateLimit`, as `auth.ts` passes it: the library's limiter
  * with its sign-in rule switched off, because the hooks here govern that path
  * (R11, see the note in `auth.ts`). Exported so the load test runs the same
  * setting the application does.
  */
 export const AUTH_RATE_LIMIT = {
-  customRules: { '/sign-in/email': false as const },
+  customRules: {
+    '/sign-in/email': false as const,
+    // The two-factor plugin's own rule is 3 per 10 s per address for every
+    // `/two-factor/*` path; custom rules are applied after plugin rules, so
+    // this switches it off for the TOTP check alone. Backup codes, enrolment
+    // and the rest keep the library's rule.
+    [TWO_FACTOR_VERIFY_PATH]: false as const,
+  },
 }
 
 /** The pair, as `betterAuth({ hooks })` takes them. */

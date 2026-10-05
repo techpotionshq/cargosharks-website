@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   __resetThrottle,
   checkSignInAddress,
+  checkTwoFactorAddress,
   clearSignInFailuresInMemory,
+  clearTwoFactorFailures,
+  readTwoFactorLock,
+  recordTwoFactorFailureInMemory,
   readEmailLock,
   recordSignInFailureInMemory,
   recordTrackingLookup,
@@ -166,5 +170,33 @@ describe('the tracking budgets', () => {
     const now = 1_000_000
     for (let i = 0; i < 30; i += 1) recordTrackingLookup(IP, `R${i}`, `V${i}`, now)
     expect(recordTrackingLookup(IP, 'R99', 'V99', now).allowed).toBe(false)
+  })
+})
+
+/* The TOTP step, on the password step's terms. */
+describe('the two-factor budgets', () => {
+  it('locks one user at the fifth wrong code, and nobody else', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 4; i += 1) recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    expect(readTwoFactorLock('user-a', now).allowed).toBe(true)
+    recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    expect(readTwoFactorLock('user-a', now)).toEqual({ allowed: false, minutesRemaining: 15 })
+    expect(readTwoFactorLock('user-b', now).allowed).toBe(true)
+    expect(checkTwoFactorAddress(IP, now).allowed).toBe(true)
+  })
+
+  it('forgets the run after a correct code', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 4; i += 1) recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    clearTwoFactorFailures('user-a')
+    recordTwoFactorFailureInMemory(IP, 'user-a', now)
+    expect(readTwoFactorLock('user-a', now).allowed).toBe(true)
+  })
+
+  it('refuses an address after fifty wrong codes, whoever they were for', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 50; i += 1) recordTwoFactorFailureInMemory(IP, `user-${i}`, now)
+    expect(checkTwoFactorAddress(IP, now).allowed).toBe(false)
+    expect(checkTwoFactorAddress(OTHER, now).allowed).toBe(true)
   })
 })

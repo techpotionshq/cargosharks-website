@@ -207,7 +207,43 @@ const signInFailuresByAddress = createThrottle(50, 15 * 60 * 1000)
  * lock stays behind it as the control that survives a restart and is shared
  * between processes.
  */
-const signInFailuresByEmail = new Map<string, LockoutCounters>()
+const signInFailuresByEmail = createFailureLock()
+
+/**
+ * The `core` lockout policy kept in memory under any key — five failures lock
+ * for fifteen minutes, thirty quiet minutes forgive the run.
+ *
+ * A factory because two things lock this way: an email at the password step,
+ * and a user at the two-factor step. Same ceiling and eviction rule as
+ * `createThrottle`, for the same reason: the keys are whatever strangers send.
+ */
+function createFailureLock() {
+  const runs = new Map<string, LockoutCounters>()
+  return {
+    read(key: string | null, now: number): ThrottleVerdict {
+      const counters = key ? runs.get(key) : undefined
+      if (!counters) return { allowed: true, minutesRemaining: 0 }
+      const state = lockoutState(counters, new Date(now))
+      return { allowed: !state.locked, minutesRemaining: state.minutesRemaining }
+    },
+    fail(key: string | null, now: number): void {
+      if (!key) return
+      const previous = runs.get(key) ?? afterSuccess()
+      if (!runs.has(key) && runs.size >= MAX_TRACKED) {
+        const oldest = runs.keys().next()
+        if (!oldest.done) runs.delete(oldest.value)
+      }
+      runs.delete(key)
+      runs.set(key, afterFailure(previous, new Date(now)))
+    },
+    clear(key: string | null): void {
+      if (key) runs.delete(key)
+    },
+    reset(): void {
+      runs.clear()
+    },
+  }
+}
 
 /** Is sign-in from this address still within its failure budget? Spends nothing. */
 export function checkSignInAddress(address: string | null, now = Date.now()): ThrottleVerdict {
@@ -216,10 +252,7 @@ export function checkSignInAddress(address: string | null, now = Date.now()): Th
 
 /** The in-memory lock standing against an email address, known or not. */
 export function readEmailLock(email: string | null, now = Date.now()): ThrottleVerdict {
-  const counters = email ? signInFailuresByEmail.get(email) : undefined
-  if (!counters) return { allowed: true, minutesRemaining: 0 }
-  const state = lockoutState(counters, new Date(now))
-  return { allowed: !state.locked, minutesRemaining: state.minutesRemaining }
+  return signInFailuresByEmail.read(email, now)
 }
 
 /** Count one wrong password against the address and the email. */
@@ -229,16 +262,7 @@ export function recordSignInFailureInMemory(
   now = Date.now(),
 ): void {
   signInFailuresByAddress.hit(address, now)
-  if (!email) return
-  const previous = signInFailuresByEmail.get(email) ?? afterSuccess()
-  // Same ceiling and eviction rule as `createThrottle`, for the same reason:
-  // the keys are whatever strangers type.
-  if (!signInFailuresByEmail.has(email) && signInFailuresByEmail.size >= MAX_TRACKED) {
-    const oldest = signInFailuresByEmail.keys().next()
-    if (!oldest.done) signInFailuresByEmail.delete(oldest.value)
-  }
-  signInFailuresByEmail.delete(email)
-  signInFailuresByEmail.set(email, afterFailure(previous, new Date(now)))
+  signInFailuresByEmail.fail(email, now)
 }
 
 /**
@@ -248,7 +272,57 @@ export function recordSignInFailureInMemory(
  * `signInFailuresByAddress`.
  */
 export function clearSignInFailuresInMemory(email: string | null): void {
-  if (email) signInFailuresByEmail.delete(email)
+  signInFailuresByEmail.clear(email)
+}
+
+/**
+ * The two-factor step, on the same terms as the password step — R11's twin.
+ *
+ * Better Auth limits `/two-factor/*` to three requests per ten seconds per
+ * address. Every finance and admin user arrives from one Cloudflare edge
+ * address at launch and confirms their six digits at about the same time, so
+ * the fourth colleague in ten seconds was refused with a correct code. That
+ * library rule is off for `/two-factor/verify-totp` (`auth-guard.ts`), and
+ * these take its place:
+ *
+ *   per address  fifty *wrong* codes a quarter-hour. A correct code spends
+ *                nothing, so an office confirming together is never refused.
+ *   per user     the `core` lockout: five wrong codes lock that user for
+ *                fifteen minutes, and nobody else. Six digits are a million
+ *                guesses; five per quarter-hour is about forty years.
+ *
+ * The user is known at this step — the password was right — so there is no
+ * enumeration to hide; the refusal is the same "locked, try again in N
+ * minutes" the password step gives. The library's own persistent lock on the
+ * factor (ten failures, `auth_two_factor.locked_until`) stays behind this as
+ * the control that survives a restart.
+ */
+const twoFactorFailuresByAddress = createThrottle(50, 15 * 60 * 1000)
+const twoFactorFailuresByUser = createFailureLock()
+
+/** Is this address still within its wrong-code budget? Spends nothing. */
+export function checkTwoFactorAddress(address: string | null, now = Date.now()): ThrottleVerdict {
+  return twoFactorFailuresByAddress.peek(address, now)
+}
+
+/** The lock standing against this user's second factor. */
+export function readTwoFactorLock(userId: string | null, now = Date.now()): ThrottleVerdict {
+  return twoFactorFailuresByUser.read(userId, now)
+}
+
+/** Count one wrong code against the address and the user. */
+export function recordTwoFactorFailureInMemory(
+  address: string | null,
+  userId: string | null,
+  now = Date.now(),
+): void {
+  twoFactorFailuresByAddress.hit(address, now)
+  twoFactorFailuresByUser.fail(userId, now)
+}
+
+/** Forget the user's run after a correct code. The address budget is not refunded. */
+export function clearTwoFactorFailures(userId: string | null): void {
+  twoFactorFailuresByUser.clear(userId)
 }
 
 /**
@@ -323,7 +397,9 @@ export function recordTrackingMiss(reference: string, verifier: string, now = Da
 /** Test seam. Not exported from any barrel; nothing in the product calls it. */
 export function __resetThrottle(): void {
   signInFailuresByAddress.reset()
-  signInFailuresByEmail.clear()
+  signInFailuresByEmail.reset()
+  twoFactorFailuresByAddress.reset()
+  twoFactorFailuresByUser.reset()
   resetByAddress.reset()
   resetByEmail.reset()
   trackByAddress.reset()
