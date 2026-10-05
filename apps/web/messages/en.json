@@ -517,7 +517,8 @@
     "daysLeft": "Days left",
     "noneYet": "No rate cards yet.",
     "noneYetHint": "Load your carrier contracts and a quotation prices itself instead of being worked out by hand.",
-    "noneMatching": "No rate cards of that type."
+    "noneMatching": "No rate cards of that type.",
+    "importCards": "Import rate cards"
   },
   "admin": {
     "title": "Administration",
