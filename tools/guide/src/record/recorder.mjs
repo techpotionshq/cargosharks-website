@@ -55,6 +55,9 @@ export class Recorder {
     stack,
     { who = 'operations', locale = 'en', viewport = { width: 1440, height: 900 }, scale = 2 } = {},
   ) {
+    // 'phone' records as a phone (390x844, touch, mobile layout); the composite frames it as one.
+    this.device = viewport === 'phone' ? 'phone' : 'desktop'
+    if (viewport === 'phone') viewport = { width: 390, height: 844 }
     this.dir = dir
     this.stack = stack
     this.who = who
@@ -93,7 +96,7 @@ export class Recorder {
     this.ctx = await context(this.browser, this.stack, {
       who,
       locale,
-      viewport: this.viewport,
+      viewport: this.device === 'phone' ? 'phone' : this.viewport,
       scale: this.scale,
     })
     for (const s of this.initScripts) await this.ctx.addInitScript(s)

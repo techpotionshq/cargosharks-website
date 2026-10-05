@@ -31,7 +31,7 @@ export default {
         const btn = r.page.getByRole('button', { name: t('nav.menu') }).first()
         await r.click(btn, { before: 120, after: 900 })
         await a.focus(
-          r.page.locator('[role=dialog]').last(),
+          r.page.locator('dialog[open], [role=dialog]').last(),
           'Every section, search,<br>tracking and sign-out',
           { side: 'below' },
         )
@@ -45,7 +45,11 @@ export default {
       run: async (r, a) => {
         await a.clear()
         await r.click(
-          r.page.locator('[role=dialog]').last().getByRole('link', { name: 'Shipments' }).first(),
+          r.page
+            .locator('dialog[open], [role=dialog]')
+            .last()
+            .getByRole('link', { name: 'Shipments' })
+            .first(),
           { before: 120, after: 300 },
         )
         await r.cut(async () => {
@@ -53,7 +57,7 @@ export default {
           await r.page.waitForTimeout(500)
         })
         await a.focus(
-          r.page.locator('main').first(),
+          r.page.locator('main a[href^="/jobs/"]').first(),
           'Tables become lists<br>you can scroll with a thumb',
           { side: 'below' },
         )

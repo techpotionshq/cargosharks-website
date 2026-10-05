@@ -25,7 +25,7 @@ export default {
         await a.focus(
           r.page.locator('details[open] > div').first(),
           'Every alert arrives here,<br>newest first',
-          { side: 'left' },
+          { side: 'left', zoom: 1.6 },
         )
         await r.page.waitForTimeout(2200)
       },
@@ -42,7 +42,10 @@ export default {
           .first()
         await r.click(toggle, { before: 80, after: 700 })
         const form = toggle.locator('xpath=ancestor::details[1]')
-        await a.focus(form, 'Untick a group to stop<br>its emails. Yours alone.', { side: 'left' })
+        await a.focus(form, 'Untick a group to stop<br>its emails. Yours alone.', {
+          side: 'left',
+          zoom: 1.6,
+        })
         await r.page.waitForTimeout(2600)
       },
     },

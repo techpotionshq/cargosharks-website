@@ -115,9 +115,10 @@ export default {
       label: 'Record the payment',
       caption: { key: 'shorts.06-invoicing-and-payments.receipt' },
       run: async (r, a, ctx) => {
-        const [inv] = await ctx
-          .sql('select total_amount::text as total from invoices where id = $1', [ctx.data.invoice])
-          .catch(() => [{}])
+        const [inv] = await ctx.sql('select total::text as total from invoices where id = $1', [
+          ctx.data.invoice,
+        ])
+
         await r.click(r.page.getByRole('button', { name: 'Record a receipt' }).first(), {
           before: 80,
           after: 500,
