@@ -477,7 +477,8 @@
     "subtitle": "Shipments where your company is named as a partner.",
     "empty": "Nothing assigned to you.",
     "rateRequests": "Rate requests",
-    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email."
+    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email.",
+    "backToShipments": "All assigned shipments"
   },
   "rates": {
     "title": "Rate cards",

@@ -9,11 +9,14 @@
  * was named on live shipments, was told "Nothing assigned to you" — and
  * carried a hard-coded English "Release One" badge and the person's English
  * name on the Arabic page (A9, U1). It now lists the shipments the policy
- * admits, in the reader's language. Responding to rate requests from here is
- * still out of the pilot (Pilot §3.2): those arrive and are answered by email.
+ * admits, in the reader's language, and each card opens that shipment's
+ * read-only page (`agent/shipments/[id]`). Responding to rate requests from
+ * here is still out of the pilot (Pilot §3.2): those arrive and are answered
+ * by email.
  */
 
-import type { Metadata } from 'next'
+import type { Metadata, Route } from 'next'
+import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listAgentShipments } from '@/features/network/queries'
@@ -63,13 +66,22 @@ export default async function AgentHome() {
         <ul className="flex flex-col gap-3">
           {shipments.map((shipment) => (
             <li key={shipment.id}>
-              <Card>
+              {/*
+                The whole card opens the shipment. The reference is the link,
+                so a screen reader hears one named link per card rather than a
+                card-sized one reading out every figure; its `after` box
+                stretches over the card so a tap anywhere lands on it.
+              */}
+              <Card className="relative transition-colors focus-within:border-accent/50 hover:border-accent/40">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="ref numeric text-title font-semibold text-ink">
+                      <Link
+                        href={`/agent/shipments/${shipment.id}` as Route}
+                        className="ref numeric text-title font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-card hover:text-accent focus-visible:after:outline-2 focus-visible:after:outline-focus"
+                      >
                         {shipment.reference}
-                      </span>
+                      </Link>
                       <Badge tone={jobTone(shipment.status)} dot>
                         {tJob(`statuses.${shipment.status}` as 'statuses.booked')}
                       </Badge>
