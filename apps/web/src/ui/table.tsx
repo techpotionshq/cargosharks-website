@@ -45,6 +45,53 @@ const PRIORITY_CLASS: Record<ColumnPriority, string> = {
   lowest: 'hidden @4xl:table-cell',
 }
 
+/** The inverse of `PRIORITY_CLASS`: shown exactly while that column is hidden. */
+const STANDS_IN_CLASS: Record<Exclude<ColumnPriority, 'high'>, string> = {
+  low: '@3xl:hidden',
+  lowest: '@4xl:hidden',
+}
+
+/**
+ * A hidden column's value, carried under the row's first cell instead.
+ *
+ * Dropping a `low` column is what keeps the status and the money on a phone,
+ * but some of what leaves is the thing a person reads the row *by*. On a 390px
+ * invoices register the customer column went, so the row said "KWI-004117,
+ * part paid, KWD 2,115.750" and not whose; at 768 the operations board lost
+ * customer and route together. Put this inside the reference cell with the
+ * same `priority` as the column it stands in for, and the value appears there
+ * at exactly the widths where the column is gone, and nowhere else — the two
+ * are driven by one container query on `TableShell`, so they cannot overlap
+ * or both be missing.
+ *
+ * It wraps: the reference above it never does, and a customer's legal name is
+ * the longest text in most rows.
+ */
+export function StandIn({
+  priority = 'low',
+  children,
+  className,
+}: {
+  readonly priority?: Exclude<ColumnPriority, 'high'>
+  readonly children: ReactNode
+  readonly className?: string
+}) {
+  return (
+    <span
+      data-stand-in
+      className={[
+        'mt-0.5 block text-caption whitespace-normal text-ink-muted',
+        STANDS_IN_CLASS[priority],
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {children}
+    </span>
+  )
+}
+
 export function TableShell({
   children,
   className,
