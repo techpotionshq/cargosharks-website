@@ -191,6 +191,7 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                   rateRequestId={row.id}
                   enquiryId={enquiryId}
                   label={t('accept')}
+                  supersedeLabel={t('supersede')}
                 />
               ) : row.rateCardId ? (
                 <Badge tone="positive" icon="check">

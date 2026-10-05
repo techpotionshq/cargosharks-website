@@ -1870,7 +1870,9 @@
     "reviewTitle": "Check this draft before sending it",
     "reviewNegativeMargin": "{charge} sells below what it costs ({margin}% margin).",
     "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it.",
-    "customerReason": "Customer's reason for declining"
+    "customerReason": "Customer's reason for declining",
+    "reviewNewerReply": "{partner} replied on {on} with {total}, newer than the rate card this draft was costed on. Make that reply the rate card, or check the older rate still stands, then price again.",
+    "reviewNewerReplyNoTotal": "{partner} replied on {on}, after the rate card this draft was costed on. Check the reply before sending."
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
@@ -3787,7 +3789,8 @@
     "reviewUnclassified": "“{line}” has no charge type. It is kept in the total as Other charge; name it before making a rate card.",
     "reviewLineNumber": "Line {number}",
     "reviewRejected": "{count, plural, one {# line could not be read, so this total is short and is not ranked.} other {# lines could not be read, so this total is short and is not ranked.}}",
-    "reviewTotalMismatch": "The agent states a total of {stated}, but the lines add up to {computed}. It is not ranked until someone checks."
+    "reviewTotalMismatch": "The agent states a total of {stated}, but the lines add up to {computed}. It is not ranked until someone checks.",
+    "supersede": "Replace the older rate"
   },
   "renewals": {
     "title": "Renewals in flight",
@@ -4072,7 +4075,7 @@
     "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it.",
     "promoteOverlap": "This rate overlaps another card for the same agent and lane. End or replace that card first.",
     "promoteLaneMismatch": "This reply priced a different lane ({lane}), so it cannot become this enquiry's rate.",
-    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Accepting this one would overlap it."
+    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Replace it with this reply, or leave the older rate in place."
   },
   "enquiriesValidation": {
     "chooseOwner": "Choose who should own this.",

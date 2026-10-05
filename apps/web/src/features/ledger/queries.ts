@@ -553,6 +553,15 @@ export interface QuoteDetail {
     readonly concerns: readonly (
       | { kind: 'negative_margin'; chargeTypeKey: string; marginPercent: string }
       | { kind: 'unbacked_charge'; chargeTypeKey: string }
+      /** An agent reply newer than the buy card the draft was costed on (R3). */
+      | {
+          kind: 'newer_reply'
+          partnerEn: string
+          partnerAr: string | null
+          quotedTotal: string | null
+          quotedCurrency: string | null
+          respondedOn: string
+        }
     )[]
   } | null
   /** The concerns' charge names in the reader's language, by key. */

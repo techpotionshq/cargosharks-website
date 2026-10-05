@@ -63,6 +63,15 @@ export type PromoteResult =
       readonly message: string
     }
 
+export interface PromoteOptions {
+  /**
+   * Replace the agent's own cards on this lane that start on or after the new
+   * one, instead of refusing (R3). Only a person sets it, having been told
+   * which card it replaces: the auto-award never supersedes a rate.
+   */
+  readonly supersede?: boolean
+}
+
 /** Half-open `[from,to)`, written explicitly because the column is not null. */
 function dateRangeLiteral(from: string, to: string | null): string {
   return `[${from},${to ?? ''})`
@@ -73,14 +82,16 @@ function dateRangeLiteral(from: string, to: string | null): string {
  *
  * Refuses anything the caller should see refused: a reply that declined, did
  * not parse cleanly, or was already promoted. A renewal (`source_rate_card_id`)
- * has its start clamped to no earlier than the card it renews ends, because the
- * `rate_cards` no-overlap constraint spans superseded rows and clamping is what
- * "your new rate takes over when the current one lapses" means.
+ * has its start clamped to no earlier than the card it renews ends, because
+ * clamping is what "your new rate takes over when the current one lapses"
+ * means. `options.supersede` is the other way to make room: a person replacing
+ * the agent's card that starts on or after this one (R3).
  */
 export async function promoteRateReply(
   tx: Tx,
   rateRequestId: string,
   createdById: string,
+  options: PromoteOptions = {},
 ): Promise<PromoteResult> {
   const [request] = await tx
     .select({
@@ -257,20 +268,32 @@ export async function promoteRateReply(
            and mode = ${card.mode}::transport_mode
            and origin_id = ${originId}
            and destination_id = ${destinationId}
+           and superseded_by_id is null
            and validity && daterange(${validFrom}::date, ${card.validTo}::date, '[)')
       `,
       )
       .then((r) => r.rows as { id: string; validFrom: string }[])
 
-    const later = overlapping.find((existing) => existing.validFrom >= validFrom)
-    if (later) {
+    /*
+      A card starting on or after this one cannot be ended before it began.
+      Live run 5 (R3): RTMAG's second reply on a lane the same day was
+      refused here, and Price it went on costing from the first card with no
+      word on the quotation. Refused still by default, with the date, but a
+      person can now choose to replace it: the old card is marked superseded
+      by the new one — kept, with its window and lines, as history; every
+      read of live cover already skips it (0066).
+    */
+    const later = overlapping.filter((existing) => existing.validFrom >= validFrom)
+    if (later.length > 0 && !options.supersede) {
+      const first = later.reduce((a, b) => (a.validFrom <= b.validFrom ? a : b))
       return {
         ok: false,
         reason: 'overlaps_card',
-        values: { validFrom: later.validFrom },
-        message: `This agent already has a rate on this lane from ${later.validFrom}; it would overlap.`,
+        values: { validFrom: first.validFrom },
+        message: `This agent already has a rate on this lane from ${first.validFrom}; it would overlap.`,
       }
     }
+    const laterIds = new Set(later.map((existing) => existing.id))
 
     prepared.push({
       card,
@@ -278,12 +301,27 @@ export async function promoteRateReply(
       destinationId,
       validFrom,
       lines,
-      toEnd: overlapping.map((existing) => existing.id),
+      toEnd: overlapping.filter((existing) => !laterIds.has(existing.id)).map((e) => e.id),
+      toSupersede: [...laterIds],
     })
   }
 
   let firstCardId: string | null = null
-  for (const { card, originId, destinationId, validFrom, lines, toEnd } of prepared) {
+  for (const { card, originId, destinationId, validFrom, lines, toEnd, toSupersede } of prepared) {
+    /*
+      The old card has to leave the overlap key before the new one can take
+      its window, and `superseded_by_id` is a foreign key, so it cannot name
+      the new card before that card exists. So it is retired in two steps in
+      this one transaction: first pointed at itself (out of the key, which
+      counts live cards only, 0066), then at its replacement once that is
+      written. The audit log shows both; the second is the one that stands.
+    */
+    if (toSupersede.length > 0) {
+      await tx
+        .update(rateCards)
+        .set({ supersededById: sql`${rateCards.id}`, updatedAt: new Date() })
+        .where(inArray(rateCards.id, toSupersede))
+    }
     if (toEnd.length > 0) {
       await tx
         .update(rateCards)
@@ -311,6 +349,13 @@ export async function promoteRateReply(
       .returning({ id: rateCards.id })
 
     firstCardId ??= inserted!.id
+
+    if (toSupersede.length > 0) {
+      await tx
+        .update(rateCards)
+        .set({ supersededById: inserted!.id, updatedAt: new Date() })
+        .where(inArray(rateCards.id, toSupersede))
+    }
 
     await tx.insert(rateCardLines).values(
       lines.map(({ line, chargeTypeId }) => {
@@ -421,4 +466,57 @@ async function resolveCharges(tx: Tx, keys: readonly string[]): Promise<Map<stri
     if (wanted.has(row.key.toUpperCase())) map.set(row.key.toUpperCase(), row.id)
   }
   return map
+}
+
+/** An agent reply on the enquiry that arrived after the buy card pricing used. */
+export interface NewerRateReply {
+  readonly rateRequestId: string
+  readonly partnerEn: string
+  readonly partnerAr: string | null
+  readonly quotedTotal: string | null
+  readonly quotedCurrency: string | null
+  /** `YYYY-MM-DD`, the day the reply came in. */
+  readonly respondedOn: string
+}
+
+/**
+ * Replies on this enquiry that are newer than the buy card it is being priced
+ * from — R3.
+ *
+ * Live run 5: RTMAG's second reply could not become a card, so Price it costed
+ * the enquiry from RTMAG's older card at KWD 165.501 while the same page showed
+ * the new reply at KWD 172.494, and the quotation said nothing. Pricing still
+ * uses the card — a reply is a proposal until somebody accepts it — but a
+ * parsed, unpromoted reply on the right lane that arrived after the card was
+ * written is a sign the card may be stale, and the draft says so.
+ *
+ * A declined reply, one on another lane, and one already made into a card are
+ * not counted: the first two are not prices for this lane, and the last is a
+ * card pricing would have chosen (`preferCardId`) if it covered the date.
+ */
+export async function newerRateReplies(
+  tx: Tx,
+  enquiryId: string,
+  buyCardId: string,
+): Promise<NewerRateReply[]> {
+  const result = await tx.execute(sql`
+    select r.id as "rateRequestId",
+           p.legal_name_en as "partnerEn",
+           p.legal_name_ar as "partnerAr",
+           r.quoted_total::text as "quotedTotal",
+           r.quoted_currency as "quotedCurrency",
+           r.responded_at::date::text as "respondedOn"
+      from rate_requests r
+      join partners p on p.id = r.partner_id
+      join rate_cards c on c.id = ${buyCardId}
+     where r.enquiry_id = ${enquiryId}
+       and r.status = 'parsed'
+       and r.rate_card_id is null
+       and r.responded_at is not null
+       and r.responded_at > c.created_at
+       and coalesce((r.response ->> 'declined')::boolean, false) = false
+       and (r.response ->> 'laneMismatch') is null
+     order by r.responded_at desc
+  `)
+  return result.rows as unknown as NewerRateReply[]
 }
