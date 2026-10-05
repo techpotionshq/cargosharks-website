@@ -124,7 +124,11 @@ window.__ann = (() => {
         return true;
       };
       if (!window.__pinned) window.__pinned = [...b.querySelectorAll('*')].filter(viewportPinned);
-      window.__pinned.forEach((e) => { e.style.transition = 'opacity .2s'; e.style.opacity = '0'; });
+      // Never the chrome the step is pointing into. The bell's popover lives
+      // in the sticky topbar, so short 13 hid the very panel it zoomed onto
+      // and drew the spotlight over the empty map behind it.
+      const target = document.querySelector('[data-ann-target]');
+      window.__pinned.forEach((e) => { if (target && e.contains(target)) return; e.style.transition = 'opacity .2s'; e.style.opacity = '0'; });
       const pcx = r.x + r.width / 2 + scrollX, pcy = r.y + r.height / 2 + scrollY;
       let tx = vw / 2 + scrollX - sc * pcx, ty = vh / 2 + scrollY - sc * pcy;
       const dh = document.documentElement.scrollHeight;
@@ -138,6 +142,14 @@ window.__ann = (() => {
       const b = document.body; b.style.transition = 'transform ' + ms + 'ms cubic-bezier(.45,0,.2,1)'; b.style.transform = 'none';
     },
     zoomed() { const t = document.body.style.transform; return !!t && t !== 'none'; },
+    /** Marks the focus target, so zoom and reveal know which chrome to spare. */
+    target(el) { document.querySelectorAll('[data-ann-target]').forEach((e) => e.removeAttribute('data-ann-target')); if (el) el.setAttribute('data-ann-target', ''); },
+    /**
+     * Shows again any chrome hidden by an earlier zoom that holds the new
+     * target. A step that focuses without zooming keeps the previous zoom,
+     * and with it the hidden topbar: short 13's Save button was inside it.
+     */
+    reveal() { const t = document.querySelector('[data-ann-target]'); if (t) (window.__pinned || []).forEach((e) => { if (e.contains(t)) e.style.opacity = ''; }); },
   };
 })();
 `
@@ -213,6 +225,8 @@ export function ann(r, checks = []) {
       const l = loc(target)
       await verify()
       await ev('clearNow')
+      if (!(await r.page.evaluate(() => !!window.__ann))) await r.page.evaluate(ANN_JS)
+      await l.evaluate((el) => window.__ann.target(el)).catch(() => {})
       if (zoom) {
         if (zoomed) await api.unzoom(350)
         const b0 = await l.boundingBox()
@@ -228,6 +242,7 @@ export function ann(r, checks = []) {
           zoomed = true
         }
       }
+      await ev('reveal')
       let b = await l.boundingBox()
       const offNow = (x) => x.x < 0 || x.y < 0 || x.x + x.width > VW || x.y + x.height > VH
       if (zoomed && offNow(b)) {
