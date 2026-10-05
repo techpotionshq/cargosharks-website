@@ -42,7 +42,7 @@ import {
   srtTime,
 } from '../util.mjs'
 import { record } from '../record/session.mjs'
-import { assColor, displayUrl, endCard, frame, titleCard, urlBar } from './gfx.mjs'
+import { assColor, displayUrl, endCard, frame, phoneFrame, titleCard, urlBar } from './gfx.mjs'
 import { musicFor, soundtrack } from '../voice/mix.mjs'
 import { voiceLine } from '../voice/tts.mjs'
 
@@ -95,9 +95,9 @@ const escAss = (t) =>
 
 /** Composites one step into a finished 1920x1080 segment. */
 async function composeSegment(seg, recDir, out, work) {
-  const gfx = await frame()
+  const gfx = seg.phone ? await phoneFrame() : await frame()
   const bars = []
-  for (const u of seg.bars) if (!bars.includes(u.text)) bars.push(u.text)
+  if (!seg.phone) for (const u of seg.bars) if (!bars.includes(u.text)) bars.push(u.text)
   const barFiles = []
   for (const b of bars) barFiles.push(await urlBar(b))
   const back = await assColor()
@@ -147,13 +147,15 @@ Dialogue: 0,${assTime(lead + 0.03)},${assTime(lead + seg.dur - 0.03)},Cap,,0,0,0
     f += `[1]split[s1][s2];[s1]trim=start_frame=${a}:end_frame=${h},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop=${freeze}[p1];[s2]trim=start_frame=${h}:end_frame=${b},setpts=PTS-STARTPTS[p2];[p1][p2]concat=n=2:v=1[raw];`
   else
     f += `[1]trim=start_frame=${a}:end_frame=${h},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop=${freeze}[raw];`
-  f += `[raw]scale=1440:900:flags=lanczos,format=rgba[app];[3]format=gray,scale=1440:900[m];[app][m]alphamerge[appm];[0]format=rgba[bg];[bg][2]overlay[b1];[b1][appm]overlay=240:68[b2];`
+  const [aw, ah, ax, ay] = seg.phone ? [416, 900, 752, 40] : [1440, 900, 240, 68]
+  f += `[raw]scale=${aw}:${ah}:flags=lanczos,format=rgba[app];[3]format=gray,scale=${aw}:${ah}[m];[app][m]alphamerge[appm];[0]format=rgba[bg];[bg][2]overlay[b1];[b1][appm]overlay=${ax}:${ay}[b2];`
   let last = 'b2'
-  seg.bars.forEach((u, i) => {
-    const e = i + 1 < seg.bars.length ? seg.bars[i + 1].t : seg.dur + 1
-    f += `[${last}][${5 + bars.indexOf(u.text)}]overlay=240:24:enable='between(t,${u.t.toFixed(3)},${e.toFixed(3)})'[u${i}];`
-    last = `u${i}`
-  })
+  if (!seg.phone)
+    seg.bars.forEach((u, i) => {
+      const e = i + 1 < seg.bars.length ? seg.bars[i + 1].t : seg.dur + 1
+      f += `[${last}][${5 + bars.indexOf(u.text)}]overlay=240:24:enable='between(t,${u.t.toFixed(3)},${e.toFixed(3)})'[u${i}];`
+      last = `u${i}`
+    })
   f += `[${last}][4]overlay,trim=end_frame=${seg.frames},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p[main];`
   let body = 'main'
   if (seg.first) {
@@ -271,6 +273,7 @@ export async function buildShort(spec, specFile, stack, opts = {}) {
     }
     const outFrames = Math.round((lead + dur + (last ? END - XF : 0)) * FPS)
     const seg = {
+      phone: meta.device === 'phone',
       index: i,
       a,
       h,

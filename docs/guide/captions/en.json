@@ -64,6 +64,31 @@
       "quote": "Quotations and documents follow, with an Arabic PDF for every one.",
       "track": "Customer pages follow the same choice, like public tracking.",
       "back": "Switch back to English the same way."
+    },
+    "10-vessel-positions": {
+      "card": "Each sea shipment shows where its ship was last heard, and how long ago.",
+      "reported": "The destination and ETA come from the ship's own transponder, so they are shown as reported, not as your date.",
+      "identity": "When only the name matches, a person confirms the ship before any position shows.",
+      "board": "The dashboard map puts a dot on every vessel the system has heard from.",
+      "setting": "Vessel positions stay off until an administrator switches them on."
+    },
+    "11-exchange-rates": {
+      "setting": "Exchange rates are typed by hand until someone chooses a daily feed.",
+      "modes": "Choose a feed you name, or two public providers checked against each other, after a clear warning.",
+      "source": "Every rate on file says where it came from and when it arrived.",
+      "converted": "Every conversion uses the day's rate, and says so."
+    },
+    "12-on-your-phone": {
+      "home": "The whole system works in the browser on a phone.",
+      "menu": "One tap opens the menu sheet: every section, search, tracking and sign-out.",
+      "section": "Pick a section and its lists fit the screen.",
+      "assistant": "The assistant has its own button in the top bar.",
+      "track": "Customers track a shipment on their phone, with no login."
+    },
+    "13-notification-emails": {
+      "bell": "Every alert arrives in the bell, newest first.",
+      "choose": "Under {app:notifications.emailTitle}, untick the groups you do not want by email.",
+      "save": "Save, and only those emails stop. The bell still shows everything."
     }
   }
 }

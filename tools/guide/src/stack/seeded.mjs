@@ -523,7 +523,16 @@ export async function start() {
     passwords: { operations: STORY_PASSWORD, customer: STORY_PASSWORD },
     afterSignIn: totpStep,
     /** Called before each take: a fresh copy of the spec's chapter, a running service and web app. */
+    /** Read-only use of a chapter (manual screenshots): restored only when it is not already the working copy. */
+    use: async (chapterId, ctx = {}) => {
+      if (stackObj.current !== chapterId) {
+        await stackObj.prepare({ snapshot: chapterId }, ctx)
+        stackObj.current = chapterId
+      } else Object.assign(ctx, storyContext(stackObj))
+      return ctx
+    },
     prepare: async (spec, ctx) => {
+      stackObj.current = null
       const ch = (await story()).chapters.find((c) => c.id === spec.snapshot)
       await ensureSnapshot(stackObj, spec.snapshot)
       await restore(ch)

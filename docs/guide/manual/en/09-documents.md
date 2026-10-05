@@ -25,7 +25,7 @@ The **Issue and preview** panel on the shipment produces four documents: the **h
 4.  Press [Release]{.ui} when the customer should see it. Released documents appear on the tracking page and in the portal.
 :::
 
-![**A house bill of lading**, produced from the shipment's data.](shot:/api/jobs/job-1041/documents/house_bill?pdf=1)
+![**A house bill of lading**, produced from the shipment's data.](shot:/api/jobs/{story:job}/documents/house_bill?pdf=1&stack=seeded&snapshot=booked)
 
 ![**Documents.** Every issued file, every version, newest first.](shot:/documents)
 

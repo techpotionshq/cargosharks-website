@@ -26,7 +26,7 @@ Pricing an enquiry creates a draft quotation. The quotation page shows the price
 6.  When the customer answers, record it with [Mark accepted]{.ui}, or let them accept or decline in the portal.
 :::
 
-![**The quotation PDF.** Your company name, the route, the charges, the covering note and what is included. The branch's trading conditions print at the foot once they are set under Settings, Branches.](shot:/api/quotes/quote-316/pdf?pdf=1)
+![**The quotation PDF.** Your company name, the route, the charges, the covering note and what is included. The branch's trading conditions print at the foot once they are set under Settings, Branches.](shot:/api/quotes/{story:quote}/pdf?pdf=1&stack=seeded&snapshot=quoted)
 
 ## Good to know
 

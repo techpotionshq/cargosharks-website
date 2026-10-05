@@ -83,8 +83,10 @@ export async function record(spec, desc, dir, opts = {}) {
     urls: r.urls.map((u) => ({ ...u, t: map(u.t) })),
     checks: checks.map((c) => ({ ...c, t: map(c.t) })),
     cuts,
+    viewport: r.viewport,
+    device: r.device,
   }
-  framesToMp4(frames, meta.end, join(dir, 'app.mp4'), dir)
+  framesToMp4(frames, meta.end, join(dir, 'app.mp4'), dir, r.viewport)
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 1))
   rmSync(join(dir, 'raw'), { recursive: true, force: true })
 }

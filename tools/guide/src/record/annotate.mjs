@@ -36,8 +36,9 @@ window.__ann = (() => {
   .ann-wa .m{margin:12px;background:#fff;border-radius:10px;padding:9px 12px;color:#111;box-shadow:0 1px 1px rgba(0,0,0,.1)}
   .ann-wa .t{display:block;text-align:right;font-size:12px;color:#777;margin-top:3px}
   .ann-on{opacity:1!important}
+  @media (max-width:600px){.ann-call{max-width:260px;font-size:15px;padding:9px 12px}.ann-step{left:10px;bottom:12px;font-size:16px;padding:6px 12px 6px 6px;gap:8px}.ann-step i{width:28px;height:28px;font-size:14px}.ann-wa{right:12px;left:12px;width:auto;font-size:15px}}
   \`;
-  const MARGIN = 48, STEP_ZONE = 92;
+  const SMALL = innerWidth < 600, MARGIN = SMALL ? 12 : 48, STEP_ZONE = SMALL ? 64 : 92;
   let layer;
   const ensure = () => {
     if (!css.isConnected) document.head.appendChild(css);
@@ -125,7 +126,8 @@ window.__ann = (() => {
 })();
 `
 
-const VW = 1440,
+// Node-side geometry for zoom and checks; set per recorder from its viewport.
+let VW = 1440,
   VH = 900,
   MARGIN = 48,
   STEP_ZONE = 92,
@@ -134,6 +136,13 @@ const VW = 1440,
 
 /** Helpers bound to a Recorder. `checks` collects annotation-vs-element measurements. */
 export function ann(r, checks = []) {
+  VW = r.viewport.width
+  VH = r.viewport.height
+  const small = VW < 600
+  MARGIN = small ? 12 : 48
+  STEP_ZONE = small ? 64 : 92
+  CALL_W = small ? 260 : 420
+  CALL_H = small ? 80 : 110
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms))
   const loc = (l) => (typeof l === 'string' ? r.page.locator(l).first() : l)
   const ev = async (fn, ...a) => {

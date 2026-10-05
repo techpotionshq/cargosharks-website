@@ -8,7 +8,7 @@ import { sh } from '../util.mjs'
  * re-timed. Each frame is held until the next one; the video starts at t=0
  * (the first frame is cloned back to zero if it arrived late) and ends at `end`.
  */
-export function framesToMp4(frames, end, out, dir) {
+export function framesToMp4(frames, end, out, dir, { width = 1440, height = 900 } = {}) {
   let list = ''
   for (let i = 0; i < frames.length; i++) {
     const d = (i + 1 < frames.length ? frames[i + 1].t : end) - frames[i].t
@@ -29,7 +29,7 @@ export function framesToMp4(frames, end, out, dir) {
     '-i',
     listFile,
     '-vf',
-    `scale=1440:900:flags=lanczos,fps=30,tpad=start_duration=${start.toFixed(3)}:start_mode=clone,format=yuv420p`,
+    `scale=${width < 600 ? width * 2 : width}:${width < 600 ? height * 2 : height}:flags=lanczos,fps=30,tpad=start_duration=${start.toFixed(3)}:start_mode=clone,format=yuv420p`,
     '-t',
     end.toFixed(3),
     '-c:v',

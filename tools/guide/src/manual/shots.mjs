@@ -17,6 +17,9 @@
 //   crop      a selector to cut the picture down to (plus a margin)
 //   full      1 for the whole page rather than the first screen
 //   pdf       1 when the path is a PDF route: shows its first page
+//   stack     seeded, for a page the fixtures cannot draw (a PDF the service
+//             renders); with snapshot=<story chapter>. The path may then name
+//             the story's records: /api/jobs/{story:job}/documents/house_bill
 //   hide      a selector to leave out of the picture (demo-only furniture); repeatable
 //   wait      extra milliseconds before the picture
 //
@@ -30,7 +33,8 @@
 import { copyFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cached } from '../cache.mjs'
-import { CACHE } from '../paths.mjs'
+import { CACHE, GUIDE } from '../paths.mjs'
+import { pathToFileURL } from 'node:url'
 import { filesFingerprint, screen } from '../graph.mjs'
 import { BRAND_KEY, colors } from '../brand.mjs'
 import { hash, mkdirp, readJson, sh, sleep } from '../util.mjs'
@@ -86,6 +90,8 @@ export function parseShot(target) {
     pdf: one('pdf') === '1',
     wait: Number(one('wait', 0)),
     hide: params.hide ?? [],
+    stack: one('stack', 'fixtures'),
+    snapshot: one('snapshot'),
   }
 }
 
@@ -249,20 +255,37 @@ async function take(stack, shot, path, out) {
  * The cached JPEG for a directive. Returns `{ path, key, hit, deps }`; `deps`
  * is the route the picture depends on, for `guide:stale`.
  */
-export async function shoot(desc, target) {
+export async function shoot(fixtures, target) {
   const shot = parseShot(target)
-  const path = await resolvePath(desc, shot)
-  const scr = screen(path, shot.locale)
+  let desc = fixtures
+  if (shot.stack === 'seeded') {
+    const { stackFor } = await import('../stack/index.mjs')
+    desc = stackFor('seeded')
+    await desc.prime()
+  }
+  const story = shot.stack === 'seeded' ? { snapshot: shot.snapshot } : {}
+  const fp = desc.fingerprint(story)
+  // `{story:job}` names a record of the seeded story; its id is fixed by the snapshot.
+  const path = shot.stack === 'seeded' ? shot.path : await resolvePath(desc, shot)
+  const scr = screen(path.replace(/\{story:\w+\}/g, 'x'), shot.locale)
   const key = hash({
     v: VERSION,
     shot: { ...shot, path },
     screen: scr.fingerprint,
-    stack: desc.fingerprint({}),
+    stack: fp,
     brand: BRAND_KEY,
     tool: filesFingerprint(TOOL),
   })
-  const r = await cached('shot', key, '.jpg', async (tmp) =>
-    take(await desc.ensure(), shot, path, tmp),
-  )
+  const r = await cached('shot', key, '.jpg', async (tmp) => {
+    const stack = await desc.ensure()
+    let concrete = path
+    if (shot.stack === 'seeded') {
+      const ctx = await stack.use(shot.snapshot)
+      const { storyIds } = await import(pathToFileURL(join(GUIDE, 'story', 'index.mjs')).href)
+      const ids = await storyIds(ctx)
+      concrete = path.replace(/\{story:(\w+)\}/g, (_, k) => ids[k])
+    }
+    await take(stack, shot, concrete, tmp)
+  })
   return { ...r, key, route: scr.route.url, page: path }
 }

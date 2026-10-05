@@ -123,6 +123,39 @@ export async function frame() {
   }
 }
 
+/** The frame for a phone recording: a 416x900 screen at x752 y40, rounded like a handset. */
+export async function phoneFrame() {
+  return {
+    bg: (await frame()).bg,
+    shadow: await png(
+      'pshadow',
+      [],
+      1920,
+      1080,
+      () =>
+        `<div style="position:absolute;left:740px;top:28px;width:440px;height:924px;border-radius:52px;box-shadow:0 30px 70px rgba(0,0,0,.5),0 8px 22px rgba(0,0,0,.3);background:#0b0b0f"></div>`,
+      true,
+    ),
+    outline: await png(
+      'poutline',
+      [],
+      1920,
+      1080,
+      () =>
+        `<div style="position:absolute;left:740px;top:28px;width:440px;height:924px;border-radius:52px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)"></div>`,
+      true,
+    ),
+    mask: await png(
+      'pmask',
+      [],
+      416,
+      900,
+      () =>
+        `<div style="position:absolute;inset:0;background:#000"></div><div style="position:absolute;inset:0;background:#fff;border-radius:40px"></div>`,
+    ),
+  }
+}
+
 /** What the URL bar shows: the brand's own hosts, ids shortened. */
 export function displayUrl(url) {
   try {
