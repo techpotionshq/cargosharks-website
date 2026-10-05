@@ -49,3 +49,4 @@ export {
   type NotificationTemplateSeed,
 } from './notification-templates'
 export { loadEnv, workspaceRoot } from './env'
+export * from './vessel-positions'

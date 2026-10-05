@@ -34,6 +34,7 @@ reviewer should read.
 | --- | --- | --- |
 | **Carrier APIs** — Maersk, Hapag-Lloyd, CMA CGM, DCSA endpoints | Container and shipment tracking | Container and bill-of-lading numbers. No personal data |
 | **`open.er-api.com`** | Daily exchange rates | Nothing. An outbound request for public rates |
+| **aisstream.io** (`stream.aisstream.io`) | Vessel positions (AIS) for ships on open sea jobs. Off by default; on only when an administrator sets the `vesselPositions` integration | The MMSIs of those vessels and the deployment's API key. No personal data and no customer or job identifiers |
 | **`tiles.openfreemap.org`** | Map tiles and glyphs for the lane map | The viewer's IP address and the tiles requested, by virtue of the request |
 | **Google Fonts** (`fonts.googleapis.com`, `fonts.gstatic.com`) | Three typefaces | The viewer's IP address and user agent |
 

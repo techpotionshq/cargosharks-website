@@ -23,7 +23,8 @@ import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { config } from './config'
 import { registerSchedules, stopBoss } from './queue'
-import { describeAdapters } from './adapters/index'
+import { describeAdapters, noteVesselPositionStatus, vesselPositionConfig } from './adapters/index'
+import { startVesselPositions } from './workers/vessel-positions'
 import { registerWorkers } from './workers/index'
 import { publicApi } from './api/public'
 import { internalApi } from './api/internal'
@@ -84,9 +85,21 @@ try {
 await registerWorkers(app.log)
 await registerSchedules()
 
+/*
+  The one long-lived connection: AIS positions for vessels on open sea jobs.
+  Off unless `vesselPositions` is switched on, and started without awaiting —
+  a provider that is slow to answer must not hold up the boot.
+*/
+const vesselPositions = startVesselPositions(
+  () => vesselPositionConfig((o, m) => app.log.warn(o, m)),
+  noteVesselPositionStatus,
+  (o, m) => app.log.info(o, m),
+)
+
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, 'shutting down')
   await app.close()
+  await vesselPositions.stop()
   await stopBoss()
   // Last, so the spans from whatever was still in flight are flushed rather
   // than discarded with the buffer — and those are the ones worth having.

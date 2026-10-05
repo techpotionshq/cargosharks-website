@@ -14,6 +14,7 @@
     "verify:last-mile": "tsx src/verify-last-mile.ts",
     "verify:tracking": "tsx src/adapters/verify-carrier-tracking.ts",
     "verify:model": "tsx src/adapters/verify-model.ts",
+    "verify:vessels": "tsx src/adapters/verify-vessel-positions.ts",
     "ai:eval": "tsx src/ai/eval.ts"
   },
   "dependencies": {

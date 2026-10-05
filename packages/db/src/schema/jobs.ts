@@ -239,6 +239,17 @@ export const jobs = pgTable(
     bookingNumber: text('booking_number'),
     vesselName: text('vessel_name'),
     voyageNumber: text('voyage_number'),
+    /**
+     * Which ship, unambiguously — the name is not enough.
+     *
+     * Vessel names repeat and get re-used after a sale; the IMO number stays
+     * with the hull for life, and the MMSI is what AIS keys every report on.
+     * `vessel_positions` follows a job through `vessel_mmsi`. Both are typed
+     * or confirmed by a person; a name match is only ever offered as a
+     * suggestion (see `apps/web/src/features/vessels`).
+     */
+    vesselImo: text('vessel_imo'),
+    vesselMmsi: text('vessel_mmsi'),
     flightNumber: text('flight_number'),
     etd: tsz('etd'),
     eta: tsz('eta'),
@@ -293,6 +304,8 @@ export const jobs = pgTable(
     index('jobs_customer_idx').on(t.customerId, t.status),
     index('jobs_owner_idx').on(t.ownerId, t.status),
     index('jobs_consolidation_idx').on(t.consolidationId),
+    // The vessel-position policy and the subscription both look jobs up by it.
+    index('jobs_vessel_mmsi_idx').on(t.vesselMmsi),
     // One house bill per branch — the number we issue names one consignment.
     // The master bill is not unique: consolidated houses share it.
     uniqueIndex('jobs_house_bill_unique')

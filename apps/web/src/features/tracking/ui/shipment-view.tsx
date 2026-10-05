@@ -8,6 +8,7 @@
  * they would drift first is which documents a customer is shown.
  */
 
+import type { ReactNode } from 'react'
 import { getTranslations } from 'next-intl/server'
 import type { TrackingResult } from '@/lib/pilot/types'
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format'
@@ -26,6 +27,7 @@ export async function ShipmentView({
   timeZone,
   documentHref,
   documentsNote,
+  vesselCard,
 }: {
   readonly result: TrackingResult
   readonly locale: 'en' | 'ar'
@@ -34,6 +36,12 @@ export async function ShipmentView({
   readonly documentHref?: (id: string) => string
   /** The line under the documents, e.g. "sign in to the portal to download". */
   readonly documentsNote?: string
+  /**
+   * The vessel's last AIS fix, drawn under the answer card. A slot rather
+   * than a read here: public tracking passes nothing, because a bearer pair
+   * typed on a public page is not a reason to say where a ship is.
+   */
+  readonly vesselCard?: ReactNode
 }) {
   const [t, tJob, tMode] = await Promise.all([
     getTranslations('track'),
@@ -135,6 +143,8 @@ export async function ShipmentView({
           </ul>
         ) : null}
       </Card>
+
+      {vesselCard ? <div className="mb-4">{vesselCard}</div> : null}
 
       {/* --- the journey ------------------------------------------ */}
       <Card className="mb-4">

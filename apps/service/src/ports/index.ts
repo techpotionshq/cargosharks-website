@@ -1,5 +1,5 @@
 /**
- * The nine ports — Architecture §10.
+ * The ten ports — Architecture §10.
  *
  * These are the *only* interfaces in the system. The rule from §1 applies
  * without exception: no abstraction without a named second implementation.
@@ -16,6 +16,7 @@
  *   EInvoiceTransmit     compliant data, no send     -> accredited provider (R2)
  *   InboundMailSource    IMAP poll of the mailboxes  -> provider webhook
  *   ModelProvider        OpenRouter                  -> a model hosted in region
+ *   VesselPositionSource aisstream.io websocket      -> satellite AIS over REST
  *
  * `ModelProvider` is the ninth and the newest; the argument for it being a port
  * at all is at its declaration below, and the reasoning it answers to is
@@ -34,6 +35,8 @@
  * rules about what becomes an enquiry are hard, and they should not be written
  * twice.
  */
+
+import type { VesselReport } from '@qabandi/db'
 
 export interface OutboundMessage {
   readonly to: string
@@ -529,3 +532,38 @@ export interface ModelProvider {
    */
   stream(request: ModelRequest): AsyncIterable<ModelDelta>
 }
+
+/**
+ * Where a vessel was last heard — AIS positions for the ships on open jobs.
+ *
+ * The tenth port, and it meets §10's rule with the second implementation
+ * already priced. The first is aisstream.io: free, a websocket, terrestrial
+ * receivers only, so it hears ships off China and Europe and nothing in the
+ * Gulf. The named second is a satellite feed (Spire, Datalastic,
+ * VesselFinder), which is what covers the arrival leg into Shuwaikh and Jebel
+ * Ali, and which answers REST polls rather than pushing.
+ *
+ * So the shape fits both. `follow` hands the source the set of MMSIs to care
+ * about and returns at once; a push driver re-subscribes, a polling driver
+ * changes what its next poll asks for. Either one delivers what it hears to
+ * the sink it was built with, as `VesselReport`s already in our terms. The
+ * writer that persists them, the table and every reader stay the same when the
+ * driver changes, which is the point.
+ *
+ * Nothing here is ever on a request path. `follow` must not block and must not
+ * throw; a provider that is down shows as positions going stale, which every
+ * screen already says honestly.
+ */
+export interface VesselPositionSource {
+  /** Which driver this is, for the boot log and `vessel_positions.source`. */
+  readonly key: string
+  /** Replace the watched set. An empty set idles the source. Never blocks. */
+  follow(mmsis: readonly string[]): void
+  /** Close every connection and timer. Resolves once nothing is left open. */
+  close(): Promise<void>
+}
+
+/** Where a source hands what it heard. Called synchronously; must not throw. */
+export type VesselReportSink = (reports: readonly VesselReport[]) => void
+
+export type { VesselReport }

@@ -75,6 +75,24 @@ export interface MapPort {
 }
 
 /**
+ * A vessel's last known AIS fix — the job card's one dot, or the board's many.
+ *
+ * `current` decides how it is drawn, and only `vesselPositionFreshness` in
+ * core decides `current`: a stale fix is drawn hollow and muted so nobody
+ * reads a position from yesterday as where the ship is now.
+ */
+export interface MapVessel {
+  readonly id: string
+  readonly name: string
+  readonly longitude: number
+  readonly latitude: number
+  readonly current: boolean
+  /** The short track kept on the position row, oldest first, as [lon, lat]. */
+  readonly track?: readonly (readonly [number, number])[]
+  readonly href?: string
+}
+
+/**
  * Mode → series slot, in the fixed assignment order the palette defines.
  *
  * Never a colour literal: these resolve to the four validated categorical
@@ -286,11 +304,19 @@ function buildStyle(color: (expression: string) => string) {
 export function LaneMap({
   lanes,
   ports,
+  vessels = [],
   className,
+  compact = false,
+  label,
 }: {
   readonly lanes: readonly MapLane[]
   readonly ports: readonly MapPort[]
+  readonly vessels?: readonly MapVessel[]
   readonly className?: string
+  /** The short frame a card uses, rather than the board's tall one. */
+  readonly compact?: boolean
+  /** The accessible name, in the reader's language, where the caller has one. */
+  readonly label?: string
 }) {
   const container = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -300,8 +326,8 @@ export function LaneMap({
     the map down and rebuild it. The effect below depends on the *identity* of
     these arrays, and a server component hands new array instances every time.
   */
-  const data = useRef({ lanes, ports })
-  data.current = { lanes, ports }
+  const data = useRef({ lanes, ports, vessels })
+  data.current = { lanes, ports, vessels }
 
   useEffect(() => {
     const node = container.current
@@ -372,6 +398,27 @@ export function LaneMap({
         },
       }))
 
+      const vesselFeatures = data.current.vessels.map((vessel) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [vessel.longitude, vessel.latitude] },
+        properties: {
+          id: vessel.id,
+          name: vessel.name,
+          current: vessel.current,
+          href: vessel.href ?? '',
+        },
+      }))
+      const trackFeatures = data.current.vessels
+        .filter((vessel) => (vessel.track?.length ?? 0) > 1)
+        .map((vessel) => ({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: (vessel.track ?? []).map(([lon, lat]) => [lon, lat]),
+          },
+          properties: { id: vessel.id },
+        }))
+
       /*
         Held in a local const as well as the outer `let`.
 
@@ -383,7 +430,10 @@ export function LaneMap({
       const instance = new maplibre.Map({
         container: node,
         style: buildStyle(resolver.resolve),
-        center: [40, 25],
+        center:
+          data.current.vessels.length === 1 && data.current.lanes.length === 0
+            ? [data.current.vessels[0]!.longitude, data.current.vessels[0]!.latitude]
+            : [40, 25],
         zoom: 1.4,
         // A lane map has no use for pitch or bearing, and both are ways for
         // someone to end up looking at a map they cannot straighten.
@@ -571,6 +621,67 @@ export function LaneMap({
             'text-halo-width': 1.6,
           },
         })
+
+        /*
+          Vessels last, so a ship sits above the lane it is sailing.
+
+          A current fix is a solid accent dot with a halo; a stale one is a
+          hollow ring in muted ink. The difference is the whole honesty rule
+          of this feature drawn as a shape, so it survives a colour-blind
+          reader and a greyscale print.
+        */
+        instance.addSource('vessel-tracks', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: trackFeatures },
+        })
+        instance.addSource('vessels', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: vesselFeatures },
+        })
+        instance.addLayer({
+          id: 'vessel-track',
+          type: 'line',
+          source: 'vessel-tracks',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': color('var(--qb-accent)'),
+            'line-width': 2,
+            'line-opacity': 0.55,
+            'line-dasharray': [1.5, 1.5],
+          },
+        })
+        instance.addLayer({
+          id: 'vessel-halo',
+          type: 'circle',
+          source: 'vessels',
+          filter: ['==', ['get', 'current'], true] as never,
+          paint: {
+            'circle-radius': 11,
+            'circle-color': color('var(--qb-accent)'),
+            'circle-opacity': 0.2,
+          },
+        })
+        instance.addLayer({
+          id: 'vessel-dot',
+          type: 'circle',
+          source: 'vessels',
+          paint: {
+            'circle-radius': 6,
+            'circle-color': [
+              'case',
+              ['==', ['get', 'current'], true],
+              color('var(--qb-accent)'),
+              color('var(--qb-surface)'),
+            ] as never,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': [
+              'case',
+              ['==', ['get', 'current'], true],
+              color('var(--qb-surface)'),
+              color('var(--qb-ink-subtle)'),
+            ] as never,
+          },
+        })
       }
 
       instance.on('style.load', addOverlays)
@@ -595,14 +706,29 @@ export function LaneMap({
           bounds.extend(feature.geometry.coordinates as [number, number])
           any = true
         }
+        for (const feature of [...vesselFeatures, ...trackFeatures]) {
+          const points =
+            feature.geometry.type === 'Point'
+              ? [feature.geometry.coordinates]
+              : feature.geometry.coordinates
+          for (const point of points) {
+            bounds.extend(point as [number, number])
+            any = true
+          }
+        }
         if (any) {
-          instance.fitBounds(bounds, { padding: 56, animate: false, maxZoom: 6 })
+          // A card holding one ship wants the sea around it, not the harbour wall.
+          instance.fitBounds(bounds, {
+            padding: compact ? 40 : 56,
+            animate: false,
+            maxZoom: compact ? 4.5 : 6,
+          })
         }
       })
 
       // --- interaction -----------------------------------------------------
 
-      const hoverable = ['lane-hit', 'port-dot'] as const
+      const hoverable = ['lane-hit', 'port-dot', 'vessel-dot'] as const
 
       for (const layer of hoverable) {
         instance.on('mouseenter', layer, () => {
@@ -619,7 +745,9 @@ export function LaneMap({
           const text =
             layer === 'lane-hit'
               ? String(properties.label ?? '')
-              : `${String(properties.name ?? '')} · ${String(properties.count ?? '')}`
+              : layer === 'vessel-dot'
+                ? String(properties.name ?? '')
+                : `${String(properties.name ?? '')} · ${String(properties.count ?? '')}`
           hoverPopup.setLngLat(event.lngLat).setText(text).addTo(instance)
         })
         instance.on('click', layer, (event) => {
@@ -665,16 +793,20 @@ export function LaneMap({
     }
     // Rebuilt only when the *shape* of the data changes. `data.current` always
     // holds the latest arrays, so a re-render with equal contents is free.
-  }, [lanes.length, ports.length, router])
+  }, [lanes.length, ports.length, vessels.length, compact, router])
 
   return (
     <div
       ref={container}
-      className={['qb-map h-[26rem] w-full overflow-hidden rounded-sm', className]
+      className={[
+        'qb-map w-full overflow-hidden rounded-sm',
+        compact ? 'h-56' : 'h-[26rem]',
+        className,
+      ]
         .filter(Boolean)
         .join(' ')}
       role="img"
-      aria-label={`Shipping lanes: ${lanes.length} routes across ${ports.length} ports`}
+      aria-label={label ?? `Shipping lanes: ${lanes.length} routes across ${ports.length} ports`}
     />
   )
 }
