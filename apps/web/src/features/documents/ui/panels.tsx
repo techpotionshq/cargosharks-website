@@ -14,9 +14,10 @@
  */
 
 import type { ReactNode } from 'react'
+import { dec } from '@qabandi/core'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatMeasure } from '@/lib/format'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { can } from '@/lib/permissions'
 import { Card, CardHeader } from '@/ui/card'
@@ -120,14 +121,17 @@ export async function CargoCard({
 }) {
   const t = await getTranslations('cargo')
   const tc = await getTranslations('common')
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
+  // Summed as decimals, the columns' own type, so the total is the rows' sum.
   const totals = cargo.reduce(
     (acc, line) => ({
       packages: acc.packages + (line.packageCount ?? 0),
-      gross: acc.gross + Number(line.grossWeightKg ?? 0),
-      volume: acc.volume + Number(line.volumeCbm ?? 0),
+      gross: acc.gross.plus(line.grossWeightKg ?? 0),
+      volume: acc.volume.plus(line.volumeCbm ?? 0),
     }),
-    { packages: 0, gross: 0, volume: 0 },
+    { packages: 0, gross: dec(0), volume: dec(0) },
   )
 
   return (
@@ -149,8 +153,8 @@ export async function CargoCard({
               <TH priority="low" align="end">
                 {t('packages')}
               </TH>
-              <TH align="end">{t('gross')}</TH>
-              <TH align="end">{t('volume')}</TH>
+              <TH align="end">{t('grossKg')}</TH>
+              <TH align="end">{t('volumeCbm')}</TH>
               <TH align="end">{tc('actions')}</TH>
             </TR>
           </THead>
@@ -172,11 +176,12 @@ export async function CargoCard({
                 <TD priority="low" align="end" numeric className="text-ink-muted">
                   {line.packageCount ?? '—'} {line.packageType ?? ''}
                 </TD>
+                {/* Read at a sensible precision per unit, not as stored (R13). */}
                 <TD align="end" numeric className="text-ink-muted">
-                  {line.grossWeightKg ?? '—'}
+                  {formatMeasure(line.grossWeightKg, 'kg', locale)}
                 </TD>
                 <TD align="end" numeric className="text-ink-muted">
-                  {line.volumeCbm ?? '—'}
+                  {formatMeasure(line.volumeCbm, 'cbm', locale)}
                 </TD>
                 <TD align="end">
                   <CargoDialog
@@ -207,10 +212,10 @@ export async function CargoCard({
                 {totals.packages}
               </TD>
               <TD align="end" numeric className="font-semibold">
-                {totals.gross.toFixed(3)}
+                {formatMeasure(totals.gross.toFixed(), 'kg', locale)}
               </TD>
               <TD align="end" numeric className="font-semibold">
-                {totals.volume.toFixed(3)}
+                {formatMeasure(totals.volume.toFixed(), 'cbm', locale)}
               </TD>
               <TD />
             </TR>

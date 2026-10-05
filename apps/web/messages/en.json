@@ -2283,7 +2283,9 @@
     "totals": "Totals",
     "unclassified": "No HS code",
     "none": "No cargo lines yet",
-    "noneHint": "Documents and the duty estimate both read from these."
+    "noneHint": "Documents and the duty estimate both read from these.",
+    "grossKg": "Gross weight (kg)",
+    "volumeCbm": "Volume (cbm)"
   },
   "documentActions": {
     "eyebrow": "Documents",
