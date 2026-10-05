@@ -305,6 +305,17 @@ function locationId(code: PortCode): string {
 }
 
 /**
+ * The deployment's brand, which the demo's own records are named for.
+ *
+ * Resolved at module scope, as `lib/brand.ts` does: in the web app the
+ * environment is loaded before any module is evaluated, and one deployment
+ * wears one brand, so the fixtures stay deterministic. Every operator-shaped
+ * value below (entities, mail domain, sender, bucket, document prefix) reads
+ * from it; they were all Al-Qabandi's, on every brand.
+ */
+const BRAND = resolveBrand()
+
+/**
  * The two legal entities — FR-ID-01.
  *
  * The ids are the ones `jobDetail` already stamps on a job, kept in one place
@@ -316,8 +327,8 @@ const BRANCHES = [
   {
     id: '00000000-0000-7000-8000-0000000000b1',
     code: 'KWI' as const,
-    en: 'Al-Qabandi Freight Services W.L.L.',
-    ar: 'القبندي للخدمات الملاحية ذ.م.م',
+    en: BRAND.demo.homeEntityEn,
+    ar: BRAND.demo.homeEntityAr,
     country: 'KW',
     currency: 'KWD',
     timeZone: 'Asia/Kuwait',
@@ -326,8 +337,8 @@ const BRANCHES = [
   {
     id: '00000000-0000-7000-8000-0000000000b2',
     code: 'DXB' as const,
-    en: 'Al-Qabandi Logistics FZE',
-    ar: 'القبندي للخدمات اللوجستية',
+    en: BRAND.demo.regionalEntityEn,
+    ar: BRAND.demo.regionalEntityAr,
     country: 'AE',
     currency: 'AED',
     timeZone: 'Asia/Dubai',
@@ -1307,16 +1318,11 @@ function pilotJobByReference(
 
 /**
  * The brand's document prefix, for the house bill numbers the demo prints.
- *
  * It was a literal `AQP`, which made every CargoSharks demo bill read as
- * Al-Qabandi's. Read lazily rather than at module scope for the reason
- * `apps/service/src/ai/prompts.ts` gives: a `resolveBrand()` evaluated while
- * this file is imported can run before the environment is loaded. Still
- * deterministic: one deployment wears one brand.
+ * Al-Qabandi's.
  */
-let cachedDocumentPrefix: string | undefined
 function documentPrefix(): string {
-  return (cachedDocumentPrefix ??= resolveBrand().documents.documentPrefix)
+  return BRAND.documents.documentPrefix
 }
 
 function jobDetail(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobDetail {
@@ -5081,9 +5087,11 @@ const PEOPLE = [
     hasLogin: true,
   },
   {
-    en: 'Abdullah Al-Qabandi',
-    ar: 'عبدالله القبندي',
-    email: 'abdullah.alqabandi',
+    // A person, not the brand: this was "Abdullah Al-Qabandi" on every brand,
+    // the client's family name on the CargoSharks demo's administrator.
+    en: 'Abdullah Al-Mutawa',
+    ar: 'عبدالله المطوع',
+    email: 'abdullah.almutawa',
     roles: [
       ['KWI', 'administrator'],
       ['DXB', 'administrator'],
@@ -5118,7 +5126,7 @@ export function pilotUsers(now = Date.now()): UserRow[] {
     id: `person-${String(index).padStart(2, '0')}`,
     nameEn: person.en,
     nameAr: person.ar,
-    email: `${person.email}@alqabandi.com`,
+    email: `${person.email}@${BRAND.demo.mailDomain}`,
     type: 'internal',
     locale: index % 3 === 0 ? 'ar' : 'en',
     isActive: person.active,
@@ -5163,7 +5171,7 @@ export function pilotBranches(): BranchRow[] {
       country: home.country,
       baseCurrency: home.currency,
       timeZone: home.timeZone,
-      mailFrom: `${home.code.toLowerCase()}@alqabandi.com`,
+      mailFrom: `${home.code.toLowerCase()}@${BRAND.demo.mailDomain}`,
       /*
         Quiet hours on in Kuwait and off in Dubai — the same switch set two
         ways, because it is per entity and this is the only screen that shows
@@ -6282,8 +6290,8 @@ export function pilotIntegrationSettings(now = Date.now()): IntegrationSettingRo
         host: 'smtp.office365.com',
         port: 587,
         secure: 'false',
-        user: 'no-reply@alqabandi.com',
-        from: 'Al-Qabandi Freight <no-reply@alqabandi.com>',
+        user: `no-reply@${BRAND.demo.mailDomain}`,
+        from: `${BRAND.demo.senderName} <no-reply@${BRAND.demo.mailDomain}>`,
         rejectUnauthorized: 'true',
       },
       { password: 'set-in-fixtures-never-sealed' },
@@ -6293,7 +6301,7 @@ export function pilotIntegrationSettings(now = Date.now()): IntegrationSettingRo
       's3',
       {
         endpoint: 'https://example.r2.cloudflarestorage.com',
-        bucket: 'qabandi-documents',
+        bucket: `${BRAND.identity.key}-documents`,
         region: 'auto',
         accessKeyId: 'AKIAEXAMPLEFIXTURE',
         forcePathStyle: 'true',
@@ -9384,7 +9392,7 @@ export function pilotWebhookEndpoints(now = Date.now()): WebhookEndpointRowLike[
   return [
     {
       id: 'hook-1',
-      url: 'https://erp.example.kw/qabandi/events',
+      url: `https://erp.example.kw/${BRAND.identity.key}/events`,
       customerName: CUSTOMERS[4]!.en,
       customerNameAr: CUSTOMERS[4]!.ar,
       events: ['shipment.milestone', 'invoice.issued'],

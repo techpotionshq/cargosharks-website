@@ -86,6 +86,20 @@ export const qabandiBrand = defineBrand({
   chromeRamp: 'accent',
   neutralHue: 276,
 
+  /*
+    The demo's records as they were before they came from the brand, kept
+    exactly: the fixture entities are trading names rather than the legal
+    name above, and the demo mailboxes have always been on alqabandi.com.
+  */
+  demo: {
+    homeEntityEn: 'Al-Qabandi Freight Services W.L.L.',
+    homeEntityAr: 'القبندي للخدمات الملاحية ذ.م.م',
+    regionalEntityEn: 'Al-Qabandi Logistics FZE',
+    regionalEntityAr: 'القبندي للخدمات اللوجستية',
+    mailDomain: 'alqabandi.com',
+    senderName: 'Al-Qabandi Freight',
+  },
+
   logo: {
     kind: 'custom',
     customSvg: QABANDI_MARK_SVG,

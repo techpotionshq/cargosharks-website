@@ -60,6 +60,22 @@ describe('the demo sign-in', () => {
     expect(cargosharksBrand.demo.operationsEmail).toBe('operations@cargosharks.example')
     expect(cargosharksBrand.demo.password).toBe('cargosharks-demo')
     expect(JSON.stringify(qabandiBrand.demo)).not.toMatch(/cargosharks/i)
-    expect(JSON.stringify(cargosharksBrand.demo)).not.toMatch(/qabandi/i)
+    expect(JSON.stringify(cargosharksBrand.demo)).not.toMatch(/qabandi|القبندي/i)
+  })
+
+  it("names the demo's entities and mailboxes for the brand", () => {
+    expect(cargosharksBrand.demo).toMatchObject({
+      homeEntityEn: 'CargoSharks Freight Technologies',
+      regionalEntityEn: 'CargoSharks Logistics FZE',
+      mailDomain: 'cargosharks.com',
+      senderName: 'CargoSharks',
+    })
+    // Al-Qabandi's demo reads exactly as it did before it came from here.
+    expect(qabandiBrand.demo).toMatchObject({
+      homeEntityEn: 'Al-Qabandi Freight Services W.L.L.',
+      regionalEntityEn: 'Al-Qabandi Logistics FZE',
+      mailDomain: 'alqabandi.com',
+      senderName: 'Al-Qabandi Freight',
+    })
   })
 })

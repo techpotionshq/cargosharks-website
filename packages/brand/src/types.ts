@@ -250,6 +250,24 @@ export interface BrandDemo {
   readonly operationsEmail: string
   /** The shared password when `QABANDI_DEMO_PASSWORD` is unset. */
   readonly password: string
+  /*
+    The rest is what the hosted demo's own records say about the operator:
+    its two legal entities, the domain its staff and branch mailboxes are on,
+    and the name its mail goes out under. The pilot fixtures printed
+    Al-Qabandi's for all of it, so the CargoSharks demo listed Al-Qabandi's
+    companies on every branch picker, letterhead and user row. Defaults are
+    derived from the identity (`defineBrand`), so a new brand shows its own.
+  */
+  /** The home legal entity, the demo's Kuwait branch. */
+  readonly homeEntityEn: string
+  readonly homeEntityAr: string
+  /** The second entity, the demo's Dubai branch. */
+  readonly regionalEntityEn: string
+  readonly regionalEntityAr: string
+  /** The demo staff's and branches' mail domain. Defaults to the website's host. */
+  readonly mailDomain: string
+  /** The display name outbound mail is sent under. */
+  readonly senderName: string
 }
 
 export interface Brand {
