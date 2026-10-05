@@ -151,6 +151,15 @@ export default async function PortalInvoicePage({ params }: { params: Promise<{ 
               </TBody>
             </TableShell>
           )}
+          {/* As on the quotation: one neutral line, only when a line was converted. */}
+          {invoice.convertedOn ? (
+            <p
+              className="border-t border-line px-5 py-3 text-caption text-ink-muted"
+              data-testid="fx-conversion-note"
+            >
+              {t('conversionNote', { on: formatDate(invoice.convertedOn, locale) })}
+            </p>
+          ) : null}
         </Panel>
 
         <div className="flex flex-col gap-4 @4xl:col-span-4">

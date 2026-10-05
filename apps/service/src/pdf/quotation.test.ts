@@ -418,6 +418,35 @@ describe('the quotation', () => {
       expect(renderQuotationHtml(quote({ version: 2 }), 'en')).toContain('Revision')
     })
   })
+
+  /*
+    One neutral line when a line was converted from another currency, and
+    nothing at all when none was. No provider is named on the customer's
+    document; that belongs on our screens.
+  */
+  describe('the conversion footnote', () => {
+    it('says when the rate was taken, in both languages, only when a line was converted', () => {
+      const en = visible(renderQuotationHtml(quote({ convertedOn: '2026-10-05' }), 'en', ISSUED))
+      expect(en).toContain('Amounts in other currencies were converted at the rate on 05 Oct 2026.')
+      expect(en).toContain('The invoice may be converted at the rate on the invoice date.')
+
+      const ar = visible(renderQuotationHtml(quote({ convertedOn: '2026-10-05' }), 'ar', ISSUED))
+      expect(ar).toContain('حُوِّلت المبالغ بالعملات الأخرى بسعر الصرف في')
+    })
+
+    it('prints nothing when no line was converted', () => {
+      for (const convertedOn of [null, undefined]) {
+        const html = visible(renderQuotationHtml(quote({ convertedOn }), 'en', ISSUED))
+        expect(html).not.toContain('converted at the rate')
+        expect(html).not.toContain('fx-note')
+      }
+    })
+
+    it('names no provider and adds no disclaimer', () => {
+      const html = visible(renderQuotationHtml(quote({ convertedOn: '2026-10-05' }), 'en', ISSUED))
+      expect(html).not.toMatch(/ExchangeRate|currency-api|indicative|bank/i)
+    })
+  })
 })
 
 /* See the same block in `invoice.test.ts`: no placeholder registration line. */

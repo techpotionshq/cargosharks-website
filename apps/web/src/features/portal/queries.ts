@@ -20,10 +20,13 @@ import {
   documents,
   jobMilestones,
   jobs,
+  invoiceConversionDate,
   locations,
+  systemActor,
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { quoteConversionDate } from '@qabandi/core'
 import type {
   Mode,
   PortalInvoice,
@@ -345,7 +348,17 @@ export async function getPortalQuote(
        where q.id = ${id} and ${OFFERED}
        limit 1
     `)
-    return result.rows[0] as unknown as PortalQuoteDetail | undefined
+    const quote = result.rows[0] as unknown as PortalQuoteDetail | undefined
+    if (!quote) return undefined
+    /*
+      Whether a line was converted, for the footnote. Read apart from the
+      projection above and reduced to a date here, because the snapshot also
+      holds our buy side and must never travel to the page whole.
+    */
+    const [frozen] = (
+      await tx.execute(sql`select priced_snapshot as snapshot from quotes where id = ${id}`)
+    ).rows as unknown as { snapshot: unknown }[]
+    return { ...quote, convertedOn: quoteConversionDate(frozen?.snapshot, quote.currency) }
   })
 }
 
@@ -464,7 +477,7 @@ export async function getPortalInvoice(
   if (usePilotFixtures()) return pilotPortalInvoice(id, Date.now(), locale)
   if (!isCustomer(actor)) return undefined
 
-  return withActor(actor, async (tx) => {
+  const invoice = await withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select ${invoiceColumns()},
              i.subtotal::text as subtotal, i.tax_amount::text as "taxAmount",
@@ -495,4 +508,12 @@ export async function getPortalInvoice(
     `)
     return result.rows[0] as unknown as PortalInvoiceDetail | undefined
   })
+  if (!invoice) return undefined
+  /*
+    The conversion footnote, read with the system actor once the customer has
+    been shown the invoice: the charge lines and quotation it is worked out
+    from are ours, and only the date leaves (`invoiceConversionDate`).
+  */
+  const convertedOn = await withActor(systemActor(), (tx) => invoiceConversionDate(tx, id))
+  return { ...invoice, convertedOn }
 }

@@ -23,7 +23,7 @@
  */
 
 import { getTranslations } from 'next-intl/server'
-import { integrationSpec, type IntegrationField } from '@qabandi/core'
+import { integrationSpec, type IntegrationField, type IntegrationSecret } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
@@ -58,6 +58,73 @@ export async function IntegrationDialog({
 
   const label = (path: string): string => t(path as 'keys.smtp')
 
+  function fieldSpec(field: IntegrationField): FieldSpec {
+    const current = integration.fields.find((f) => f.name === field.name)
+
+    /*
+        The hint carries where the value came from.
+
+        `env` means a variable is answering and this form is showing it as a
+        default; type over it and a row takes precedence from the next resolve.
+        Without this the screen looks like it is displaying stored settings,
+        and a deployment mid-migration reads as configured when it is not.
+      */
+    const hint =
+      current?.source === 'env'
+        ? t('fromEnv', { variable: field.env })
+        : current?.source === 'row'
+          ? t('fromRow')
+          : t('fromNothing', { variable: field.env })
+
+    if (field.kind === 'switch') {
+      return {
+        kind: 'switch',
+        name: field.name,
+        label: label(`fields.${integration.key}.${field.name}`),
+        span: 6,
+        hint,
+        /*
+            The catalogue's safe position when neither layer has an answer.
+
+            Not `false`. A switch posts nothing when it is off, so an unchecked
+            box saved as part of an unrelated edit writes an explicit `false` —
+            and for `rejectUnauthorized` that silently disables certificate
+            verification on a deployment that never set the variable.
+          */
+        defaultChecked:
+          current?.value === undefined ? (field.defaultOn ?? false) : current.value !== 'false',
+      }
+    }
+
+    return {
+      kind: inputKind(field),
+      name: field.name,
+      label: label(`fields.${integration.key}.${field.name}`),
+      span: (field.kind === 'number' ? 4 : 12) as Span,
+      required: false,
+      hint,
+      mono: field.mono,
+      placeholder: field.placeholder,
+      min: field.min,
+      max: field.max,
+      defaultValue: current?.value ?? '',
+    }
+  }
+
+  function secretSpec(secret: IntegrationSecret): FieldSpec {
+    const stored = integration.secrets.find((s) => s.name === secret.name)
+    return {
+      kind: 'password',
+      name: secret.name,
+      label: label(`secrets.${integration.key}.${secret.name}`),
+      span: 12,
+      // Never required at the input layer: "already stored" is a valid way to
+      // satisfy a required credential, and only the action can know whether
+      // that is the case.
+      hint: stored?.isSet ? t('secretKeepHint') : t('secretHint', { variable: secret.env }),
+    }
+  }
+
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'key', value: integration.key },
 
@@ -89,83 +156,69 @@ export async function IntegrationDialog({
         ]
       : []),
 
-    ...spec.fields.map((field): FieldSpec => {
-      const current = integration.fields.find((f) => f.name === field.name)
+    ...spec.fields.filter((field) => !field.drivers).map(fieldSpec),
 
-      /*
-        The hint carries where the value came from.
-
-        `env` means a variable is answering and this form is showing it as a
-        default; type over it and a row takes precedence from the next resolve.
-        Without this the screen looks like it is displaying stored settings,
-        and a deployment mid-migration reads as configured when it is not.
-      */
-      const hint =
-        current?.source === 'env'
-          ? t('fromEnv', { variable: field.env })
-          : current?.source === 'row'
-            ? t('fromRow')
-            : t('fromNothing', { variable: field.env })
-
-      if (field.kind === 'switch') {
-        return {
-          kind: 'switch',
-          name: field.name,
-          label: label(`fields.${integration.key}.${field.name}`),
-          span: 6,
-          hint,
-          /*
-            The catalogue's safe position when neither layer has an answer.
-
-            Not `false`. A switch posts nothing when it is off, so an unchecked
-            box saved as part of an unrelated edit writes an explicit `false` —
-            and for `rejectUnauthorized` that silently disables certificate
-            verification on a deployment that never set the variable.
-          */
-          defaultChecked:
-            current?.value === undefined ? (field.defaultOn ?? false) : current.value !== 'false',
-        }
-      }
-
-      return {
-        kind: inputKind(field),
-        name: field.name,
-        label: label(`fields.${integration.key}.${field.name}`),
-        span: (field.kind === 'number' ? 4 : 12) as Span,
-        required: false,
-        hint,
-        mono: field.mono,
-        placeholder: field.placeholder,
-        min: field.min,
-        max: field.max,
-        defaultValue: current?.value ?? '',
-      }
-    }),
-
-    ...(spec.secrets.length > 0
+    ...(spec.secrets.some((secret) => !secret.drivers)
       ? [
           {
             kind: 'section' as const,
             title: t('credentials'),
             hint: t('credentialsHint'),
-            fields: spec.secrets.map((secret): FieldSpec => {
-              const stored = integration.secrets.find((s) => s.name === secret.name)
-              return {
-                kind: 'password',
-                name: secret.name,
-                label: label(`secrets.${integration.key}.${secret.name}`),
-                span: 12,
-                // Never required at the input layer: "already stored" is a
-                // valid way to satisfy a required credential, and only the
-                // action can know whether that is the case.
-                hint: stored?.isSet
-                  ? t('secretKeepHint')
-                  : t('secretHint', { variable: secret.env }),
-              }
-            }),
+            fields: spec.secrets.filter((secret) => !secret.drivers).map(secretSpec),
           },
         ]
       : []),
+
+    /*
+      A driver's own settings, shown only while that driver is chosen.
+
+      The FX feed has two live drivers and only `api` takes a URL and a key;
+      showing them under `resilient` invited somebody to fill in a field the
+      chosen driver never reads, and believe it mattered.
+    */
+    ...(spec.drivers ?? []).flatMap((driver): FieldSpec[] => {
+      const own = spec.fields.filter((field) => field.drivers?.includes(driver.value))
+      const ownSecrets = spec.secrets.filter((secret) => secret.drivers?.includes(driver.value))
+      if (own.length === 0 && ownSecrets.length === 0) return []
+      return [
+        {
+          kind: 'section',
+          title: t('driverSettings', {
+            driver: label(`drivers.${integration.key}.${driver.value}`),
+          }),
+          hint: ownSecrets.length > 0 ? t('credentialsHint') : undefined,
+          when: { name: 'driver', value: driver.value },
+          fields: [...own.map(fieldSpec), ...ownSecrets.map(secretSpec)],
+        },
+      ]
+    }),
+
+    /*
+      The acknowledgement, for a driver whose numbers someone could take for
+      something they are not. Shown with the driver, refused without the tick
+      by the action (`saveIntegration`), and recorded on the row.
+    */
+    ...(spec.drivers ?? [])
+      .filter((driver) => driver.acknowledge)
+      .map((driver): FieldSpec => ({
+        kind: 'section',
+        title: label(`acknowledge.${integration.key}.${driver.value}.title`),
+        when: { name: 'driver', value: driver.value },
+        fields: [
+          {
+            kind: 'note',
+            tone: 'info',
+            text: label(`acknowledge.${integration.key}.${driver.value}.notice`),
+          },
+          {
+            kind: 'switch',
+            name: 'acknowledge',
+            span: 12,
+            label: label(`acknowledge.${integration.key}.${driver.value}.label`),
+            defaultChecked: false,
+          },
+        ],
+      })),
   ]
 
   return (

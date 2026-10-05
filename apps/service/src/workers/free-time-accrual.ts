@@ -59,6 +59,7 @@ import {
   jobs,
   supplierInvoiceMatches,
   systemActor,
+  fxRateOrder,
   withActor,
   type Tx,
 } from '@qabandi/db'
@@ -338,7 +339,8 @@ async function toBase(
         lte(fxRates.effectiveOn, on),
       ),
     )
-    .orderBy(sql`${fxRates.effectiveOn} desc`)
+    // The shared order: newest day, a hand-entered rate over the feed's that day.
+    .orderBy(...fxRateOrder())
     .limit(1)
   if (direct) return dec(direct.rate).toDecimalPlaces(8)
 
@@ -353,7 +355,8 @@ async function toBase(
         sql`${fxRates.rate} > 0`,
       ),
     )
-    .orderBy(sql`${fxRates.effectiveOn} desc`)
+    // The shared order: newest day, a hand-entered rate over the feed's that day.
+    .orderBy(...fxRateOrder())
     .limit(1)
   return inverse ? dec(1).div(dec(inverse.rate)).toDecimalPlaces(8) : null
 }

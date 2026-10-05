@@ -407,6 +407,54 @@ describe.skipIf(!enabled)('integrations', () => {
     })
   })
 
+  /*
+    Public exchange rates need an administrator to say they understand what
+    they are. The save is refused without the tick, and recorded with it.
+    The row is left switched off afterwards, so every other suite resolves
+    the FX feed from the environment exactly as before.
+  */
+  describe('the acknowledgement for public exchange rates', () => {
+    it('refuses to switch on the resilient driver without the tick', async () => {
+      const state = await saveIntegration({}, form({ key: 'fx', driver: 'resilient' }))
+      expect(state.errors?.acknowledge).toBe('adminValidation.acknowledgeRequired')
+      expect(state.ok).toBeUndefined()
+    })
+
+    it('needs no URL for it, and records who acknowledged and when', async () => {
+      const state = await saveIntegration(
+        {},
+        form({ key: 'fx', driver: 'resilient', acknowledge: 'on' }),
+      )
+      try {
+        expect(state.errors).toBeUndefined()
+        expect(state.ok).toMatch(/^fx:/)
+        const [row] = await withActor(adminActor, (tx) =>
+          tx
+            .select({ settings: integrationSettings.settings })
+            .from(integrationSettings)
+            .where(eq(integrationSettings.key, 'fx')),
+        )
+        expect(row?.settings).toMatchObject({
+          acknowledgedById: ADMIN_PRINCIPAL,
+          acknowledgedByName: 'Fixture Administrator',
+          acknowledgedDriver: 'resilient',
+          acknowledgedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        })
+        const fx = (await listIntegrations()).find((i) => i.key === 'fx')
+        expect(fx?.acknowledgement?.byName).toBe('Fixture Administrator')
+        expect(fx?.missing).toEqual([])
+      } finally {
+        await setIntegrationActive({}, form({ key: 'fx', isActive: 'false' }))
+      }
+    })
+
+    it('asks nothing of the api driver, which still needs its URL', async () => {
+      const state = await saveIntegration({}, form({ key: 'fx', driver: 'api' }))
+      expect(state.errors?.acknowledge).toBeUndefined()
+      expect(state.errors?.url).toBe('adminValidation.neededToSwitchOn')
+    })
+  })
+
   describe('permission', () => {
     it('refuses a caller without the integrations key', async () => {
       harness.session = { ...session, permissions: new Set(['admin.users.write']) }
