@@ -163,7 +163,7 @@ environment answers when there is no row, which is what lets mail work before
 anyone can sign in to configure mail. So `SMTP_*`, `FX_*`,
 `CARRIER_TRACKING_DRIVER` and the `DCSA_*` keys are bootstrap values here,
 not the place to manage them — the names are listed under "Integration
-settings" in `README.md`, and `pnpm doctor` prints the live list. Every one
+settings" in [`Provisioning.md`](Provisioning.md), and `pnpm doctor` prints the live list. Every one
 degrades honestly when absent.
 
 ## 5. Four things that catch people
