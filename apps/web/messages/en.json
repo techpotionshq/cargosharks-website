@@ -613,7 +613,7 @@
   },
   "signIn": {
     "title": "Sign in",
-    "subtitle": "Sign in to your account.",
+    "subtitle": "Use the email address you were invited with.",
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
