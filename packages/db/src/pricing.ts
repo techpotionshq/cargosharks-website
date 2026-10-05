@@ -47,7 +47,7 @@ import {
   type RateLine,
 } from '@qabandi/core'
 import { chargeableRuleFor } from './chargeable'
-import { FX_RATE_ORDER_SQL } from './fx-feed'
+import { ratesOnto } from './fx-feed'
 import { findCoveringRateCard, type CoveringRateCard, type CoveringRateLine } from './rate-cards'
 import type { Tx } from './actor'
 
@@ -205,35 +205,24 @@ export async function priceEnquiryToQuote(
   /*
     The newest rate on or before the pricing date, never a later one (FR-RT-06).
 
-    The order after `from_currency` is the shared one in `fx-feed.ts`. It was
-    `effective_on desc` alone, so on a day holding both a feed row and a
-    hand-entered one `distinct on` returned whichever the scan met first —
-    the administrator's rate on some quotations and the feed's on others.
-    Source and moment come along so the screen can say whose rate it was.
+    Through `ratesOnto`, the one query the rate-reply comparison and the
+    auto-award sweep use too, so a reply ranked cheapest is ranked at the rate
+    this then prices at. Its order is the shared one in `fx-feed.ts`: on a day
+    holding a feed row and a hand-entered one, the person's wins. Here it used
+    to be `effective_on desc` alone, so `distinct on` returned whichever row
+    the scan met first. Source and moment come along so the screen can say
+    whose rate it was.
   */
-  const rates = await tx
-    .execute(
-      sql`
-        select distinct on (from_currency)
-               from_currency as "from", to_currency as "to", rate::text as rate,
-               effective_on::text as "effectiveOn", source, taken_at as "takenAt"
-          from fx_rates
-         where to_currency = ${enquiry.baseCurrency}
-           and effective_on <= ${on}::date
-         order by from_currency, ${FX_RATE_ORDER_SQL}
-      `,
-    )
-    .then(
-      (r) =>
-        r.rows as unknown as {
-          from: string
-          to: string
-          rate: string
-          effectiveOn: string
-          source: string
-          takenAt: Date | string
-        }[],
-    )
+  const rates = [
+    ...(
+      await ratesOnto(
+        tx,
+        currencies.map((c) => c.code),
+        enquiry.baseCurrency,
+        on,
+      )
+    ).rates.values(),
+  ]
 
   const pricedAt = new Date()
   const opts: PricingOptions = {

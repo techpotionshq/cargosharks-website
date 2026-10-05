@@ -339,3 +339,37 @@ export function quoteConversionDate(snapshot: unknown, currency: string): string
   if (!converted || typeof s.pricedAt !== 'string') return null
   return /^\d{4}-\d{2}-\d{2}/.test(s.pricedAt) ? s.pricedAt.slice(0, 10) : null
 }
+
+/**
+ * A quoted total brought onto the base currency, or null when it cannot be.
+ *
+ * Decimal throughout and rounded half-up to the base's minor units, the way
+ * an amount in that currency is rounded everywhere else: a reply of USD
+ * 1,850.00 at 0.30917960428721 is KWD 571.982, to the fils. The comparison
+ * used to multiply two JS numbers and `toFixed(3)` the product, which is
+ * the global-float habit §11 forbids, and it ranked replies by a figure that
+ * could differ in the last place from the one "Price it" then quoted.
+ *
+ * The same currency needs no rate. A missing or unusable rate is null, never
+ * a guess — the screen shows that reply as not comparable.
+ */
+export function convertToBase(
+  total: string | null | undefined,
+  currency: string | null | undefined,
+  base: string,
+  rate: string | null | undefined,
+  places: number,
+): string | null {
+  if (!total || !currency) return null
+  let amount: Decimal
+  try {
+    amount = new D(total)
+  } catch {
+    return null
+  }
+  if (!amount.isFinite()) return null
+  if (currency === base) return amount.toDecimalPlaces(places).toFixed(places)
+  const r = parseRate(rate)
+  if (!r) return null
+  return amount.times(r).toDecimalPlaces(places).toFixed(places)
+}

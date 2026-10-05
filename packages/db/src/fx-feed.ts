@@ -130,3 +130,61 @@ export async function invoiceConversionDate(tx: Tx, invoiceId: string): Promise<
     .sort()
   return days.at(-1) ?? null
 }
+
+/** One rate onto a base, with whose rate it was and when it was taken. */
+export interface RateOnto {
+  readonly from: string
+  readonly to: string
+  readonly rate: string
+  readonly effectiveOn: string
+  readonly source: string
+  readonly takenAt: Date
+}
+
+/**
+ * The rate each currency converts onto `base` at, on `on` — the one query.
+ *
+ * Pricing, the rate-reply comparison and the auto-award sweep all ask this,
+ * and they used to ask it three ways: pricing bounded the date by the
+ * enquiry's readiness day, the other two took the newest row of any date, so
+ * a rate dated next month could rank replies by one figure while "Price it"
+ * quoted another. One function now, with the shared order (`fxRateOrder`):
+ * newest day on or before `on`, a hand-entered rate over the feed's that day.
+ *
+ * `places` is the base currency's minor units, for rounding a converted total
+ * exactly as an amount in that currency is rounded — three for KWD.
+ */
+export async function ratesOnto(
+  tx: Tx,
+  froms: readonly string[],
+  base: string,
+  on: string = todayIn(),
+): Promise<{ rates: Map<string, RateOnto>; places: number }> {
+  const wanted = [...new Set(froms.filter((code) => code && code !== base))]
+  const [currency] = (
+    await tx.execute(sql`select minor_units as "minorUnits" from currencies where code = ${base}`)
+  ).rows as unknown as { minorUnits: number }[]
+  const places = currency?.minorUnits ?? 2
+  if (wanted.length === 0) return { rates: new Map(), places }
+
+  const rows = (
+    await tx.execute(sql`
+      select distinct on (from_currency)
+             from_currency as "from", to_currency as "to", rate::text as rate,
+             effective_on::text as "effectiveOn", source, taken_at as "takenAt"
+        from fx_rates
+       where to_currency = ${base}
+         and from_currency in (${sql.join(
+           wanted.map((code) => sql`${code}`),
+           sql`, `,
+         )})
+         and effective_on <= ${on}::date
+       order by from_currency, ${FX_RATE_ORDER_SQL}
+    `)
+  ).rows as unknown as (Omit<RateOnto, 'takenAt'> & { takenAt: Date | string })[]
+
+  return {
+    rates: new Map(rows.map((r) => [r.from, { ...r, takenAt: new Date(r.takenAt) }])),
+    places,
+  }
+}

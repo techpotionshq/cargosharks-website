@@ -16,6 +16,7 @@ import {
   moveProblem,
   parseRate,
   quoteConversionDate,
+  convertToBase,
 } from '../src/index'
 
 const map = (entries: Record<string, string>) =>
@@ -182,5 +183,23 @@ describe('quoteConversionDate', () => {
     expect(quoteConversionDate({ ...legacy, lineCosts: [{ cardCurrency: 'KWD' }] }, 'KWD')).toBe(
       null,
     )
+  })
+})
+
+describe('convertToBase', () => {
+  it('converts a USD reply into KWD in decimals, to three places exactly', () => {
+    expect(convertToBase('1850.00', 'USD', 'KWD', '0.30917960428721', 3)).toBe('571.982')
+    // Half-up at the fils: 0.0005 rounds away from zero.
+    expect(convertToBase('1', 'USD', 'KWD', '0.3085', 3)).toBe('0.309')
+    // A float multiply gives 0.1 * 3 = 0.30000000000000004; decimals do not.
+    expect(convertToBase('0.1', 'USD', 'KWD', '3', 6)).toBe('0.300000')
+  })
+
+  it('needs no rate for the base, and refuses a missing or unusable one', () => {
+    expect(convertToBase('900', 'KWD', 'KWD', null, 3)).toBe('900.000')
+    expect(convertToBase('900', 'USD', 'KWD', null, 3)).toBeNull()
+    expect(convertToBase('900', 'USD', 'KWD', '0', 3)).toBeNull()
+    expect(convertToBase(null, 'USD', 'KWD', '0.3', 3)).toBeNull()
+    expect(convertToBase('abc', 'USD', 'KWD', '0.3', 3)).toBeNull()
   })
 })

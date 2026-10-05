@@ -28,7 +28,7 @@ const system = { ...bothBranchesActor, type: 'system' as const }
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)
 let seq = 0
 
-async function makeEnquiry(): Promise<string> {
+async function makeEnquiry(readyOn?: string): Promise<string> {
   seq += 1
   return withActor(system, async (tx) => {
     const [row] = await tx
@@ -39,6 +39,7 @@ async function makeEnquiry(): Promise<string> {
         customerId: CUSTOMER,
         status: 'rating',
         channel: 'email',
+        ...(readyOn ? { readyOn } : {}),
       })
       .returning({ id: enquiries.id })
     return row!.id
@@ -176,33 +177,51 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
     expect(view!.awaiting).toBe(1)
   })
 
-  /**
-   * A foreign-currency reply is brought onto the base at the latest rate on
-   * file. The rate is inserted far in the future so it wins over any the seed
-   * carries, which makes the converted figure deterministic: 3000 × 0.308.
-   */
-  it('brings a foreign-currency reply onto the base at the latest rate', async () => {
-    await withActor(system, (tx) =>
-      tx
-        .insert(fxRates)
-        .values({
-          fromCurrency: 'USD',
-          toCurrency: 'KWD',
-          rate: '0.308000',
-          effectiveOn: '2040-01-01',
-          source: 'manual',
-        })
-        .onConflictDoNothing(),
-    )
-    const enquiryId = await makeEnquiry()
-    await reply(enquiryId, 'parsed', { total: '3000.000', currency: 'USD' })
+  /*
+    A foreign-currency reply is brought onto the base at the rate "Price it"
+    would use: the newest on or before the enquiry's readiness day, a
+    hand-entered rate over the feed's on the same day, in decimals, rounded to
+    the base's three places. The days are in 2041 so no other suite, which
+    converts on or before today, ever reads these rows; a row after the
+    readiness day is there to prove it is not used.
+  */
+  describe('converting a reply onto the base', () => {
+    const rate = (day: string, value: string, source: string) =>
+      withActor(system, (tx) =>
+        tx
+          .insert(fxRates)
+          .values({ fromCurrency: 'USD', toCurrency: 'KWD', rate: value, effectiveOn: day, source })
+          .onConflictDoNothing(),
+      )
 
-    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+    it('converts a USD reply into KWD at the feed rate, to the fils', async () => {
+      await rate('2041-03-09', '0.30917960428721', 'er-api')
+      await rate('2041-03-12', '0.50000000', 'er-api') // after the readiness day
+      const enquiryId = await makeEnquiry('2041-03-09')
+      await reply(enquiryId, 'parsed', { total: '1850.00', currency: 'USD' })
 
-    const usd = view!.requests[0]
-    expect(usd?.quotedCurrency).toBe('USD')
-    expect(usd?.comparable).toBe(true)
-    expect(Number(usd?.normalizedTotal)).toBeCloseTo(924, 0)
+      const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+      const usd = view!.requests[0]
+      expect(usd?.comparable).toBe(true)
+      // 1850 × 0.30917960428721 = 571.98226793…, half-up to three places.
+      expect(usd?.normalizedTotal).toBe('571.982')
+    })
+
+    it('uses a hand-entered rate over the feed on the same day, as pricing does', async () => {
+      await rate('2041-03-10', '0.31000000', 'er-api')
+      await rate('2041-03-10', '0.30850000', 'manual')
+      const enquiryId = await makeEnquiry('2041-03-10')
+      await reply(enquiryId, 'parsed', { total: '1850.00', currency: 'USD' })
+      await reply(enquiryId, 'parsed', { total: '570.730', currency: 'KWD' })
+
+      const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+      const usd = view!.requests.find((r) => r.quotedCurrency === 'USD')
+      expect(usd?.normalizedTotal).toBe('570.725')
+      // A fils cheaper than the KWD reply, and ranked so as decimals.
+      expect(view!.requests.find((r) => r.isCheapest)?.quotedCurrency).toBe('USD')
+    })
   })
 
   it('returns null for an enquiry that is not there', async () => {
