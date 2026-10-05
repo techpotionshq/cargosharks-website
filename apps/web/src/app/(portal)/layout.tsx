@@ -71,12 +71,20 @@ export default async function PortalLayout({ children }: { children: React.React
           </Link>
 
           <nav className="ms-auto flex items-center gap-1">
+            {/*
+              On a phone both of these are an icon alone, and \`hidden\` took
+              the word out of the accessibility tree as well as off the
+              screen: a screen reader announced "link" and "button", with
+              nothing to say which went where. \`sr-only\` keeps the name for
+              assistive technology, and \`title\` gives a pointer a tooltip.
+            */}
             <Link
               href="/track"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              title={t('tracking')}
+              className="inline-flex h-10 items-center gap-1.5 rounded-sm px-3 text-body font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink sm:h-9"
             >
               <Icon name="tracking" size={16} />
-              <span className="hidden sm:inline">{t('tracking')}</span>
+              <span className="sr-only sm:not-sr-only">{t('tracking')}</span>
             </Link>
             <LanguageSwitch />
             <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
@@ -94,11 +102,10 @@ export default async function PortalLayout({ children }: { children: React.React
               <button
                 type="submit"
                 title={tc('signOut')}
-                aria-label={tc('signOut')}
-                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
+                className="inline-flex h-10 items-center gap-1.5 rounded-sm px-3 text-body font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical sm:h-9"
               >
                 <Icon name="sign-out" size={16} />
-                <span className="hidden sm:inline">{tc('signOut')}</span>
+                <span className="sr-only sm:not-sr-only">{tc('signOut')}</span>
               </button>
             </form>
           </nav>
