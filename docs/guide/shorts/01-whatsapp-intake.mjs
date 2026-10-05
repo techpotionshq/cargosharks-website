@@ -76,14 +76,20 @@ export default {
           offset: 70,
           ms: 450,
         })
+        // Let the scroll come to rest before measuring, or the box is drawn where the bubble was.
+        await r.page.waitForTimeout(500)
+        const convo = r.page
+          .locator('section')
+          .filter({ has: r.page.getByRole('heading', { name: 'Conversation' }) })
+          .last()
         await a.focus(
-          r.page.getByText(/steel coils to move/).first(),
+          convo.getByText(/steel coils to move/).first(),
           'Customer: <b>2 × 40’HC of steel coils</b>',
           { side: 'right', zoom: 1.3 },
         )
         await r.page.waitForTimeout(1600)
         await a.focus(
-          r.page.getByText(/we still need the container type/).last(),
+          convo.getByText(/we still need the container type/).last(),
           'Assistant: one question,<br>signed by the branch',
           { side: 'left', zoom: 1.3 },
         )
