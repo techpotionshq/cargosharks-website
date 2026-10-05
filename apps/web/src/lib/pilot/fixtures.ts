@@ -6480,24 +6480,25 @@ export function pilotOptions(locale: 'en' | 'ar' = 'en'): ReferenceOptions {
     })),
     chargeTypes: CHARGE_TYPE_ROWS.map((c) => ({
       value: `charge-${c.key}`,
-      label: `${c.key} — ${pickName(locale, c.en, c.ar)}`,
+      // Name alone, as `loadOptions` labels them: the key is a rule's, not a person's.
+      label: pickName(locale, c.en, c.ar),
       group: c.category,
     })),
     documentTypes: DOCUMENT_TYPES.map(([code, nameEn, nameAr, category]) => ({
       value: `doctype-${code}`,
-      label: `${code} — ${pickName(locale, nameEn, nameAr)}`,
+      label: pickName(locale, nameEn, nameAr),
       group: category,
     })),
     exceptionCodes: EXCEPTION_CODE_ROWS.map((e) => ({
       value: `exccode-${e.code}`,
-      label: `${e.code} — ${pickName(locale, e.en, e.ar)}`,
+      label: pickName(locale, e.en, e.ar),
       group: e.severity,
     })),
     milestoneCodes: [
       ...new Map(
         pilotMilestoneTemplates().map((row) => [
           row.code,
-          { value: row.code, label: `${row.code} — ${pickName(locale, row.nameEn, row.nameAr)}` },
+          { value: row.code, label: pickName(locale, row.nameEn, row.nameAr) },
         ]),
       ).values(),
     ].sort((a, b) => a.value.localeCompare(b.value)),

@@ -2875,7 +2875,7 @@
     "pageTitle": "Notification wording",
     "eyebrow": "Messages",
     "pageSubtitle": "What the product says when it writes to a customer or a colleague. Change it here — no release needed.",
-    "title": "Wording for {event}",
+    "title": "Wording: {event}",
     "description": "Leave the branch empty to change it everywhere, or pick one to reword it for that entity alone.",
     "branch": "Entity",
     "allBranches": "Every entity (default)",
@@ -3562,7 +3562,24 @@
     "offHintPlain": "Not switched on. Open Configure to set it up.",
     "keyCommand": "Generate a valid key on the server with:",
     "demoNote": "This is the demo: it connects to no provider and stores no credentials. On your own instance, each integration below is set here and sealed with your deployment key.",
-    "intakeAgentLink": "Set up the intake agent for each branch"
+    "intakeAgentLink": "Set up the intake agent for each branch",
+    "schedule": {
+      "every_minute": "Every minute",
+      "every_minutes": "Every {minutes} minutes",
+      "hourly_at": "Every hour, at {minutes} past",
+      "every_hours": "{hours, plural, one {Every hour} other {Every # hours}}, at {minute} past",
+      "daily_at": "Every day at {time}"
+    },
+    "failures": {
+      "credentials": "The provider refused the credentials. Check the key or password, then save again.",
+      "not_found": "The provider did not find what the system asked for. Check the address and the account.",
+      "rate_limited": "The provider is limiting requests. The system tries again on its next run.",
+      "unreachable": "The system cannot reach the provider. Check the address, or try again later.",
+      "certificate": "The provider's security certificate is not valid. Ask the provider to fix it.",
+      "provider_down": "The provider's service has a fault. The system tries again on its next run.",
+      "other": "The last attempt failed. The provider's message is below.",
+      "detail": "Provider's message"
+    }
   },
   "assistant": {
     "title": "Assistant",
