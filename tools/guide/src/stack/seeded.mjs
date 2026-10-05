@@ -359,6 +359,8 @@ const snapName = (ch) => `qg_s_${ch.key.slice(0, 16)}`
 function storyContext(stack) {
   return {
     stack,
+    /** The brand being built, for anything the story names after the company. */
+    brand,
     sql,
     setPassword,
     password: STORY_PASSWORD,
