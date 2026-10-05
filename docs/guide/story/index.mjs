@@ -89,7 +89,7 @@ export async function storyIds(ctx) {
 export default [
   {
     id: 'base',
-    // A seeded Al-Qabandi instance (migrations, seed, seed-demo run before this),
+    // A seeded demo instance (migrations, seed, seed-demo run before this),
     // one administrator, Maryam's portal login, and the integrations pointed at
     // the local stand-ins.
     run: async (ctx) => {
@@ -173,12 +173,31 @@ export default [
       await dlg(page).locator('input[name=emailQuietSeconds]').fill('20')
       await save(page, /save/i)
       // No quiet hours on either branch: the story's messages go out when sent.
+      //
+      // And the branches named after the brand being built. seed-demo names them
+      // after one company on every branch of the repository, and a branch's
+      // legal name is the letterhead of its quotations, invoices and house
+      // bills, so a CargoSharks short printed Al-Qabandi PDFs. An administrator
+      // renames them here, as one would; a name that already carries the brand
+      // is left as seeded.
+      const { nameEn, nameAr, legalNameEn, legalNameAr } = ctx.brand.identity
+      const legalNames = {
+        KWI: [legalNameEn, legalNameAr],
+        DXB: [`${nameEn} Logistics FZE`, `${nameAr} للخدمات اللوجستية`],
+      }
+      const mark = nameEn.split(/\s+/)[0]
       for (let i = 0; i < 2; i++) {
         await page.goto(`${base}/settings/branches`, { waitUntil: 'networkidle' })
         await page.getByRole('button', { name: /edit/i }).nth(i).click()
         await page.waitForTimeout(600)
         const q = dlg(page).locator('input[name=quietHoursEnabled]')
         if (await q.count()) await q.uncheck({ force: true })
+        const code = await dlg(page).locator('input[name=code]').inputValue()
+        const en = dlg(page).locator('input[name=legalNameEn]')
+        if (legalNames[code] && !(await en.inputValue()).includes(mark)) {
+          await en.fill(legalNames[code][0])
+          await dlg(page).locator('input[name=legalNameAr]').fill(legalNames[code][1])
+        }
         await save(page, /save/i)
       }
       // Maryam's portal login.

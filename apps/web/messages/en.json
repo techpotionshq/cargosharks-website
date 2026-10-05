@@ -3836,13 +3836,21 @@
     "reviewTotalMismatch": "The agent states a total of {stated}, but the lines add up to {computed}. It is not ranked until someone checks.",
     "supersede": "Replace the older rate",
     "acceptNeedsName": "Name every charge before making a rate card.",
-    "notRanked": "Not ranked"
+    "notRanked": "Not ranked",
+    "columns": {
+      "agent": "Agent",
+      "quoted": "Their price",
+      "rateCard": "Rate card"
+    }
   },
   "renewals": {
     "title": "Renewals in flight",
     "description": "Rate requests the expiry sweep opened to renew a lapsing lane.",
     "lapses": "current rate lapses {date}",
-    "renew": "Renew rate card"
+    "renew": "Renew rate card",
+    "columns": {
+      "lane": "Lane and agent"
+    }
   },
   "notifications": {
     "title": "Notifications",
