@@ -3387,7 +3387,8 @@
       "rateAutoFanout": "Automatic rate requests",
       "enquiryAutoAccept": "Automatic enquiry fill",
       "rateAutoPromote": "Automatic rate award",
-      "quoteAutoDraft": "Automatic quotation draft"
+      "quoteAutoDraft": "Automatic quotation draft",
+      "vesselPositions": "Vessel positions"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
@@ -3405,7 +3406,8 @@
       "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on.",
       "enquiryAutoAccept": "Apply what a model reads off an enquiry email without a coordinator's click — but only above the confidence set here, only where the field is still empty, and never for an ambiguous port or commodity, which stay in the queue for a person.",
       "rateAutoPromote": "Promote the cheapest agent reply into a buy rate card without a coordinator's click. Choose when it commits: as soon as one reply parses, once every agent has answered, or after a wait window.",
-      "quoteAutoDraft": "Once a buy rate is awarded and the lane is covered, draft the quotation against the customer's house margin and its covering note — as a draft. It never sends; a person reviews and puts it in front of the customer."
+      "quoteAutoDraft": "Once a buy rate is awarded and the lane is covered, draft the quotation against the customer's house margin and its covering note — as a draft. It never sends; a person reviews and puts it in front of the customer.",
+      "vesselPositions": "Where the ship carrying a job was last heard on AIS. aisstream.io is free and uses coastal receivers only: it covers China, Singapore and Europe, and not the Gulf. Off by default."
     },
     "drivers": {
       "smtp": {
@@ -3449,6 +3451,10 @@
       "quoteAutoDraft": {
         "manual": "Priced by a coordinator",
         "auto": "Drafted automatically"
+      },
+      "vesselPositions": {
+        "off": "Off",
+        "aisstream": "aisstream.io (free, coastal receivers)"
       }
     },
     "fields": {
@@ -3512,7 +3518,8 @@
       "rateAutoPromote": {
         "waitHours": "Wait window (hours)"
       },
-      "quoteAutoDraft": {}
+      "quoteAutoDraft": {},
+      "vesselPositions": {}
     },
     "secrets": {
       "smtp": {
@@ -3552,6 +3559,9 @@
       },
       "fileStore": {
         "secretAccessKey": "Secret access key"
+      },
+      "vesselPositions": {
+        "apiKey": "API key"
       }
     },
     "groups": {

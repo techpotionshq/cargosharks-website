@@ -426,6 +426,32 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
   ),
 
   /*
+    Vessel positions from AIS — where the ship carrying a job was last heard.
+
+    Ships dark: `off` is the default and opens no connection. `aisstream` holds
+    one websocket from the service to aisstream.io, subscribed only to the
+    MMSIs of vessels on open sea jobs. It is free and terrestrial only, so it
+    hears origin legs (China, Singapore, Europe) and nothing in the Gulf; the
+    screens say so rather than drawing an old fix as current.
+
+    A satellite provider (Spire, Datalastic, VesselFinder) is a further driver
+    here and a further adapter behind `VesselPositionSource`; the readers and
+    the table do not change.
+  */
+  {
+    key: 'vesselPositions',
+    group: 'carriers',
+    driverEnv: 'VESSEL_POSITIONS_DRIVER',
+    defaultDriver: 'off',
+    drivers: [
+      { value: 'off', live: false },
+      { value: 'aisstream', live: true },
+    ],
+    fields: [],
+    secrets: [{ name: 'apiKey', env: 'AISSTREAM_API_KEY', required: true, keepOnBlank: true }],
+  },
+
+  /*
     WhatsApp, through Kapso.
 
     Kapso is a proxy in front of the WhatsApp Cloud API: it provisions the
