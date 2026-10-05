@@ -187,7 +187,17 @@ export async function registerSchedules(): Promise<void> {
     handler exists; `PENDING` in `workers/index.ts` holds the gap until then.
   */
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
-  await b.schedule(JOBS.fxIngest, '0 5 * * *')
+  /*
+    The rate feed: 08:05 in Kuwait, then every three hours until 20:05.
+
+    ExchangeRate-API publishes a little after 00:00 UTC, so the first run
+    normally finds today's rates and every later one finds its rows already
+    written and asks nobody (`fx-refresh.ts`). The later runs are the retry:
+    a provider that was down at breakfast is caught by lunch, without anybody
+    having to notice. Five minutes past, not on the hour, because every
+    schedule on the internet fires on the hour and free endpoints feel it.
+  */
+  await b.schedule(JOBS.fxIngest, '5 5,8,11,14,17 * * *')
 
   /*
     Rate-request sends — FR-RT-10, every minute. The near twin of the mail poll:

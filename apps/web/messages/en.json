@@ -3413,7 +3413,7 @@
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
-      "fx": "A daily rate for each currency marked tracked. Nothing prices from the feed — a charge line keeps the rate it was struck at.",
+      "fx": "A daily rate for each tracked currency. Indicative rates from two public providers, cross-checked against each other and the Gulf pegs. A charge line keeps the rate it was priced at.",
       "carrierPoll": "How often the poll asks, and how many shipments each run covers. Calls per hour has to stay under the carrier’s cap.",
       "carrierTracking": "Where container milestones come from. The carriers publish their own events — free, self-serve, one registration each.",
       "carrierMaersk": "Covers MAEU, MAEI, MCPU, SEAU and SEJJ. Registration is self-serve at developer.maersk.com.",
@@ -3436,7 +3436,8 @@
       },
       "fx": {
         "manual": "Typed by hand",
-        "api": "Daily from a feed"
+        "api": "Daily from a feed",
+        "resilient": "Daily from two public providers, cross-checked"
       },
       "carrierTracking": {
         "manual": "Typed by an operator",
@@ -3596,6 +3597,18 @@
     "keyCommand": "Generate a valid key on the server with:",
     "demoNote": "This is the demo: it connects to no provider and stores no credentials. On your own instance, each integration below is set here and sealed with your deployment key.",
     "intakeAgentLink": "Set up the intake agent for each branch",
+    "driverSettings": "Settings for: {driver}",
+    "acknowledge": {
+      "fx": {
+        "resilient": {
+          "title": "Before you switch on public rates",
+          "notice": "Rates come from two third-party providers: ExchangeRate-API, with currency-api as the fallback. They can be late or wrong. They are indicative rates, not bank rates. Check a rate before you use it in a quote or an invoice.",
+          "label": "I understand. These are indicative rates from third parties, and we check them before use."
+        }
+      }
+    },
+    "acknowledgedBy": "Acknowledged by {name} on {at}",
+    "acknowledgedAt": "Acknowledged on {at}",
     "schedule": {
       "every_minute": "Every minute",
       "every_minutes": "Every {minutes} minutes",
@@ -3936,7 +3949,8 @@
     "fxSameCurrency": "Choose two different currencies.",
     "invitedNoMail": "Login created for {email}, but no invitation email went. Use Send sign-in link beside them for what to do next.",
     "signInLinkLogged": "No email was sent: mail on this deployment is set to log only. Give {email} the link below yourself. It sets their password once and works for one hour.",
-    "signInLinkHandOver": "Set-password link, to pass on"
+    "signInLinkHandOver": "Set-password link, to pass on",
+    "acknowledgeRequired": "Tick the acknowledgement to switch on public rates."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -4707,7 +4721,8 @@
     },
     "refusedExpired": "This offer has expired. Ask us for a new price.",
     "refusedDecided": "You already answered this quotation.",
-    "refusedMissing": "This quotation is no longer available. We may have sent you a newer version. Refresh the page."
+    "refusedMissing": "This quotation is no longer available. We may have sent you a newer version. Refresh the page.",
+    "conversionNote": "Amounts in other currencies were converted at the rate on {on}. The invoice may be converted at the rate on the invoice date."
   },
   "portalInvoices": {
     "title": "My invoices",
@@ -4746,7 +4761,8 @@
     "about": "Details",
     "issuedBy": "Issued by",
     "pdf": "PDF (EN)",
-    "pdfAr": "PDF (AR)"
+    "pdfAr": "PDF (AR)",
+    "conversionNote": "Amounts in other currencies were converted at the rate on {on}."
   },
   "conversation": {
     "title": "Conversation",
@@ -4816,5 +4832,21 @@
     "emailOnLogin": "This contact signs in with this address. Change it on their portal login.",
     "notFound": "That contact is not on file.",
     "customerInactive": "This customer is retired. Bring them back before adding contacts."
+  },
+  "fxFeed": {
+    "attribution": "Indicative rates from ExchangeRate-API (fallback: currency-api), fetched {at}. Not a bank or central bank rate. Check before quoting.",
+    "attributionNever": "Indicative rates from ExchangeRate-API (fallback: currency-api). No rate is fetched yet. Not a bank or central bank rate. Check before quoting.",
+    "stale": "{days, plural, one {The newest automatic rate is # day old.} other {The newest automatic rate is # days old.}} Check the feed, or enter today's rate by hand.",
+    "staleNever": "The feed has not written a rate for {pairs} yet. Check the feed, or enter the rate by hand.",
+    "manualBy": "Entered by hand by {name}, {at}",
+    "manualAt": "Entered by hand, {at}",
+    "sources": {
+      "er-api": "ExchangeRate-API",
+      "currency-api": "currency-api",
+      "http": "Feed",
+      "manual": "Entered by hand",
+      "seed-demo": "Demo data"
+    },
+    "convertedAt": "Converted at"
   }
 }

@@ -21,15 +21,16 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import {
   branches,
-  fxRates,
+  enquiries,
   promoteRateReply,
   rateRequests,
   systemActor,
+  ratesOnto,
   withActor,
   SYSTEM_PRINCIPAL_ID,
   type Tx,
 } from '@qabandi/db'
-import { rateReplyReview, replyIsPartial } from '@qabandi/core'
+import { convertToBase, D, rateReplyReview, replyIsPartial, todayIn } from '@qabandi/core'
 import { integration, type LiveIntegration } from '../settings'
 
 const STRATEGIES = ['first', 'all', 'wait'] as const
@@ -258,10 +259,16 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
       promotable.map((r) => r.quotedCurrency).filter((c): c is string => Boolean(c) && c !== base),
     ),
   ]
-  const fx = await latestRates(tx, currencies, base)
+  // The rates "Price it" would use, on the day it would use them (`ratesOnto`).
+  const [enquiry] = await tx
+    .select({ readyOn: enquiries.readyOn })
+    .from(enquiries)
+    .where(eq(enquiries.id, enquiryId))
+    .limit(1)
+  const { rates: fx, places } = await ratesOnto(tx, currencies, base, enquiry?.readyOn ?? todayIn())
 
   let bestId: string | null = null
-  let bestValue = Infinity
+  let bestValue: InstanceType<typeof D> | null = null
   for (const r of promotable) {
     /*
       A reply whose total left lines unpriced is a partial figure, and ranked it
@@ -272,59 +279,20 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
       consignment, not a percent line every reply leaves unpriced alike (R1).
     */
     if (replyIsPartial(r.response)) continue
-    const normalised = normalise(r.quotedTotal, r.quotedCurrency, base, fx)
+    const normalised = convertToBase(
+      r.quotedTotal,
+      r.quotedCurrency,
+      base,
+      r.quotedCurrency ? fx.get(r.quotedCurrency)?.rate : null,
+      places,
+    )
     if (normalised === null) continue
-    const value = Number(normalised)
-    if (Number.isFinite(value) && value < bestValue) {
+    // Decimal, so two replies a fils apart are ranked as a person would rank them.
+    const value = new D(normalised)
+    if (bestValue === null || value.lt(bestValue)) {
       bestValue = value
       bestId = r.id
     }
   }
   return bestId
-}
-
-/** The most recent rate for each currency onto the base, as a string map. */
-async function latestRates(
-  tx: Tx,
-  froms: readonly string[],
-  base: string,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
-  if (froms.length === 0) return map
-
-  const rows = await tx
-    .select({
-      fromCurrency: fxRates.fromCurrency,
-      rate: fxRates.rate,
-      effectiveOn: fxRates.effectiveOn,
-    })
-    .from(fxRates)
-    .where(and(inCurrencies(froms), eq(fxRates.toCurrency, base)))
-    .orderBy(sql`${fxRates.effectiveOn} desc`)
-
-  for (const row of rows) {
-    if (!map.has(row.fromCurrency)) map.set(row.fromCurrency, row.rate)
-  }
-  return map
-}
-
-const inCurrencies = (froms: readonly string[]) =>
-  sql`${fxRates.fromCurrency} in (${sql.join(
-    froms.map((c) => sql`${c}`),
-    sql`, `,
-  )})`
-
-/** A quoted total on the base currency, or null when it cannot be brought there. */
-function normalise(
-  total: string | null,
-  currency: string | null,
-  base: string,
-  fx: ReadonlyMap<string, string>,
-): string | null {
-  if (!total || !currency) return null
-  if (currency === base) return total
-  const rate = fx.get(currency)
-  if (!rate) return null
-  const converted = Number(total) * Number(rate)
-  return Number.isFinite(converted) ? converted.toFixed(3) : null
 }

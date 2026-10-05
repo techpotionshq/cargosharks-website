@@ -93,6 +93,11 @@ export interface QuotationView extends IssuingEntity {
   readonly tradingConditionsEn: string | null
   readonly tradingConditionsAr: string | null
   readonly lines: readonly QuotationLineView[]
+  /**
+   * The day a line was converted from another currency at, or null. Optional
+   * so a view built before it existed renders as it did, with no footnote.
+   */
+  readonly convertedOn?: string | null
 }
 
 const STRINGS = {
@@ -125,6 +130,8 @@ const STRINGS = {
     draft: 'DRAFT — not a quotation until sent',
     noValidity: 'No expiry stated',
     revision: 'Revision',
+    converted: (on: string) =>
+      `Amounts in other currencies were converted at the rate on ${on}. The invoice may be converted at the rate on the invoice date.`,
   },
   ar: {
     title: 'عرض سعر',
@@ -155,6 +162,8 @@ const STRINGS = {
     draft: 'مسودة — ليست عرض سعر حتى يُرسل',
     noValidity: 'لم تُحدد مدة الصلاحية',
     revision: 'المراجعة',
+    converted: (on: string) =>
+      `حُوِّلت المبالغ بالعملات الأخرى بسعر الصرف في ${on}. قد تُحوَّل الفاتورة بسعر الصرف في تاريخ الفاتورة.`,
   },
 } as const
 
@@ -366,6 +375,17 @@ ${lines}
   </tfoot>
 </table>
 
+${
+  /*
+    One neutral line, and only when a line was in fact converted. No provider
+    is named and no disclaimer is added: the customer needs the day the rate
+    was taken, which is what a later invoice at a different rate is measured
+    against. Where the rate came from is our business and on our screens.
+  */
+  quote.convertedOn
+    ? `<p class="fx-note">${esc(t.converted(formatDate(quote.convertedOn, locale)))}</p>`
+    : ''
+}
 ${terms ? `<div class="cols">${terms}</div>` : ''}
 ${quote.notes ? `<div class="terms"><h2>${esc(t.notes)}</h2>${escBlock(quote.notes)}</div>` : ''}
 ${conditions ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(conditions)}</div>` : ''}
@@ -375,6 +395,7 @@ ${conditions ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(condi
 }
 
 const QUOTATION_CSS = `
+  .fx-note { margin: 2mm 0 0; font-size: 8pt; color: var(--muted); }
   .cover { margin: 4mm 0 1mm; font-size: 9pt; line-height: 1.5; }
   .cols { display: flex; gap: 8mm; margin-top: 5mm; }
   .cols .col { flex: 1; }

@@ -34,6 +34,8 @@ import { eq } from 'drizzle-orm'
 import {
   INTEGRATIONS,
   integrationSpec,
+  ACKNOWLEDGEMENT_KEYS,
+  appliesTo,
   isLiveDriver,
   pollRunsPerHour,
   type IntegrationGroup,
@@ -86,6 +88,11 @@ export interface IntegrationView {
   readonly lastError: string | null
   /** For `carrierPoll` alone: the calls-per-hour the current settings spend. */
   readonly callsPerHour: number | null
+  /**
+   * Who acknowledged the current driver's notice, and when — for a driver
+   * that asks for one. Null when the driver needs none or nobody has.
+   */
+  readonly acknowledgement: { readonly at: string; readonly byName: string | null } | null
 }
 
 /**
@@ -168,8 +175,30 @@ export async function listIntegrations(): Promise<IntegrationView[]> {
       lastOkAt: row?.lastOkAt ?? null,
       lastError: row?.lastError ?? null,
       callsPerHour: spec.key === 'carrierPoll' ? callsPerHour(resolved.settings) : null,
+      acknowledgement: acknowledgementOf(spec, resolved.driver, row),
     }
   })
+}
+
+/**
+ * The acknowledgement a row records for its current driver, if it needs one.
+ *
+ * Only an acknowledgement *of this driver* counts: a row that once ticked the
+ * box for `resilient`, moved to `api` and back carries a fresh one from the
+ * save that moved it back, because that save demanded the tick again.
+ */
+function acknowledgementOf(
+  spec: IntegrationSpec,
+  driver: string | undefined,
+  row: IntegrationSettings | undefined,
+): IntegrationView['acknowledgement'] {
+  const chosen = spec.drivers?.find((d) => d.value === driver)
+  if (!chosen?.acknowledge || !row || row.isActive === false) return null
+  const settings = (row.settings ?? {}) as Record<string, unknown>
+  const at = settings[ACKNOWLEDGEMENT_KEYS.at]
+  if (typeof at !== 'string' || settings[ACKNOWLEDGEMENT_KEYS.driver] !== chosen.value) return null
+  const byName = settings[ACKNOWLEDGEMENT_KEYS.byName]
+  return { at, byName: typeof byName === 'string' ? byName : null }
 }
 
 /**
@@ -264,6 +293,9 @@ function validate(
   for (const field of spec.fields) {
     const value = settings[field.name]
 
+    // A field another driver reads is not demanded of this one (`appliesTo`).
+    if (!appliesTo(spec, field, driver)) continue
+
     if (field.required && !value) {
       errors[field.name] = tv('neededToSwitchOn')
       continue
@@ -290,7 +322,12 @@ function validate(
   for (const secret of spec.secrets) {
     // Provided now, or already stored — the second is what makes a blank field
     // on an edit mean "unchanged" rather than "clear it".
-    if (secret.required && !secretsProvided.has(secret.name) && !alreadySet.has(secret.name)) {
+    if (
+      secret.required &&
+      appliesTo(spec, secret, driver) &&
+      !secretsProvided.has(secret.name) &&
+      !alreadySet.has(secret.name)
+    ) {
       errors[secret.name] = tv('neededToSwitchOn')
     }
   }
@@ -377,6 +414,25 @@ export const saveIntegration = refuseForbidden(async function saveIntegration(
     }
     const value = read(form, field.name)
     if (value !== undefined) settings[field.name] = value
+  }
+
+  /*
+    A driver that needs an acknowledgement is not saved without the tick.
+
+    Refused here rather than only marked required on the box, because the box
+    is the browser's and the rule is ours. What is recorded is who ticked it
+    and when, in the settings object the audit trigger already versions — so
+    "who switched on third-party rates" has an answer that nobody can edit.
+  */
+  const chosen = spec.drivers?.find((d) => d.value === driver)
+  if (chosen?.acknowledge) {
+    if (form.get('acknowledge') === null) {
+      return fail({ acknowledge: tv('acknowledgeRequired') }, safeEcho())
+    }
+    settings[ACKNOWLEDGEMENT_KEYS.at] = new Date().toISOString()
+    settings[ACKNOWLEDGEMENT_KEYS.byId] = session.principal.id
+    settings[ACKNOWLEDGEMENT_KEYS.byName] = session.principal.nameEn
+    settings[ACKNOWLEDGEMENT_KEYS.driver] = chosen.value
   }
 
   const provided = new Map<string, string>()

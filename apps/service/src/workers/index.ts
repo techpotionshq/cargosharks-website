@@ -78,6 +78,11 @@ export async function registerWorkers(log: {
    * evidence a prompt injection was attempted.
    */
   warn: (o: unknown, m: string) => void
+  /**
+   * And one above that: the rate feed refusing a pair, or every provider
+   * failing, is a number somebody will now have to type by hand.
+   */
+  error: (o: unknown, m: string) => void
 }): Promise<void> {
   const boss = await getBoss()
 
@@ -153,14 +158,20 @@ export async function registerWorkers(log: {
   })
 
   /*
-    The schedule for this has existed since Release One (`0 5 * * *` in
-    `queue.ts`) with no handler behind it, so the job was enqueued daily and
-    discarded. The rate feed itself is off unless `FX_SOURCE=api`, and the
-    worker answers "nothing to do" in that case rather than branching.
+    The rate feed, several times a day (`queue.ts`); a repeat run that finds
+    today's rows asks nobody. Off unless the `fx` driver is `api` or
+    `resilient`, and the worker answers "nothing to do" in that case rather
+    than branching.
+
+    The logger goes in so a refused pair or a failed provider is logged where
+    it happens, at error level, and the summary below says what was written.
   */
   await work(JOBS.fxIngest, async () => {
-    const result = await runFxRefresh()
-    log.info(result, 'fx refresh complete')
+    const result = await runFxRefresh({ log })
+    const trouble =
+      (result.refused?.length ?? 0) > 0 || (result.failed?.length ?? 0) > 0 || result.stale
+    if (trouble) log.warn(result, 'fx refresh complete, with refusals')
+    else log.info(result, 'fx refresh complete')
   })
 
   /*

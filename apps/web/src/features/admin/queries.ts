@@ -47,15 +47,21 @@ import {
   principalBranchRoles,
   principals,
   roles,
+  FX_RATE_ORDER_SQL,
+  fxFeedStatus,
+  readIntegrationRow,
+  resolveIntegration,
+  systemActor,
   withActor,
   workingCalendars,
   type Actor,
   type Tx,
 } from '@qabandi/db'
+import { integrationSpec, todayIn } from '@qabandi/core'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pageOf, pageRequest, readPage, type Page, type PageRequest } from '@/lib/paging'
 import { named } from '@/lib/named'
-import type { FxRateRow } from '@/lib/pilot/types'
+import type { FxFeedPanel, FxRateRow } from '@/lib/pilot/types'
 import {
   pilotAudit,
   pilotAuditTableCounts,
@@ -65,6 +71,7 @@ import {
   pilotChargeTypes,
   pilotDutyRates,
   pilotEngineRules,
+  pilotFxFeed,
   pilotFxRates,
   pilotMilestoneTemplates,
   pilotReferenceCounts,
@@ -913,17 +920,66 @@ export async function listFxRates(actor: Actor): Promise<FxRateRow[]> {
   if (usePilotFixtures()) return pilotFxRates()
 
   return withActor(actor, async (tx) => {
+    /*
+      Who typed a manual rate comes from the audit trail, which only a reader
+      with `admin.audit.read` can see — RLS answers null for everybody else,
+      and the screen then says when without saying who.
+    */
     const result = await tx.execute(sql`
       select distinct on (from_currency, to_currency)
              from_currency as "fromCurrency", to_currency as "toCurrency",
-             rate::text as rate, effective_on::text as "effectiveOn", source
+             rate::text as rate, effective_on::text as "effectiveOn", source,
+             taken_at as "takenAt",
+             case when source = 'manual' then (
+               select p.name_en from audit_log a join principals p on p.id = a.principal_id
+                where a.table_name = 'fx_rates' and a.row_id = fx_rates.id::text
+                order by a.at desc limit 1
+             ) end as "enteredBy"
         from fx_rates
        where effective_on <= current_date
-       order by from_currency, to_currency, effective_on desc, taken_at desc
+       order by from_currency, to_currency, ${FX_RATE_ORDER_SQL}
        limit 200
     `)
-    return result.rows as unknown as FxRateRow[]
+    return (result.rows as unknown as (FxRateRow & { takenAt: Date | string | null })[]).map(
+      (row) => ({ ...row, takenAt: row.takenAt ? new Date(row.takenAt).toISOString() : null }),
+    )
   })
+}
+
+/**
+ * Whether the rate feed is on, and whether it has stopped.
+ *
+ * The driver is read with the system actor, as `assistant/queries.ts` reads
+ * the model key: `integration_settings` answers only to
+ * `admin.integrations.write`, and a coordinator reading the reference page
+ * under their own actor would be told the feed is manual on a deployment
+ * where it runs. Only the driver leaves this function; nothing is decrypted.
+ *
+ * The staleness is read under the reader's own actor, from `fx_rates`, which
+ * every reader of the rates may see.
+ */
+export async function getFxFeedPanel(actor: Actor): Promise<FxFeedPanel> {
+  if (usePilotFixtures()) return pilotFxFeed()
+
+  const spec = integrationSpec('fx')!
+  let driver = spec.defaultDriver ?? 'manual'
+  try {
+    const row = await withActor(systemActor(), (tx) => readIntegrationRow(tx, 'fx'))
+    driver = resolveIntegration(spec, row).driver ?? driver
+  } catch {
+    // An unreadable settings row is not a configuration answer; say manual,
+    // which shows no feed warning rather than a false one.
+  }
+
+  const status = await withActor(actor, (tx) => fxFeedStatus(tx, todayIn()))
+  return {
+    driver,
+    stale:
+      driver !== 'manual' && status.stale
+        ? { ageDays: status.ageDays, pairs: status.stalePairs }
+        : null,
+    lastFetchedAt: status.lastFetchedAt?.toISOString() ?? null,
+  }
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   chargeTypes,
   customers,
   enquiries,
+  invoiceConversionDate,
   invoiceLines,
   invoices,
   locations,
@@ -30,6 +31,7 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { quoteConversionDate } from '@qabandi/core'
 import { fileStore } from '../adapters/index'
 import { FileStoreError, putUnique } from '../adapters/file-store'
 import { renderInvoiceHtml, type DocumentLocale, type InvoiceView } from './invoice'
@@ -139,6 +141,13 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       amountPaid: row.amountPaid,
       amountCredited: row.amountCredited,
       notes: row.notes,
+      /*
+        Under the system actor, inside a read the reader's actor has already
+        passed: a customer may print their invoice but not read the charge
+        lines and quotation the footnote is worked out from. Only a date
+        leaves (`invoiceConversionDate`).
+      */
+      convertedOn: await withActor(systemActor(), (sys) => invoiceConversionDate(sys, invoiceId)),
       language: row.language === 'ar' ? 'ar' : 'en',
       creditNote: row.isCreditNote
         ? { creditsSeriesNo: row.creditsSeriesNo, creditsIssuedAt: row.creditsIssuedAt }
@@ -425,6 +434,8 @@ export async function loadQuotationView(actor: Actor, quoteId: string): Promise<
       originAr: row.originAr,
       destinationAr: row.destinationAr,
       transitDays: typeof snapshot.transitDays === 'number' ? snapshot.transitDays : null,
+      // The conversion footnote's day, or null when no line was converted.
+      convertedOn: quoteConversionDate(snapshot, row.currency),
       // A live column, unlike the snapshot fields above: the covering note is
       // editable prose a coordinator revises on the draft, not a frozen part of
       // the pricing decision.

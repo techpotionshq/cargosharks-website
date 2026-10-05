@@ -70,6 +70,17 @@ export interface IntegrationField {
    * Only meaningful for `kind: 'switch'`.
    */
   readonly defaultOn?: boolean
+  /**
+   * The drivers this field belongs to, where it does not belong to every live
+   * one. Absent means all of them.
+   *
+   * The FX integration has two live drivers and only one of them takes a URL:
+   * `api` is a template somebody points at a provider, `resilient` names its
+   * two providers in code. Without this a required URL would be demanded of
+   * the driver that has no use for it, and the form would refuse to save the
+   * one choice that needs nothing configured.
+   */
+  readonly drivers?: readonly string[]
 }
 
 /**
@@ -86,6 +97,8 @@ export interface IntegrationSecret {
   readonly env: string
   readonly required?: boolean
   readonly keepOnBlank?: boolean
+  /** As `IntegrationField.drivers`. */
+  readonly drivers?: readonly string[]
 }
 
 /**
@@ -100,7 +113,32 @@ export interface IntegrationSecret {
 export interface IntegrationDriver {
   readonly value: string
   readonly live: boolean
+  /**
+   * Choosing this driver needs an administrator to tick an acknowledgement.
+   *
+   * For a driver whose output a person could mistake for something it is not
+   * — a free third-party exchange rate read as a bank's rate. The screen
+   * shows the notice and the box, the action refuses a save without the tick,
+   * and the row records who ticked it and when (`ACKNOWLEDGEMENT_KEYS`).
+   */
+  readonly acknowledge?: boolean
 }
+
+/**
+ * Where a save records the acknowledgement, inside the row's `settings`.
+ *
+ * In the row rather than a column of its own: `integration_settings` is
+ * audited, so the trigger keeps every version of these with the principal
+ * who saved it, and the screen can say "acknowledged by … on …" with no
+ * migration. Not catalogue fields — nothing resolves them, and the form never
+ * renders them as inputs.
+ */
+export const ACKNOWLEDGEMENT_KEYS = {
+  at: 'acknowledgedAt',
+  byId: 'acknowledgedById',
+  byName: 'acknowledgedByName',
+  driver: 'acknowledgedDriver',
+} as const
 
 /**
  * Which heading an integration sits under on the settings screen.
@@ -305,14 +343,26 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     group: 'finance',
     driverEnv: 'FX_SOURCE',
     defaultDriver: 'manual',
+    /*
+      Manual stays the default, deliberately, and `resilient` is one click away.
+
+      A deployment that configured nothing must keep behaving as it did: every
+      rate typed by hand. Switching a live feed on by default would put a third
+      party's number into quotations on a deployment whose administrator never
+      saw the acknowledgement the settings screen asks for. `resilient` is the
+      recommended choice once somebody has: two free, keyless providers checked
+      against each other and the Gulf pegs (`adapters/fx.ts` in the service).
+    */
     drivers: [
       { value: 'manual', live: false },
+      { value: 'resilient', live: true, acknowledge: true },
       { value: 'api', live: true },
     ],
     fields: [
       /*
         A template rather than a host, so a different provider is a
         configuration change: `{base}` and `{key}` are substituted per request.
+        Only the `api` driver reads it.
       */
       {
         name: 'url',
@@ -321,6 +371,7 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
         required: true,
         mono: true,
         placeholder: 'https://open.er-api.com/v6/latest/{base}',
+        drivers: ['api'],
       },
       /*
         Neither half of "what to fetch" is here, and neither should be.
@@ -336,7 +387,7 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
         So this integration is only ever "which feed, and with what key".
       */
     ],
-    secrets: [{ name: 'apiKey', env: 'FX_API_KEY', keepOnBlank: true }],
+    secrets: [{ name: 'apiKey', env: 'FX_API_KEY', keepOnBlank: true, drivers: ['api'] }],
     probe: true,
   },
 
@@ -708,6 +759,21 @@ export const INTEGRATION_KEYS: readonly string[] = INTEGRATIONS.map((spec) => sp
 
 export function integrationSpec(key: string): IntegrationSpec | undefined {
   return INTEGRATIONS.find((spec) => spec.key === key)
+}
+
+/**
+ * Whether a field or secret applies under the chosen driver.
+ *
+ * Only meaningful for a live driver; the caller has already asked
+ * `isLiveDriver`. Unrestricted fields apply to every driver.
+ */
+export function appliesTo(
+  spec: IntegrationSpec,
+  item: { readonly drivers?: readonly string[] },
+  driver: string | null | undefined,
+): boolean {
+  if (!item.drivers) return true
+  return item.drivers.includes(driver ?? spec.defaultDriver ?? '')
 }
 
 /** Whether the chosen driver is one that needs its fields filled in. */

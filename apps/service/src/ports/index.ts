@@ -133,9 +133,36 @@ export interface FxQuote {
   readonly source: string
 }
 
+/** A pair a source declined to answer for, and why — for the run's summary. */
+export interface FxRefusal {
+  readonly pair: string
+  readonly reason: string
+}
+
+/** What a source that checks its own answers has to say about one base. */
+export interface FxReport {
+  readonly quotes: FxQuote[]
+  readonly refused: FxRefusal[]
+  /** One line per provider asked: who answered, who failed and why. */
+  readonly providers: readonly { name: string; ok: boolean; date?: string; error?: string }[]
+}
+
 export interface FxRateSource {
   readonly key: string
   fetch(base: string, quotes: readonly string[]): Promise<FxQuote[]>
+  /**
+   * The same answer with its working shown, for a source that cross-checks.
+   *
+   * Optional, because a single feed has nothing to report beyond its quotes;
+   * the worker uses it where present so a refused pair reaches the summary
+   * rather than only a log line.
+   */
+  fetchReport?(base: string, quotes: readonly string[]): Promise<FxReport>
+  /**
+   * Every `source` value this driver writes, for "first rate of the day wins"
+   * across them. Absent means the sources in its quotes.
+   */
+  readonly sources?: readonly string[]
 }
 
 export interface CarrierMilestone {

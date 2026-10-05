@@ -252,6 +252,24 @@ describe('credit note document', () => {
     expect(html).toContain('<h1>Tax Invoice</h1>')
     expect(html).not.toContain('Credits invoice')
   })
+
+  describe('the conversion footnote', () => {
+    it('says when the rate was taken, only when a line was converted', () => {
+      expect(renderInvoiceHtml(view({ convertedOn: '2026-10-05' }), 'en')).toContain(
+        'Amounts in other currencies were converted at the rate on 05 Oct 2026.',
+      )
+      expect(renderInvoiceHtml(view({ convertedOn: '2026-10-05' }), 'ar')).toContain(
+        'حُوِّلت المبالغ بالعملات الأخرى بسعر الصرف في',
+      )
+      expect(renderInvoiceHtml(view({ convertedOn: null }), 'en')).not.toContain('converted at')
+      expect(renderInvoiceHtml(base, 'en')).not.toContain('converted at')
+    })
+
+    it('names no provider on the customer document', () => {
+      const html = renderInvoiceHtml(view({ convertedOn: '2026-10-05' }), 'en')
+      expect(html).not.toMatch(/ExchangeRate|currency-api|indicative/i)
+    })
+  })
 })
 
 /*

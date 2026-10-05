@@ -34,7 +34,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, lte } from 'drizzle-orm'
 import type { Actor } from '@qabandi/db'
 
 const APP_URL = process.env.TEST_DATABASE_URL
@@ -42,19 +42,22 @@ const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const harness = vi.hoisted(() => ({
+  /** When set, the source the worker is handed — the real resilient driver on a fake fetch. */
+  real: null as unknown,
   key: 'http',
   quotes: [] as { from: string; to: string; rate: string; source: string; effectiveOn: string }[],
   asked: [] as { base: string; quotes: readonly string[] }[],
 }))
 
 vi.mock('../adapters/index', () => ({
-  fxSource: async () => ({
-    get key() {
-      return harness.key
-    },
-    fetch: async (base: string, quotes: readonly string[]) => {
-      harness.asked.push({ base, quotes })
-      /*
+  fxSource: async () =>
+    harness.real ?? {
+      get key() {
+        return harness.key
+      },
+      fetch: async (base: string, quotes: readonly string[]) => {
+        harness.asked.push({ base, quotes })
+        /*
         Answer only for the base actually asked about.
 
         The worker calls once per distinct branch base currency, and the
@@ -62,13 +65,23 @@ vi.mock('../adapters/index', () => ({
         both would double every count below and hide which base a rate came
         from — which is the one thing these cases are now about.
       */
-      return harness.quotes.filter((q) => q.from === base)
+        return harness.quotes.filter((q) => q.from === base)
+      },
     },
-  }),
 }))
 
-const { branches, currencies, fxRates, withActor, workingCalendars } = await import('@qabandi/db')
-const { runFxRefresh } = await import('./fx-refresh')
+const { branches, currencies, fxFeedStatus, fxRateOrder, fxRates, withActor, workingCalendars } =
+  await import('@qabandi/db')
+const { runFxRefresh: refresh } = await import('./fx-refresh')
+const { resilientFxSource } = await import('../adapters/fx')
+
+/*
+  A fixed business day, far from any real one. The worker skips a base whose
+  rows for *today* already exist, and on a database where the live feed has
+  run that would be every base — so the cases name their own today.
+*/
+const TODAY = '2000-12-31'
+const runFxRefresh = () => refresh({ today: TODAY })
 
 const actor: Actor = {
   principalId: '00000000-0000-7000-8000-0000000000a1',
@@ -183,6 +196,7 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
   })
 
   beforeEach(async () => {
+    harness.real = null
     harness.key = 'http'
     harness.quotes = []
     harness.asked.length = 0
@@ -444,5 +458,196 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
       cannot be un-inserted (§5.5) and would be visible to every other test
       while it existed. The cost of the proof exceeds the value of it.
     */
+  })
+
+  /*
+    The resilient driver end to end: real adapter code, a fake fetch, a real
+    database. Dated in 2001 by the providers' own bodies, so no row here is
+    ever the "latest" rate another suite converts at.
+  */
+  describe('with the resilient driver', () => {
+    /*
+      A block of provider days of its own per run, between 2001 and 2003: a
+      re-run on the same database must not find the last run's rows on its
+      days, or "writes both directions" would see nothing to write. Thirty-day
+      blocks keep one run's history out of the next's move-guard window, and
+      the years keep every row older than any rate another suite converts at.
+    */
+    let providerDay = (parseInt(RUN, 36) % 30) * 30
+    const nextDay = () => {
+      providerDay += 1
+      return new Date(Date.UTC(2001, 0, 1) + providerDay * 86_400_000).toISOString().slice(0, 10)
+    }
+
+    /** Both providers answering for KWD and AED on `on`, with optional overrides. */
+    function answering(
+      on: string,
+      { kwdUsd = '3.234366', eur = '2.781', primaryDown = false } = {},
+    ) {
+      const stamp = new Date(`${on}T00:02:31Z`).toUTCString()
+      const usdPerKwd = Number(kwdUsd)
+      const bodies: Record<string, string> = {
+        'https://open.er-api.com/v6/latest/KWD': JSON.stringify({
+          result: 'success',
+          base_code: 'KWD',
+          time_last_update_utc: stamp,
+          rates: { KWD: 1, USD: kwdUsd, EUR: eur, AED: String(usdPerKwd * 3.6725) },
+        }).replace(/"(\d[\d.]*)"/g, '$1'),
+        'https://open.er-api.com/v6/latest/AED': JSON.stringify({
+          result: 'success',
+          base_code: 'AED',
+          time_last_update_utc: stamp,
+          rates: { AED: 1, USD: 0.272294, EUR: 0.242022, KWD: 0.084188 },
+        }),
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/kwd.json':
+          JSON.stringify({
+            date: on,
+            kwd: {
+              usd: usdPerKwd * 1.0009,
+              eur: Number(eur) * 1.0009,
+              aed: usdPerKwd * 3.6725 * 1.0009,
+            },
+          }),
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/aed.json':
+          JSON.stringify({ date: on, aed: { usd: 0.27232, eur: 0.24205, kwd: 0.08421 } }),
+      }
+      const fake = (async (input: string | URL | Request) => {
+        const url = String(input)
+        if (primaryDown && url.includes('er-api')) return new Response('down', { status: 503 })
+        const body = bodies[url]
+        return body ? new Response(body) : new Response('missing', { status: 404 })
+      }) as unknown as typeof fetch
+      harness.real = resilientFxSource({ fetch: fake, sleep: async () => {} })
+    }
+
+    const rowsOn = (on: string) =>
+      withActor(actor, (tx) =>
+        tx
+          .select({
+            from: fxRates.fromCurrency,
+            to: fxRates.toCurrency,
+            rate: fxRates.rate,
+            source: fxRates.source,
+          })
+          .from(fxRates)
+          .where(eq(fxRates.effectiveOn, on)),
+      )
+
+    it('writes both directions for both bases, dated by the provider', async () => {
+      const on = nextDay()
+      answering(on)
+      await track(['USD', 'EUR'])
+
+      const result = await runFxRefresh()
+
+      expect(result.source).toBe('resilient')
+      expect(result.refused).toEqual([])
+      expect(result.effectiveOn).toEqual([on])
+      const rows = await rowsOn(on)
+      const pair = (from: string, to: string) =>
+        rows.find((r) => r.from === from && r.to === to && r.source === 'er-api')?.rate
+      expect(pair('KWD', 'USD')).toBe('3.23436600000000')
+      expect(pair('USD', 'KWD')).toBe('0.30917960428721')
+      expect(pair('AED', 'USD')).toBe('0.27229400000000')
+      expect(pair('USD', 'AED')).toBeDefined()
+    })
+
+    it('writes nothing new on a second run the same day', async () => {
+      const on = nextDay()
+      answering(on)
+      await runFxRefresh()
+      const before = (await rowsOn(on)).length
+
+      const second = await runFxRefresh()
+
+      expect(second.written).toBe(0)
+      expect((await rowsOn(on)).length).toBe(before)
+    })
+
+    it('keeps the first provider of the day when another answers later', async () => {
+      const on = nextDay()
+      answering(on, { primaryDown: true }) // only currency-api answers at 08:00
+      await runFxRefresh()
+      answering(on) // er-api is back by 11:00
+      const second = await runFxRefresh()
+
+      expect(second.written).toBe(0)
+      const sources = new Set((await rowsOn(on)).map((r) => r.source))
+      expect([...sources]).toEqual(['currency-api'])
+    })
+
+    it('refuses a rate that moved more than 10%, and writes the rest', async () => {
+      const first = nextDay()
+      answering(first)
+      await runFxRefresh()
+
+      // EUR from 2.781 to 3.10 KWD is 11.47%, and both providers agree on it.
+      const next = nextDay()
+      answering(next, { eur: '3.10' })
+      const result = await runFxRefresh()
+
+      expect(result.refused?.find((r) => r.pair === 'KWD→EUR')?.reason).toMatch(
+        /moved 11\.47%.*limit 10%/,
+      )
+      const rows = await rowsOn(next)
+      expect(rows.some((r) => r.from === 'KWD' && r.to === 'EUR')).toBe(false)
+      expect(rows.some((r) => r.from === 'KWD' && r.to === 'USD')).toBe(true)
+    })
+
+    it('leaves a hand-entered rate for the same day alone, and readers prefer it', async () => {
+      const on = nextDay()
+      await withActor(actor, (tx) =>
+        tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'USD',
+            toCurrency: 'KWD',
+            rate: '0.30500000',
+            source: 'manual',
+            effectiveOn: on,
+          })
+          .onConflictDoNothing(),
+      )
+      answering(on)
+
+      await runFxRefresh()
+
+      const rows = (await rowsOn(on)).filter((r) => r.from === 'USD' && r.to === 'KWD')
+      expect(rows.map((r) => [r.source, r.rate]).sort()).toEqual([
+        ['er-api', '0.30917960428721'],
+        ['manual', '0.30500000000000'],
+      ])
+      // The order every reader uses: newest day, then the person over the feed.
+      const [chosen] = await withActor(actor, (tx) =>
+        tx
+          .select({ rate: fxRates.rate, source: fxRates.source })
+          .from(fxRates)
+          .where(
+            and(
+              eq(fxRates.fromCurrency, 'USD'),
+              eq(fxRates.toCurrency, 'KWD'),
+              lte(fxRates.effectiveOn, on),
+            ),
+          )
+          .orderBy(...fxRateOrder())
+          .limit(1),
+      )
+      expect(chosen).toEqual({ rate: '0.30500000000000', source: 'manual' })
+    })
+
+    it('reports the feed stale once its newest rate is more than three days old', async () => {
+      const on = nextDay()
+      answering(on)
+      await runFxRefresh()
+
+      const plus = (n: number) =>
+        new Date(Date.parse(`${on}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+      const fresh = await withActor(actor, (tx) => fxFeedStatus(tx, plus(3)))
+      const stale = await withActor(actor, (tx) => fxFeedStatus(tx, plus(4)))
+
+      expect(fresh.stalePairs).not.toContain('USD→KWD')
+      expect(stale.stalePairs).toContain('USD→KWD')
+      expect(stale.stale).toBe(true)
+    })
   })
 })

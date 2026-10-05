@@ -67,7 +67,7 @@ import {
 import { resolveCustomsFiling } from './customs'
 import { noTransmit, resolveEInvoiceTransmit } from './einvoice'
 import { resolveFileStore, unavailableFileStore } from './file-store'
-import { manualFxSource, resolveFxSource } from './fx'
+import { manualFxSource, resolveFxSource, type FxLog } from './fx'
 import { modelProviderFrom, noModel } from './model'
 import { KAPSO_DEFAULT_BASE_URL } from './whatsapp'
 
@@ -253,13 +253,14 @@ export function unconfiguredMailChannel(reason: string): NotificationChannel {
  * is a query now, and the whole point of the query is that a key pasted at
  * 09:05 works at 09:06.
  */
-export async function fxSource(log?: (o: unknown, m: string) => void): Promise<FxRateSource> {
+export async function fxSource(log?: FxLog): Promise<FxRateSource> {
   const settings = await integration('fx')
   return safely(
     'fx',
     () => manualFxSource,
-    () => resolveFxSource(settings),
-    log,
+    // The log reaches the resilient driver, which reports each refused pair.
+    () => resolveFxSource(settings, log),
+    log ? (o, m) => log.warn(o, m) : undefined,
   )
 }
 
