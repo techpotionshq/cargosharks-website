@@ -163,7 +163,7 @@ environment answers when there is no row, which is what lets mail work before
 anyone can sign in to configure mail. So `SMTP_*`, `FX_*`,
 `CARRIER_TRACKING_DRIVER` and the `DCSA_*` keys are bootstrap values here,
 not the place to manage them — the names are listed under "Integration
-settings" in `README.md`, and `pnpm doctor` prints the live list. Every one
+settings" in [`Provisioning.md`](Provisioning.md), and `pnpm doctor` prints the live list. Every one
 degrades honestly when absent.
 
 ## 5. Four things that catch people
@@ -240,7 +240,7 @@ that keeps a demo honest about what the product does.
 ```
 QABANDI_PILOT_FIXTURES=1
 QABANDI_DEMO_LOGIN=1
-QABANDI_DEMO_PASSWORD=…            # optional; unset it is `cargosharks-demo`
+QABANDI_DEMO_PASSWORD=…            # optional; unset it is `<brand key>-demo`
 BETTER_AUTH_SECRET=…               # still required — it keys the persona cookie
 BRAND=                             # leave unset: the default is CargoSharks
 ```
@@ -263,7 +263,7 @@ and three personas:
 
 | | Lands on | Holds |
 |---|---|---|
-| `operations@cargosharks.example` | `/dashboard` | every permission key |
+| `operations@<brand key>.example` | `/dashboard` | every permission key |
 | `customer@gulfsteel.example` | `/portal` | no branch, no role, no permission |
 | `agent@everbright.example` | `/agent` | no branch, no role, no permission |
 

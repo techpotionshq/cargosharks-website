@@ -30,7 +30,7 @@
  */
 
 import { dec, readInvoiceNote } from '@qabandi/core'
-import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
+import { documentBrandCss, documentRegistrationHtml, PRINT_THEME_ATTR } from './brand'
 
 interface InvoiceLineView {
   readonly descriptionEn: string
@@ -310,6 +310,7 @@ ${draft}
   <div class="entity">
     <strong>${esc(entityName)}</strong>
     ${invoice.branch.taxRegistration ? `<div class="muted">${t.trn}: ${esc(invoice.branch.taxRegistration)}</div>` : ''}
+    ${documentRegistrationHtml(locale)}
   </div>
 </div>
 

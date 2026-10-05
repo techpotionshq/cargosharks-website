@@ -576,7 +576,9 @@ export default async function DashboardPage() {
               { label: t('winRate'), value: `${overview.quotes.winRatePct}%` },
               {
                 label: t('winRateHint', { quoted: overview.quotes.sentThisMonth }),
-                value: formatByCurrency(overview.quotes.quotedValue, locale, { compact: true }),
+                // The full amount, to the currency's places. "KWD 18.3K" was a
+                // dinar figure with one decimal on a screen that promises three.
+                value: formatByCurrency(overview.quotes.quotedValue, locale),
               },
               {
                 label: t('medianResponse'),
@@ -643,7 +645,7 @@ export default async function DashboardPage() {
               data={overview.topLanes.slice(0, 6).map((lane) => ({
                 label: nameOf(lane.lane, lane.laneAr),
                 value: lane.count,
-                hint: formatMoney(lane.value, locale, { compact: true }),
+                hint: formatMoney(lane.value, locale),
               }))}
             />
           )}

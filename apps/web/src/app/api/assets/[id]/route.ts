@@ -31,13 +31,21 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { assets, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
 import { fileRefusal } from '@/lib/file-refusal'
+import { usePilotFixtures } from '@/lib/pilot/source'
 import { isUuid } from '@/lib/ids'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  // A page for a browser (an expired session following a download link), the
+  // same JSON as before for anything else.
+  if (!session) return fileRefusal(request, 'unauthenticated')
+
+  // Fixture mode has no database and no file store behind it. Without this the
+  // lookup below threw, and a person following a document link on the demo
+  // got a blank 500 instead of a page saying files are not part of it.
+  if (usePilotFixtures()) return fileRefusal(request, 'not_available')
 
   const { id } = await params
   // Not a uuid is not an asset, and used to be a 500 from the cast (A17).

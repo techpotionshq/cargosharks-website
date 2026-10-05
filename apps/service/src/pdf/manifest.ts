@@ -29,6 +29,7 @@ import {
   type DocumentLocale,
   type PlaceView,
 } from './document-kit'
+import { documentRegistrationHtml } from './brand'
 
 interface ManifestHouseView {
   readonly houseBillNumber: string | null
@@ -179,6 +180,7 @@ export function renderManifestHtml(
   <div class="entity">
     <strong>${esc(entity)}</strong>
     ${view.branch.taxRegistration ? `<div class="muted">${esc(view.branch.taxRegistration)}</div>` : ''}
+    ${documentRegistrationHtml(locale)}
   </div>
 </div>
 

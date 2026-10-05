@@ -189,10 +189,31 @@ export interface BrandContact {
  * premise is that the PDF and the screen are visibly the same company, and
  * two sources of truth is how they drift apart.
  */
+/**
+ * One registration a document prints under the letterhead: a commercial
+ * registration, a customs licence, a tax number.
+ *
+ * Label and value are separate so that an unknown number prints *nothing*
+ * rather than its label beside a dash. The line this replaced was one string,
+ * "Commercial Registration — · Customs Licence —", and it was waiting to print
+ * on every quotation and invoice until the client supplied the numbers.
+ */
+export interface BrandRegistration {
+  readonly labelEn: string
+  readonly labelAr: string
+  /** The number itself. Empty means "not supplied", and the part is left out. */
+  readonly value: string
+}
+
 export interface BrandDocuments {
-  /** Printed under the letterhead — CR number, licence, tax registration. */
-  readonly registrationLineEn: string
-  readonly registrationLineAr: string
+  /** Printed under the letterhead, each only when it has a value. */
+  readonly registrations: readonly BrandRegistration[]
+  /**
+   * Printed in the same place when no registration has a value — a demo
+   * tenant's "not a trading entity". Empty prints nothing.
+   */
+  readonly registrationNoteEn: string
+  readonly registrationNoteAr: string
   readonly footerEn: string
   readonly footerAr: string
   /** Standard trading conditions reference printed on quotations. */
@@ -200,10 +221,28 @@ export interface BrandDocuments {
   readonly tradingConditionsAr: string
 }
 
+/**
+ * The public demo's way in — `QABANDI_DEMO_LOGIN=1` prints both on the sign-in
+ * screen and prefills the address.
+ *
+ * Part of the brand because it is read as identity. The Al-Qabandi demo
+ * printed `operations@cargosharks.example` and the password
+ * `cargosharks-demo`: the supplier's name on the client's sign-in screen. Each
+ * brand now carries its own, and by default derives them from its key, so a
+ * new brand never inherits another's.
+ */
+export interface BrandDemo {
+  /** The operations persona's address. Always a reserved `.example` domain. */
+  readonly operationsEmail: string
+  /** The shared password when `QABANDI_DEMO_PASSWORD` is unset. */
+  readonly password: string
+}
+
 export interface Brand {
   readonly identity: BrandIdentity
   readonly contact: BrandContact
   readonly documents: BrandDocuments
+  readonly demo: BrandDemo
   readonly logo: BrandLogo
   readonly typography: BrandTypography
   readonly shape: BrandShape

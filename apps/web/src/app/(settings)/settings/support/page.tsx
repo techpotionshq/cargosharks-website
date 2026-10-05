@@ -27,7 +27,11 @@ import { formatDateTime, formatRelative } from '@/lib/format'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
-import { getOpenSupportSessions, supportHistory } from '@/features/support/queries'
+import {
+  getOpenSupportSessions,
+  supportEngineers,
+  supportHistory,
+} from '@/features/support/queries'
 import { SupportGrantDialog } from '@/features/support/ui/grant-dialog'
 import { revokeSupportAccess } from '@/features/support/actions'
 
@@ -53,9 +57,10 @@ export default async function SupportAccessPage() {
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
-  const [open, history] = await Promise.all([
+  const [open, history, engineers] = await Promise.all([
     getOpenSupportSessions(session.actor),
     supportHistory(session.actor),
+    supportEngineers(session.actor),
   ])
 
   return (
@@ -106,7 +111,16 @@ export default async function SupportAccessPage() {
 
       {history.length === 0 ? (
         <div className="rounded-card border border-line bg-surface">
-          <EmptyState icon="audit" title={t('emptyTitle')} description={t('emptyHint')} />
+          <EmptyState
+            icon="audit"
+            title={t('emptyTitle')}
+            /*
+              Honest about the button. `SupportGrantDialog` draws nothing when
+              no support account exists here, and the empty state still said
+              "you grant it here" above no way to do it.
+            */
+            description={engineers.length > 0 ? t('emptyHint') : t('emptyHintNoEngineers')}
+          />
         </div>
       ) : (
         <TableShell>

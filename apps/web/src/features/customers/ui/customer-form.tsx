@@ -15,6 +15,7 @@ import { useFormStatus } from 'react-dom'
 import { usePathname, useRouter } from 'next/navigation'
 import type { CustomerFormState } from '../actions'
 import { FOCUS_RING } from '@/ui/control'
+import { useFieldValidity } from '@/ui/validity'
 
 export interface BranchOption {
   readonly id: string
@@ -86,7 +87,7 @@ export interface CustomerDefaults {
   readonly defaultMarginValue?: string | null
 }
 
-const FIELD = `h-10 w-full rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink transition-colors focus:bg-surface ${FOCUS_RING}`
+const FIELD = `h-10 w-full rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink transition-colors focus:bg-surface aria-invalid:border-critical aria-invalid:bg-critical-soft/40 ${FOCUS_RING}`
 const FIELD_ERROR = 'border-critical bg-critical-soft/40'
 
 function Field({
@@ -112,16 +113,20 @@ function Field({
         : span === 4
           ? 'sm:col-span-4'
           : 'sm:col-span-3'
+  // The app's own words for the browser's refusal, as the form kit's `Field`
+  // does (`ui/validity.ts`).
+  const validity = useFieldValidity<HTMLDivElement>()
+  const shown = validity.message ?? error
 
   return (
-    <div className={`col-span-12 ${spanClass}`}>
+    <div ref={validity.ref} data-qb-field="" className={`col-span-12 ${spanClass}`}>
       <label htmlFor={name} className="eyebrow mb-1.5 block">
         {label}
       </label>
       {children}
-      {error ? (
+      {shown ? (
         <p role="alert" className="mt-1 text-caption font-medium text-critical">
-          {error}
+          {shown}
         </p>
       ) : hint ? (
         <p className="mt-1 text-caption text-ink-subtle">{hint}</p>

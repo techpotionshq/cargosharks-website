@@ -16,7 +16,7 @@
  * Chromium is Chromium, so the tokens resolve identically here.
  */
 
-import { brandCss, resolveBrand } from '@qabandi/brand'
+import { brandCss, registrationLine, resolveBrand, type Brand } from '@qabandi/brand'
 
 /**
  * Print vocabulary, bound to the brand vocabulary.
@@ -70,6 +70,29 @@ let cached: string | undefined
  */
 export function documentBrandCss(): string {
   return (cached ??= `${brandCss(resolveBrand())}\n${PRINT_ALIASES}`)
+}
+
+let brand: Brand | undefined
+
+/**
+ * The operator's registrations as the letterhead prints them, already
+ * escaped, inside its own line — or an empty string, so a template can drop it
+ * in unconditionally.
+ *
+ * Empty is the common case today and the point of it: Al-Qabandi has not
+ * supplied its commercial registration or customs licence, and a letterhead
+ * that printed the labels beside a dash told every customer that a number was
+ * missing. Deferred for the same reason as the CSS above.
+ */
+export function documentRegistrationHtml(locale: 'en' | 'ar'): string {
+  const line = registrationLine((brand ??= resolveBrand()).documents, locale)
+  if (!line) return ''
+  const escaped = line
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+  return `<div class="muted">${escaped}</div>`
 }
 
 /**

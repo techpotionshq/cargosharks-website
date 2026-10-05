@@ -76,8 +76,9 @@ export const cargosharksBrand = defineBrand({
     // Deliberately empty of registration numbers. A demo tenant that prints a
     // plausible-looking commercial registration on a quotation is putting a
     // false registration into the world, and somebody will screenshot it.
-    registrationLineEn: 'Demonstration environment — not a trading entity',
-    registrationLineAr: 'بيئة عرض توضيحي — ليست كياناً تجارياً',
+    registrations: [],
+    registrationNoteEn: 'Demonstration environment — not a trading entity',
+    registrationNoteAr: 'بيئة عرض توضيحي — ليست كياناً تجارياً',
     footerEn: 'All business is transacted under our Standard Trading Conditions.',
     footerAr: 'تخضع جميع المعاملات لشروط التعامل القياسية لدينا.',
     tradingConditionsEn:

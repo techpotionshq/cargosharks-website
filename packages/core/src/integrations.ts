@@ -833,3 +833,52 @@ export function pollRunsPerHour(cron: string): number | null {
 
   return null
 }
+
+/**
+ * A cron schedule in a shape a screen can put into words.
+ *
+ * The integrations board printed the raw five-field expression (every thirty
+ * minutes, written as a step on the minute field) beside "Schedule", which is
+ * a sentence only to whoever wrote it. The shapes below are the ones a
+ * deployment actually sets; anything else is `null`, and the screen shows the
+ * expression itself rather than guess at a sentence that might be wrong.
+ */
+export type CronSchedule =
+  | { readonly kind: 'every_minute' }
+  | { readonly kind: 'every_minutes'; readonly minutes: number }
+  | { readonly kind: 'hourly_at'; readonly minutes: readonly number[] }
+  | { readonly kind: 'every_hours'; readonly hours: number; readonly minute: number }
+  | { readonly kind: 'daily_at'; readonly hour: number; readonly minute: number }
+
+export function describeCron(cron: string | null | undefined): CronSchedule | null {
+  const fields = (cron ?? '').trim().split(/\s+/)
+  if (fields.length !== 5) return null
+  const [minute, hour, dom, month, dow] = fields as [string, string, string, string, string]
+  // Day, month and weekday restrictions are not put into words; say nothing.
+  if (dom !== '*' || month !== '*' || dow !== '*') return null
+
+  const fixedMinutes = /^\d+(,\d+)*$/.test(minute) ? minute.split(',').map(Number) : null
+  if (fixedMinutes && fixedMinutes.some((m) => m > 59)) return null
+
+  if (hour === '*') {
+    if (minute === '*') return { kind: 'every_minute' }
+    const step = /^\*\/(\d+)$/.exec(minute)
+    if (step) {
+      const n = Number(step[1])
+      if (n === 1) return { kind: 'every_minute' }
+      return n > 0 && n <= 59 ? { kind: 'every_minutes', minutes: n } : null
+    }
+    return fixedMinutes ? { kind: 'hourly_at', minutes: fixedMinutes } : null
+  }
+
+  if (!fixedMinutes || fixedMinutes.length !== 1) return null
+  const hourStep = /^\*\/(\d+)$/.exec(hour)
+  if (hourStep) {
+    const n = Number(hourStep[1])
+    return n > 0 && n <= 23 ? { kind: 'every_hours', hours: n, minute: fixedMinutes[0]! } : null
+  }
+  if (/^\d+$/.test(hour) && Number(hour) <= 23) {
+    return { kind: 'daily_at', hour: Number(hour), minute: fixedMinutes[0]! }
+  }
+  return null
+}

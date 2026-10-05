@@ -36,6 +36,8 @@ import { withActor, type Actor } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotOptions } from '@/lib/pilot/fixtures'
 import { named } from '@/lib/named'
+import en from '../../messages/en.json'
+import ar from '../../messages/ar.json'
 
 export interface Choice {
   readonly value: string
@@ -97,6 +99,59 @@ const EMPTY: ReferenceOptions = {
  * still holds across every dialog on one page.
  */
 export const loadOptions = cache(
+  async (actor: Actor, locale: 'en' | 'ar' = 'en'): Promise<ReferenceOptions> =>
+    withGroupNames(await loadRaw(actor, locale), locale),
+)
+
+/*
+  The `<optgroup>` headings, in words.
+
+  A group is the row's own category column — `freight`, `broker`,
+  `transport`, `high` — and it printed as the heading of each block of
+  options, in English and in snake_case even on an Arabic screen. The words
+  already exist in the catalogues the reference screens use, so they are read
+  from there rather than written a second time. Read from the files directly
+  rather than through `getTranslations`, because this runs inside a cached
+  query helper that tests call with no request in scope. A code with no word
+  stays as it is, which is what a country code under the ports wants.
+*/
+type Words = Record<string, string>
+const GROUP_WORDS: Record<
+  'en' | 'ar',
+  { charge: Words; document: Words; partner: Words; severity: Words }
+> = {
+  en: {
+    charge: en.reference.categories,
+    document: en.documents.categories,
+    partner: en.partners.types,
+    severity: en.exceptions.severities,
+  },
+  ar: {
+    charge: ar.reference.categories,
+    document: ar.documents.categories,
+    partner: ar.partners.types,
+    severity: ar.exceptions.severities,
+  },
+}
+
+function groupsNamed(list: readonly Choice[], words: Words): readonly Choice[] {
+  return list.map((choice) =>
+    choice.group && words[choice.group] ? { ...choice, group: words[choice.group] } : choice,
+  )
+}
+
+export function withGroupNames(options: ReferenceOptions, locale: 'en' | 'ar'): ReferenceOptions {
+  const words = GROUP_WORDS[locale]
+  return {
+    ...options,
+    chargeTypes: groupsNamed(options.chargeTypes, words.charge),
+    documentTypes: groupsNamed(options.documentTypes, words.document),
+    partners: groupsNamed(options.partners, words.partner),
+    exceptionCodes: groupsNamed(options.exceptionCodes, words.severity),
+  }
+}
+
+const loadRaw = cache(
   async (actor: Actor, locale: 'en' | 'ar' = 'en'): Promise<ReferenceOptions> => {
     /*
       The `list()` normalisation below stays behind the branch. It exists only
@@ -163,26 +218,35 @@ export const loadOptions = cache(
                             order by code) v
               from container_types where is_active
           ),
+          /*
+            Charge types, document types, exception codes and milestones are
+            labelled by name alone. Their codes are snake_case keys the rules
+            and templates match on (ocean_freight, bill_of_lading), not
+            words an operator says, and "ocean_freight — Ocean Freight" made
+            every one of these dropdowns read like a configuration file. The
+            codes that are industry vocabulary — UN/LOCODE, Incoterms, ISO
+            currencies, container sizes, a customer's own code — stay.
+          */
           ch as (
             select json_agg(json_build_object('value', id,
-                                              'label', key || ' — ' || ${name},
+                                              'label', ${name},
                                               'group', category) order by sort_order, key) v
               from charge_types where is_active
           ),
           dt as (
             select json_agg(json_build_object('value', id,
-                                              'label', code || ' — ' || ${name},
+                                              'label', ${name},
                                               'group', category) order by code) v
               from document_types where is_active
           ),
           ec as (
             select json_agg(json_build_object('value', id,
-                                              'label', code || ' — ' || ${name},
+                                              'label', ${name},
                                               'group', default_severity) order by code) v
               from exception_codes where is_active
           ),
           mt as (
-            select json_agg(json_build_object('value', code, 'label', code || ' — ' || ${name})
+            select json_agg(json_build_object('value', code, 'label', ${name})
                             order by code) v
               from (select distinct on (code) code, name_en, name_ar from milestone_templates
                      where is_active order by code) t

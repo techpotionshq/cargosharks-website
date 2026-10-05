@@ -22,6 +22,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   INTEGRATIONS,
+  describeCron,
   INTEGRATION_KEYS,
   integrationEnvKeys,
   integrationSpec,
@@ -210,5 +211,23 @@ describe('the integration catalogue', () => {
     it('over-estimates rather than under-estimates a restricted hour field', () => {
       expect(pollRunsPerHour('*/10 9-17 * * *')).toBe(6)
     })
+  })
+})
+
+describe('describeCron', () => {
+  it('puts the shapes a deployment sets into a structure a screen can word', () => {
+    expect(describeCron('*/30 * * * *')).toEqual({ kind: 'every_minutes', minutes: 30 })
+    expect(describeCron('* * * * *')).toEqual({ kind: 'every_minute' })
+    expect(describeCron('30 * * * *')).toEqual({ kind: 'hourly_at', minutes: [30] })
+    expect(describeCron('0,30 * * * *')).toEqual({ kind: 'hourly_at', minutes: [0, 30] })
+    expect(describeCron('15 */6 * * *')).toEqual({ kind: 'every_hours', hours: 6, minute: 15 })
+    expect(describeCron('5 2 * * *')).toEqual({ kind: 'daily_at', hour: 2, minute: 5 })
+  })
+
+  it('says nothing about a shape it would have to guess at', () => {
+    expect(describeCron('0 9 * * 1-5')).toBeNull()
+    expect(describeCron('not a cron')).toBeNull()
+    expect(describeCron(null)).toBeNull()
+    expect(describeCron('75 * * * *')).toBeNull()
   })
 })

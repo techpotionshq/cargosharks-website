@@ -36,3 +36,44 @@ export function isWhatsAppWindowClosed(error: string | null | undefined): boolea
 export function deliveryRefusal(error: string | null | undefined): DeliveryRefusal {
   return isWhatsAppWindowClosed(error) ? 'whatsapp_window' : 'other'
 }
+
+/**
+ * What an integration's last failure means, in terms a screen can translate.
+ *
+ * The integrations board printed the provider's own sentence — "Maersk
+ * track-and-trace returned 401 — consumer key rejected" — as the whole
+ * explanation, in English, on the Arabic screen too. The kinds below are the
+ * ones with different fixes: a rejected key is the administrator's to change,
+ * an unreachable host or an outage is not. The provider's words stay
+ * available to the screen as detail; they are no longer the headline.
+ */
+export type IntegrationFailure =
+  | 'credentials'
+  | 'not_found'
+  | 'rate_limited'
+  | 'unreachable'
+  | 'certificate'
+  | 'provider_down'
+  | 'other'
+
+const FAILURE_PATTERNS: readonly (readonly [IntegrationFailure, RegExp])[] = [
+  ['certificate', /certificate|self[- ]signed|\bTLS\b|\bSSL\b|CERT_/i],
+  [
+    'credentials',
+    /\b40[13]\b|unauthori[sz]ed|forbidden|authenticat|invalid (?:api )?key|key (?:was )?rejected|rejected key|bad credentials|wrong password|access denied|\bEAUTH\b|\b535\b/i,
+  ],
+  ['rate_limited', /\b429\b|rate[- ]?limit|too many requests|quota/i],
+  ['not_found', /\b404\b|not found/i],
+  [
+    'unreachable',
+    /timed? ?out|timeout|ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|unreachable|network|getaddrinfo|socket hang up/i,
+  ],
+  ['provider_down', /\b5\d\d\b|service unavailable|bad gateway|internal server error/i],
+]
+
+/** The kind an integration's recorded failure reads as. */
+export function integrationFailure(error: string | null | undefined): IntegrationFailure {
+  if (!error) return 'other'
+  for (const [kind, pattern] of FAILURE_PATTERNS) if (pattern.test(error)) return kind
+  return 'other'
+}

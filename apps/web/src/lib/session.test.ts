@@ -31,6 +31,7 @@
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { resolveBrand } from '@qabandi/brand'
 import type { Actor } from '@qabandi/db'
 
 const APP_URL = process.env.TEST_DATABASE_URL
@@ -412,7 +413,7 @@ describe.skipIf(!enabled)('resolving a session', () => {
 
       const session = await getSession()
 
-      expect(session?.principal.email).toBe('operations@cargosharks.example')
+      expect(session?.principal.email).toBe(resolveBrand().demo.operationsEmail)
       expect(session?.actor.branchIds).toHaveLength(2)
     })
 

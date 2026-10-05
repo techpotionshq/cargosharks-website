@@ -40,6 +40,7 @@ export * from './thread-sides'
 export * from './provider-errors'
 export * from './invoice-note'
 export * from './fx-guard'
+export * from './overdue'
 
 /**
  * `./import` is deliberately *not* re-exported here.

@@ -45,7 +45,8 @@ import { Panel } from '@/ui/panel'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { MoreMenu } from '@/ui/menu'
-import { dec, readInvoiceNote } from '@qabandi/core'
+import { dec, isInvoiceOverdue, readInvoiceNote } from '@qabandi/core'
+import { todayIn } from '@/lib/time'
 
 export async function generateMetadata({
   params,
@@ -100,11 +101,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const balance = owed.toFixed()
   const owing = owed.gt(0)
   const isDraft = invoice.status === 'draft'
-  // Owed by somebody: a credited or voided invoice keeps a balance on paper
-  // and is overdue for nobody.
+  // The register's rule (`core`): owed, past its due day in Kuwait, something
+  // left on it. A credited or voided invoice keeps a balance on paper and is
+  // overdue for nobody. This compared the due date as an instant, so an
+  // invoice due today read overdue here and on time in the register.
+  const overdue = isInvoiceOverdue({ ...invoice, balance: owed }, todayIn())
+  // Still collectable at all — what offers "record a payment" below.
   const payable = invoice.status === 'issued' || invoice.status === 'part_paid'
-  const overdue =
-    payable && owing && invoice.dueOn !== null && new Date(invoice.dueOn).getTime() < Date.now()
   // Built here rather than inline: `check-links.mjs` reads an interpolated
   // href only up to its first `${`.
   const pdf = `/api/invoices/${invoice.id}/pdf`
