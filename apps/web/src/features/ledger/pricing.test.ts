@@ -428,6 +428,58 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       OMR, on a day just before this suite's readiness date, so no other
       suite ever converts at either row.
     */
+    /*
+      Run 6 priced in October on a January rate, and only the customer's
+      footnote said so. JPY, on days no other suite writes, with a readiness
+      day in the past so the rate pricing takes is measured against that day.
+    */
+    it('holds a draft converted at a rate more than a week old, and names it', async () => {
+      const on = await lane()
+      const ready = '2026-03-01'
+      const valid = {
+        validFrom: '2026-01-01',
+        validTo: '2026-12-31',
+        validity: '[2026-01-01,2026-12-31)',
+      }
+      const stale = await enquiry(on, { readyOn: ready })
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'JPY',
+            toCurrency: 'KWD',
+            rate: '0.00200000',
+            source: 'manual',
+            effectiveOn: '2026-02-01',
+          })
+          .onConflictDoNothing(),
+      )
+      await card(
+        on,
+        'sell',
+        [{ chargeTypeId: documentation, basis: 'flat', rate: '10000', currency: 'JPY' }],
+        { currency: 'JPY', ...valid },
+      )
+
+      await priceEnquiry({}, form({ enquiryId: stale }))
+
+      const snapshot = (await quoteFor(stale))!.snapshot as {
+        review: { needed: boolean; concerns: Record<string, unknown>[] }
+      }
+      expect(snapshot.review.needed).toBe(true)
+      expect(snapshot.review.concerns.filter((c) => c.kind === 'stale_rate')).toEqual([
+        { kind: 'stale_rate', currency: 'JPY', effectiveOn: '2026-02-01', ageDays: 28 },
+      ])
+
+      // A rate within the week is not stale.
+      const fresh = await enquiry(on, { readyOn: '2026-02-05' })
+      await priceEnquiry({}, form({ enquiryId: fresh }))
+      const freshSnapshot = (await quoteFor(fresh))!.snapshot as {
+        review: { concerns: Record<string, unknown>[] }
+      }
+      expect(freshSnapshot.review.concerns.filter((c) => c.kind === 'stale_rate')).toEqual([])
+    })
+
     it('prices at a hand-entered rate over the feed on the same day', async () => {
       const on = await lane()
       const id = await enquiry(on)

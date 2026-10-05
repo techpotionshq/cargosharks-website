@@ -1883,7 +1883,8 @@
     "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it.",
     "customerReason": "Customer's reason for declining",
     "reviewNewerReply": "{partner} replied on {on} with {total}, newer than the rate card this draft was costed on. Make that reply the rate card, or check the older rate still stands, then price again.",
-    "reviewNewerReplyNoTotal": "{partner} replied on {on}, after the rate card this draft was costed on. Check the reply before sending."
+    "reviewNewerReplyNoTotal": "{partner} replied on {on}, after the rate card this draft was costed on. Check the reply before sending.",
+    "reviewStaleRate": "{currency} was converted at a rate from {on}, {days} days old. Check the rate on the reference page, or turn on the daily exchange-rate feed, then price again."
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",

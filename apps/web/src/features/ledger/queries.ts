@@ -680,6 +680,8 @@ export interface QuoteDetail {
           quotedCurrency: string | null
           respondedOn: string
         }
+      /** A line converted at a rate older than `STALE_RATE_DAYS` (run 6). */
+      | { kind: 'stale_rate'; currency: string; effectiveOn: string; ageDays: number }
     )[]
   } | null
   /** The concerns' charge names in the reader's language, by key. */

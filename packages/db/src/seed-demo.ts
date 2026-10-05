@@ -45,7 +45,7 @@
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { D, money, netPosition } from '@qabandi/core'
+import { D, money, netPosition, todayIn } from '@qabandi/core'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
@@ -983,27 +983,35 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
   // demo enquiry so the newest-on-or-before lookup always finds them, under a
   // source of their own so a feed's or an administrator's rate for the same
   // day is a separate row. Administrators correct them on /reference.
+  const demoRates = [
+    ['USD', 'KWD', '0.30700000'],
+    ['EUR', 'KWD', '0.33300000'],
+    ['GBP', 'KWD', '0.39000000'],
+    ['AED', 'KWD', '0.08360000'],
+    ['CNY', 'KWD', '0.04250000'],
+    ['USD', 'AED', '3.67250000'],
+    ['EUR', 'AED', '3.98000000'],
+    ['KWD', 'AED', '11.96000000'],
+  ] as const
+  /*
+    Twice: on 1 January, so an enquiry whose readiness day is in the past still
+    finds a rate on or before it, and again on the day the demo is loaded, so
+    an enquiry priced today converts at today's row. With the January row
+    alone every demo quotation was footnoted "converted at the rate on 01 Jan
+    2026", and pricing now holds a draft whose rate is more than a week old.
+  */
   await tx
     .insert(fxRates)
     .values(
-      (
-        [
-          ['USD', 'KWD', '0.30700000'],
-          ['EUR', 'KWD', '0.33300000'],
-          ['GBP', 'KWD', '0.39000000'],
-          ['AED', 'KWD', '0.08360000'],
-          ['CNY', 'KWD', '0.04250000'],
-          ['USD', 'AED', '3.67250000'],
-          ['EUR', 'AED', '3.98000000'],
-          ['KWD', 'AED', '11.96000000'],
-        ] as const
-      ).map(([fromCurrency, toCurrency, rate]) => ({
-        fromCurrency,
-        toCurrency,
-        rate,
-        source: 'seed-demo',
-        effectiveOn: '2026-01-01',
-      })),
+      ['2026-01-01', todayIn()].flatMap((effectiveOn) =>
+        demoRates.map(([fromCurrency, toCurrency, rate]) => ({
+          fromCurrency,
+          toCurrency,
+          rate,
+          source: 'seed-demo',
+          effectiveOn,
+        })),
+      ),
     )
     .onConflictDoNothing()
 
