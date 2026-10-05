@@ -134,10 +134,31 @@ window.__ann = (() => {
       const dh = document.documentElement.scrollHeight;
       tx = Math.min(0, Math.max(vw - sc * vw, tx));
       ty = Math.min(scrollY, Math.max(scrollY + vh - sc * dh, ty));
+      // Bring the column headers along when the zoom leaves them above the
+      // frame. A register's THead sticks inside TableShell's own scroll box,
+      // not to the page, so a zoom centred on a row far down a long table
+      // (short 04: the story's shipment is row 10 of 11) shows rows with no
+      // labels. The header slides down with the zoom to the top of the frame,
+      // as a page-sticky header would, and never over the row being pointed at.
+      const head = target && target.closest('table') && target.closest('table').querySelector(':scope > thead');
+      const row = target && target.closest('tr');
+      if (head && row && !head.contains(target)) {
+        // Measured before the body moves: these are untransformed page positions.
+        const hr = head.getBoundingClientRect(), rr = row.getBoundingClientRect();
+        const hTop = hr.top + scrollY, rTop = rr.top + scrollY;
+        const screenTop = ty + sc * hTop - scrollY;
+        const d = Math.min((0 - screenTop) / sc, rTop - hr.height - hTop);
+        if (screenTop < 0 && d > 0) {
+          head.style.transition = 'transform ' + ms + 'ms cubic-bezier(.45,0,.2,1)';
+          head.style.transform = 'translateY(' + d + 'px)';
+          window.__slidHead = head;
+        }
+      }
       b.style.transformOrigin = '0 0'; b.style.transition = 'transform ' + ms + 'ms cubic-bezier(.45,0,.2,1)';
       b.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + sc + ')';
     },
     unzoom(ms) {
+      const h = window.__slidHead; if (h) { h.style.transition = 'transform ' + ms + 'ms cubic-bezier(.45,0,.2,1)'; h.style.transform = ''; window.__slidHead = null; }
       (window.__pinned || []).forEach((e) => { e.style.opacity = ''; }); window.__pinned = null;
       const b = document.body; b.style.transition = 'transform ' + ms + 'ms cubic-bezier(.45,0,.2,1)'; b.style.transform = 'none';
     },
