@@ -19,10 +19,16 @@ export function AcceptRateButton({
   rateRequestId,
   enquiryId,
   label,
+  supersedeLabel,
 }: {
   readonly rateRequestId: string
   readonly enquiryId: string
   readonly label: string
+  /**
+   * The second button, offered when the agent's older card is in the way (R3).
+   * A renewal passes none: it is clamped to start where the old card ends.
+   */
+  readonly supersedeLabel?: string
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(acceptRateReply, {})
 
@@ -37,6 +43,20 @@ export function AcceptRateButton({
       </form>
       {state.message ? (
         <span className="max-w-xs text-end text-micro text-caution">{state.message}</span>
+      ) : null}
+      {/*
+        Only after the refusal has named the older card and its date: the
+        person replacing a live rate has just been told which one it is.
+      */}
+      {supersedeLabel && state.values?.canSupersede === '1' ? (
+        <form action={action}>
+          <input type="hidden" name="rateRequestId" value={rateRequestId} />
+          <input type="hidden" name="enquiryId" value={enquiryId} />
+          <input type="hidden" name="supersede" value="1" />
+          <Button type="submit" variant="secondary" size="sm" icon="check" disabled={pending}>
+            {supersedeLabel}
+          </Button>
+        </form>
       ) : null}
     </div>
   )

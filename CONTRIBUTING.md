@@ -27,12 +27,30 @@ QABANDI_PILOT_FIXTURES=1 pnpm dev     # web on :3000
 ```
 
 Twenty jobs at varied stages, a live customs hold, a demurrage clock that has
-already written its own charge line. It is a subset — the registers that still
-want a database are listed as `NEEDS_DATABASE` in
-`apps/web/e2e/support/harness.ts`, and `pnpm db:seed-demo` is the full
-instance. Read [the parts worth reading
-first](README.md#the-parts-worth-reading-first) with the screens open next to
-them; the domain makes far more sense that way round.
+already written its own charge line. Every screen renders on it: `NEEDS_DATABASE` in
+`apps/web/e2e/support/harness.ts` is empty, and a test fails if an entry is
+added that is not true. `pnpm db:seed-demo` is the full instance. Read [the
+parts worth reading first](#the-parts-worth-reading-first) with the screens open
+next to them; the domain makes far more sense that way round.
+
+### The parts worth reading first
+
+- **`packages/db/src/actor.ts`**: every request opens one transaction and
+  stamps the acting principal into transaction-local settings. The third
+  argument to `set_config` being `true` is the most important detail in the
+  repository: it is what keeps this safe behind PgBouncer in transaction
+  pooling.
+- **`packages/db/migrations/0004_rls.sql`**: the first policies, and the four
+  scoping shapes every later migration follows (branch-scoped, job-derived,
+  group-shared, config). Another branch's job is *not found*, because the row
+  is not visible to the query at all.
+- **`packages/db/migrations/0003_audit.sql`**: one audit trigger function. A
+  table added since attaches its own with `select app.attach_audit('<table>')`,
+  and `pnpm test:db` fails if it did not. `UPDATE` and `DELETE` on `audit_log`
+  are revoked from every role.
+- **`packages/core/`**: the engines. Charge calculations, one clock behind
+  demurrage, detention and storage, and one working-calendar function behind
+  every SLA and ageing rule. No database, and the tests run in seconds.
 
 ---
 
@@ -131,7 +149,7 @@ templates, working calendars — is **seed rows, not code** (FR-AD-03).
 
 ## Conventions that are load-bearing
 
-The full list is in [the README](README.md#conventions-that-are-load-bearing).
+The full list is under "Non-negotiables" in [`CLAUDE.md`](CLAUDE.md).
 The four that cause real bugs when forgotten:
 
 - **Money is decimal, always.** `numeric(19,6)` in the database, `Decimal` in

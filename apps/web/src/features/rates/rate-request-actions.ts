@@ -123,12 +123,18 @@ export const acceptRateReply = refuseForbidden(async function acceptRateReply(
 
   const rateRequestId = String(form.get('rateRequestId') ?? '').trim()
   const enquiryId = String(form.get('enquiryId') ?? '').trim()
+  /*
+    Sent only by the second button, shown after an `overlaps_card` refusal
+    named the card it would replace (R3). Never a default: replacing a live
+    rate is a decision somebody makes having been told what it replaces.
+  */
+  const supersede = form.get('supersede') === '1'
   if (!rateRequestId) return failWith(tv('rateRequestMissing'))
 
   let result: Awaited<ReturnType<typeof promoteRateReply>>
   try {
     result = await withActor(session.actor, (tx) =>
-      promoteRateReply(tx, rateRequestId, session.principal.id),
+      promoteRateReply(tx, rateRequestId, session.principal.id, { supersede }),
     )
   } catch (error) {
     /*
@@ -144,7 +150,13 @@ export const acceptRateReply = refuseForbidden(async function acceptRateReply(
     The code, not `result.message`. That sentence is English and is kept for
     the service's sweep and its logs; a coordinator reads the catalogue's.
   */
-  if (!result.ok) return failWith(refusal(tv, result.reason, result.values ?? {}))
+  if (!result.ok) {
+    const message = refusal(tv, result.reason, result.values ?? {})
+    // The refusal a person can answer: the button offers the replacement.
+    return result.reason === 'overlaps_card'
+      ? failWith(message, { canSupersede: '1' })
+      : failWith(message)
+  }
 
   if (enquiryId) revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/rates')

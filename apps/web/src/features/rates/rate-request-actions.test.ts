@@ -86,9 +86,9 @@ async function makeEnquiry(): Promise<string> {
 /**
  * A fresh agent, with a random id every call.
  *
- * The `rate_cards` no-overlap constraint spans a partner's whole history for a
- * lane, superseded rows included — so a card-writing test that reused a fixed
- * partner would collide with the card its own prior run left behind. A new
+ * The `rate_cards` no-overlap constraint spans a partner's live cards for a
+ * lane — so a card-writing test that reused a fixed partner would collide with
+ * the card its own prior run left behind. A new
  * partner each time keeps the exclusion key clear across runs.
  */
 async function makeAgent(): Promise<string> {
@@ -436,7 +436,59 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
     const state = await acceptRateReply({}, form(second))
 
     expect(state.message).toBe('ratesValidation.promoteOverlapsCard:{"validFrom":"2040-06-01"}')
+    // The refusal offers the replacement rather than leaving a dead end (R3).
+    expect(state.values).toEqual({ canSupersede: '1' })
     expect(await cardsOf(agent)).toHaveLength(1)
+  })
+
+  /*
+    R3, live run 5: RTMAG's newer reply on a lane it already had a card for
+    from the same day was refused "would overlap", and pricing went on using
+    the old card. Asked to, the new reply now supersedes it: the old card is
+    kept, with its window, and points at the card that replaced it.
+  */
+  it('replaces the agent’s card from the same date when asked to', async () => {
+    const agent = await makeAgent()
+    const first = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2042-06-01' })] },
+      agent,
+    )
+    await acceptRateReply({}, form(first))
+    const second = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2042-06-01', rate: '1450' })] },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form({ ...second, supersede: '1' }))
+
+    expect(state.message).toBeUndefined()
+    const cards = await withActor(bothBranchesActor, (tx) =>
+      tx
+        .select({
+          id: rateCards.id,
+          validFrom: rateCards.validFrom,
+          validTo: rateCards.validTo,
+          supersededById: rateCards.supersededById,
+        })
+        .from(rateCards)
+        .where(eq(rateCards.partnerId, agent))
+        .orderBy(rateCards.createdAt),
+    )
+    expect(cards).toHaveLength(2)
+    const [old, replacement] = cards
+    // Nothing deleted, nothing narrowed: the old card is history, pointing on.
+    expect(old!.validFrom).toBe('2042-06-01')
+    expect(old!.supersededById).toBe(replacement!.id)
+    expect(replacement!.supersededById).toBeNull()
+    const [request] = await withActor(bothBranchesActor, (tx) =>
+      tx
+        .select({ status: rateRequests.status, rateCardId: rateRequests.rateCardId })
+        .from(rateRequests)
+        .where(eq(rateRequests.id, second.rateRequestId)),
+    )
+    expect(request).toEqual({ status: 'accepted', rateCardId: replacement!.id })
   })
 
   /** A reply that priced another lane is not this enquiry's rate (S14). */

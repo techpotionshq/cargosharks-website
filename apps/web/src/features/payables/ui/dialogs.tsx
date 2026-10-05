@@ -474,10 +474,16 @@ export async function BillDecisionDialog({
   billId,
   action,
   needsReview,
+  unconfirmedTotal,
 }: {
   readonly billId: string
   readonly action: 'approve' | 'dispute' | 'void'
   readonly needsReview?: boolean
+  /**
+   * The bill's total, formatted, where it was summed from the lines and
+   * awaits confirmation (R2): approving then asks for it explicitly.
+   */
+  readonly unconfirmedTotal?: string | null
 }) {
   const session = await requireSession()
   const permission = action === 'approve' ? 'payable.approve' : 'payable.record'
@@ -498,6 +504,16 @@ export async function BillDecisionDialog({
             span: 12,
             hint: t('acceptVarianceHint'),
           },
+        ] as FieldSpec[])
+      : []),
+    ...(action === 'approve' && unconfirmedTotal
+      ? ([
+          {
+            kind: 'note',
+            text: t('totalFromLinesWarning', { total: unconfirmedTotal }),
+            tone: 'caution',
+          },
+          { kind: 'switch', name: 'confirmTotal', label: t('confirmTotal'), span: 12 },
         ] as FieldSpec[])
       : []),
     ...(action !== 'approve' || needsReview
