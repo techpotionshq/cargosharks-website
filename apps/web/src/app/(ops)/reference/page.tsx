@@ -43,9 +43,9 @@ import {
   MilestoneTemplateDialog,
   WorkingCalendarDialog,
 } from '@/features/admin/ui/reference-dialogs'
-import { formatDateTime, formatMoney, formatNumber, trimDecimal } from '@/lib/format'
+import { formatDateTime, formatFxRate, formatMoney, formatNumber, trimDecimal } from '@/lib/format'
 import { FxFeedNotice, hasFeedRows } from '@/features/admin/ui/fx-feed-notice'
-import { fxSourceName, type FxTranslate } from '@/lib/fx-label'
+import { fxSourceName, zoneName, type FxTranslate } from '@/lib/fx-label'
 
 /**
  * One height for every register on this page — 34rem.
@@ -146,7 +146,10 @@ export default async function ReferencePage() {
   */
   const fxSourceLabel = (row: (typeof fx)[number]) => {
     if (row.source === 'manual') {
-      const at = row.takenAt ? formatDateTime(row.takenAt, locale, timeZone) : null
+      // Zone named, as on the feed notice and the quotation's label (N7).
+      const at = row.takenAt
+        ? `${formatDateTime(row.takenAt, locale, timeZone)} ${zoneName(timeZone)}`
+        : null
       if (!at) return t('fxManual')
       return row.enteredBy ? tFx('manualBy', { name: row.enteredBy, at }) : tFx('manualAt', { at })
     }
@@ -825,7 +828,8 @@ export default async function ReferencePage() {
                       </bdi>
                     </TD>
                     <TD align="end" numeric className="font-semibold">
-                      {trimDecimal(row.rate)}
+                      {/* Reading precision; the edit dialog keeps the full rate. */}
+                      {formatFxRate(row.rate)}
                     </TD>
                     <TD className="numeric text-ink-muted">{row.effectiveOn}</TD>
                     <TD priority="low" className="text-ink-muted">
