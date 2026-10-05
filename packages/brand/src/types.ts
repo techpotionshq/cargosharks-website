@@ -189,10 +189,31 @@ export interface BrandContact {
  * premise is that the PDF and the screen are visibly the same company, and
  * two sources of truth is how they drift apart.
  */
+/**
+ * One registration a document prints under the letterhead: a commercial
+ * registration, a customs licence, a tax number.
+ *
+ * Label and value are separate so that an unknown number prints *nothing*
+ * rather than its label beside a dash. The line this replaced was one string,
+ * "Commercial Registration — · Customs Licence —", and it was waiting to print
+ * on every quotation and invoice until the client supplied the numbers.
+ */
+export interface BrandRegistration {
+  readonly labelEn: string
+  readonly labelAr: string
+  /** The number itself. Empty means "not supplied", and the part is left out. */
+  readonly value: string
+}
+
 export interface BrandDocuments {
-  /** Printed under the letterhead — CR number, licence, tax registration. */
-  readonly registrationLineEn: string
-  readonly registrationLineAr: string
+  /** Printed under the letterhead, each only when it has a value. */
+  readonly registrations: readonly BrandRegistration[]
+  /**
+   * Printed in the same place when no registration has a value — a demo
+   * tenant's "not a trading entity". Empty prints nothing.
+   */
+  readonly registrationNoteEn: string
+  readonly registrationNoteAr: string
   readonly footerEn: string
   readonly footerAr: string
   /** Standard trading conditions reference printed on quotations. */
