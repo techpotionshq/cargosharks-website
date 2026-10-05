@@ -293,6 +293,22 @@ export interface QuoteOptionView {
   readonly validUntil: Date
   readonly isRecommended: boolean
   readonly lines: readonly QuoteLineView[]
+  /**
+   * The rates this option's lines were converted at, with whose rate each
+   * was and when it was taken — shown to the person pricing before they send.
+   * Empty when nothing was converted; absent on a quotation priced before
+   * pricing recorded it.
+   */
+  readonly fx?: readonly QuoteFxView[]
+}
+
+export interface QuoteFxView {
+  readonly from: string
+  readonly to: string
+  readonly rate: string
+  /** `manual`, `er-api`, `currency-api`, `http`, `seed-demo`. */
+  readonly source: string | null
+  readonly takenAt: string | null
 }
 
 interface QuoteLineView {
@@ -462,6 +478,11 @@ export interface PortalQuote {
 }
 
 export interface PortalQuoteDetail extends PortalQuote {
+  /**
+   * The day a line was converted from another currency at, for the footnote;
+   * null or absent when nothing was converted.
+   */
+  readonly convertedOn?: string | null
   readonly enquiryReference: string
   readonly branchName: string | null
   readonly incoterm: string | null
@@ -502,6 +523,8 @@ export interface PortalInvoice {
 }
 
 export interface PortalInvoiceDetail extends PortalInvoice {
+  /** As `PortalQuoteDetail.convertedOn`. */
+  readonly convertedOn?: string | null
   readonly subtotal: string
   readonly taxAmount: string
   readonly branchName: string | null
@@ -1208,6 +1231,23 @@ export interface FxRateRow {
   readonly effectiveOn: string
   /** `manual`, or the feed that wrote it. */
   readonly source: string
+  /** When the row was written — "fetched at" for a feed, "entered at" by hand. */
+  readonly takenAt?: string | null
+  /**
+   * Who typed a manual rate, from the audit trail. Null when the reader may
+   * not read the trail (`admin.audit.read`) or the row predates it; the
+   * screen then says "entered by hand" and when, and not by whom.
+   */
+  readonly enteredBy?: string | null
+}
+
+/** The FX feed's state, for the reference panel and the integrations screen. */
+export interface FxFeedPanel {
+  /** The `fx` integration's driver: `manual`, `resilient` or `api`. */
+  readonly driver: string
+  /** Null for a manual deployment, which has no feed to be stale. */
+  readonly stale: { readonly ageDays: number | null; readonly pairs: readonly string[] } | null
+  readonly lastFetchedAt: string | null
 }
 
 /** Mirrors `EngineRuleRow`. `raw` pre-fills the edit dialog. */

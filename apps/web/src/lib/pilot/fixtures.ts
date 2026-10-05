@@ -84,6 +84,7 @@ import type {
   DocumentView,
   DutyRateRow,
   EngineRuleRow,
+  FxFeedPanel,
   FxRateRow,
   EnquiryProposalRow,
   EnquirySummary,
@@ -5561,6 +5562,15 @@ export function pilotDutyRates(now = Date.now()): DutyRateRow[] {
  * Serves `listFxRates` — the rates the pilot's USD cards are priced through,
  * at roughly the levels the demo's KWD totals were computed at.
  */
+/**
+ * Serves `getFxFeedPanel`. Manual, because the fixture integration row is
+ * manual: the pilot demo types its rates, and a feed panel claiming otherwise
+ * would describe a deployment that is not there.
+ */
+export function pilotFxFeed(): FxFeedPanel {
+  return { driver: 'manual', stale: null, lastFetchedAt: null }
+}
+
 export function pilotFxRates(now = Date.now()): FxRateRow[] {
   return [
     {

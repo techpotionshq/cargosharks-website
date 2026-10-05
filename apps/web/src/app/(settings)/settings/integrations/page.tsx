@@ -29,10 +29,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
-import { INTEGRATION_GROUPS } from '@qabandi/core'
+import { INTEGRATION_GROUPS, appliesTo, integrationSpec } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { integrationKeyProblem, listIntegrations } from '@/features/admin/integrations'
+import { getFxFeedPanel } from '@/features/admin/queries'
+import { FxFeedNotice } from '@/features/admin/ui/fx-feed-notice'
 import { SECRET_KEY_COMMAND } from '@qabandi/db'
 import { IntegrationDialog, ToggleIntegrationButton } from '@/features/admin/ui/integration-dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -62,9 +64,10 @@ export default async function IntegrationsPage() {
   */
   if (!can(session, 'admin.integrations.write')) notFound()
 
-  const [integrations, keyProblem, t, tc, tv] = await Promise.all([
+  const [integrations, keyProblem, fxFeed, t, tc, tv] = await Promise.all([
     listIntegrations(),
     integrationKeyProblem(),
+    getFxFeedPanel(session.actor),
     getTranslations('integrations'),
     getTranslations('common'),
     getTranslations('adminValidation'),
@@ -72,6 +75,8 @@ export default async function IntegrationsPage() {
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  // Every integration in the list is in the catalogue; `listIntegrations` maps it.
+  const spec = (key: string) => integrationSpec(key)!
 
   const failing = integrations.filter((row) => row.lastError).length
 
@@ -233,34 +238,50 @@ export default async function IntegrationsPage() {
                               </Field>
                             ) : null}
 
-                            {integration.fields.map((field) => (
-                              <Field
-                                key={field.name}
-                                label={t(
-                                  `fields.${integration.key}.${field.name}` as 'fields.smtp.host',
-                                )}
-                                className="@4xl:col-span-3"
-                              >
-                                <span className="flex flex-wrap items-baseline gap-1.5">
-                                  {/* A switch stored as text reads as a word, not "true". */}
-                                  {/*
+                            {integration.fields
+                              /*
+                                Only what the chosen driver reads. The FX
+                                feed's URL belongs to `api`; under `resilient`
+                                it would sit on the card looking like it
+                                mattered.
+                              */
+                              .filter((field) => {
+                                const declared = integrationSpec(integration.key)?.fields.find(
+                                  (f) => f.name === field.name,
+                                )
+                                return (
+                                  !declared ||
+                                  appliesTo(spec(integration.key), declared, integration.driver)
+                                )
+                              })
+                              .map((field) => (
+                                <Field
+                                  key={field.name}
+                                  label={t(
+                                    `fields.${integration.key}.${field.name}` as 'fields.smtp.host',
+                                  )}
+                                  className="@4xl:col-span-3"
+                                >
+                                  <span className="flex flex-wrap items-baseline gap-1.5">
+                                    {/* A switch stored as text reads as a word, not "true". */}
+                                    {/*
                                     An address breaks at its seams rather than
                                     being cut off at the field's edge with no
                                     ellipsis, which is how a provider URL read
                                     at 1440.
                                   */}
-                                  <span className={`min-w-0 ${field.value ? '' : 'text-muted'}`}>
-                                    {field.value === 'true' ? (
-                                      tc('yes')
-                                    ) : field.value === 'false' ? (
-                                      tc('no')
-                                    ) : field.value && /^[a-z]+:\/\/|@/.test(field.value) ? (
-                                      <Breakable text={field.value} />
-                                    ) : (
-                                      (field.value ?? '—')
-                                    )}
-                                  </span>
-                                  {/*
+                                    <span className={`min-w-0 ${field.value ? '' : 'text-muted'}`}>
+                                      {field.value === 'true' ? (
+                                        tc('yes')
+                                      ) : field.value === 'false' ? (
+                                        tc('no')
+                                      ) : field.value && /^[a-z]+:\/\/|@/.test(field.value) ? (
+                                        <Breakable text={field.value} />
+                                      ) : (
+                                        (field.value ?? '—')
+                                      )}
+                                    </span>
+                                    {/*
                                     Which layer answered, per field rather than
                                     per card: a deployment mid-migration
                                     legitimately holds half of an integration in
@@ -272,29 +293,39 @@ export default async function IntegrationsPage() {
                                     and a badge on every row is a badge nobody
                                     reads.
                                   */}
-                                  {field.source === 'env' ? (
-                                    <span className="text-micro text-ink-subtle">
-                                      {t('sourceEnv')}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </Field>
-                            ))}
+                                    {field.source === 'env' ? (
+                                      <span className="text-micro text-ink-subtle">
+                                        {t('sourceEnv')}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </Field>
+                              ))}
 
-                            {integration.secrets.map((secret) => (
-                              <Field
-                                key={secret.name}
-                                label={t(
-                                  `secrets.${integration.key}.${secret.name}` as 'secrets.smtp.password',
-                                )}
-                                className="@4xl:col-span-3"
-                              >
-                                {/* Whether it is set, never what it is. */}
-                                <Badge tone={secret.isSet ? 'positive' : 'muted'}>
-                                  {secret.isSet ? t('secretSet') : t('secretUnset')}
-                                </Badge>
-                              </Field>
-                            ))}
+                            {integration.secrets
+                              .filter((secret) => {
+                                const declared = integrationSpec(integration.key)?.secrets.find(
+                                  (s) => s.name === secret.name,
+                                )
+                                return (
+                                  !declared ||
+                                  appliesTo(spec(integration.key), declared, integration.driver)
+                                )
+                              })
+                              .map((secret) => (
+                                <Field
+                                  key={secret.name}
+                                  label={t(
+                                    `secrets.${integration.key}.${secret.name}` as 'secrets.smtp.password',
+                                  )}
+                                  className="@4xl:col-span-3"
+                                >
+                                  {/* Whether it is set, never what it is. */}
+                                  <Badge tone={secret.isSet ? 'positive' : 'muted'}>
+                                    {secret.isSet ? t('secretSet') : t('secretUnset')}
+                                  </Badge>
+                                </Field>
+                              ))}
 
                             {integration.callsPerHour !== null ? (
                               <Field label={t('callsPerHour')} className="@4xl:col-span-3">
@@ -330,6 +361,32 @@ export default async function IntegrationsPage() {
                               : t('offHintPlain')}
                           </p>
                         )}
+
+                        {integration.key === 'fx' ? (
+                          <>
+                            {integration.acknowledgement ? (
+                              <p className="mt-3 text-body-sm text-ink-muted">
+                                {integration.acknowledgement.byName
+                                  ? t('acknowledgedBy', {
+                                      name: integration.acknowledgement.byName,
+                                      at: formatDateTime(
+                                        integration.acknowledgement.at,
+                                        locale,
+                                        timeZone,
+                                      ),
+                                    })
+                                  : t('acknowledgedAt', {
+                                      at: formatDateTime(
+                                        integration.acknowledgement.at,
+                                        locale,
+                                        timeZone,
+                                      ),
+                                    })}
+                              </p>
+                            ) : null}
+                            <FxFeedNotice panel={fxFeed} feedRowsShown={false} className="mt-3" />
+                          </>
+                        ) : null}
 
                         {integration.missing.length > 0 && !integration.lastError ? (
                           <p className="mt-3 text-body-sm text-ink-muted">
