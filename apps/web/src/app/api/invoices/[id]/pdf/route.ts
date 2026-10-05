@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { fileRefusal } from '@/lib/file-refusal'
+import { mayDownload } from '@/lib/download-access'
 import { isUuid } from '@/lib/ids'
 
 /**
@@ -24,6 +25,9 @@ export async function GET(
 ): Promise<Response> {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  // The same rule as the page that links here, before anything else runs, so a
+  // role the page refuses is refused here too (R4, `lib/download-access.ts`).
+  if (!mayDownload(session, 'invoice')) return fileRefusal(request, 'not_found')
 
   /*
     The pilot renders no documents, and says so.

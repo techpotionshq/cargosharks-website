@@ -31,6 +31,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { assets, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
 import { fileRefusal } from '@/lib/file-refusal'
+import { mayDownload } from '@/lib/download-access'
 import { isUuid } from '@/lib/ids'
 
 export const dynamic = 'force-dynamic'
@@ -38,6 +39,9 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  // The same rule as the page that links here, before anything else runs, so a
+  // role the page refuses is refused here too (R4, `lib/download-access.ts`).
+  if (!mayDownload(session, 'asset')) return fileRefusal(request, 'not_found')
 
   const { id } = await params
   // Not a uuid is not an asset, and used to be a 500 from the cast (A17).
