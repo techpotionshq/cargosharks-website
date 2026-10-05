@@ -18,6 +18,8 @@ import { Button } from '@/ui/layout'
 import { RECORD_LINK, Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('customers')
@@ -27,16 +29,17 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; page?: string }>
 }) {
   const session = await requireSession()
-  const { q } = await searchParams
+  const { q, page } = await searchParams
   const t = await getTranslations('customers')
   const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const rows = await listCustomers(session.actor, q)
+  const customersPage = await listCustomers(session.actor, q, pageRequest(page))
+  const rows = customersPage.rows
   const mayWrite = can(session, 'customer.write')
 
   const action = mayWrite ? (
@@ -57,7 +60,7 @@ export default async function CustomersPage({
         placeholder: t('searchPlaceholder'),
         label: tc('search'),
       }}
-      isEmpty={rows.length === 0}
+      isEmpty={customersPage.total === 0}
       empty={{
         icon: 'customers',
         title: q ? t('noneMatching') : t('noneYet'),
@@ -109,6 +112,7 @@ export default async function CustomersPage({
           ))}
         </TBody>
       </TableShell>
+      <Pager page={customersPage} path="/customers" params={{ q }} />
     </Register>
   )
 }
