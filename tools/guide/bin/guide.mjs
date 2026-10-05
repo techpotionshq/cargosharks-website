@@ -34,11 +34,12 @@ export async function loadShorts(ids = []) {
 
 async function buildShorts(ids, opts) {
   const { buildShort } = await import('../src/video/short.mjs')
-  const { getStack } = await import('../src/stack/index.mjs')
+  const { stackFor } = await import('../src/stack/index.mjs')
   const results = []
   for (const { spec, file } of await loadShorts(ids)) {
     if (opts.stack && (spec.stack ?? 'fixtures') !== opts.stack) continue
-    const stack = await getStack(spec.stack ?? 'fixtures')
+    const stack = stackFor(spec.stack ?? 'fixtures')
+    await stack.prime()
     results.push(await buildShort(spec, file, stack, opts))
   }
   return results

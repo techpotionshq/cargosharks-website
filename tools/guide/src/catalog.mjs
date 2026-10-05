@@ -54,7 +54,47 @@ export function caption(key, locale = 'en') {
   return text
 }
 
-const TOKEN = /\{(app|brand)(?::([A-Za-z0-9_.-]+))?\}/g
+const TOKEN = /\{(app|brand)(?::([A-Za-z0-9_.-]+)((?:,[\w-]+=[^,}]*)*))?\}/g
+
+/**
+ * Just enough ICU to quote a label: `{name}` takes an argument (or vanishes),
+ * and `{name, select|plural, a {…} other {…}}` picks the argument's branch,
+ * else `other`. `{app:jobs.issueIn,language=ar}` reads "Issue in Arabic".
+ */
+export function icu(text, args = {}) {
+  let out = ''
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (ch !== '{') {
+      out += ch
+      i++
+      continue
+    }
+    // find the matching brace
+    let depth = 0
+    let j = i
+    for (; j < text.length; j++) {
+      if (text[j] === '{') depth++
+      else if (text[j] === '}' && --depth === 0) break
+    }
+    const inner = text.slice(i + 1, j)
+    const parts = inner.split(',')
+    const name = parts[0].trim()
+    if (parts.length === 1) out += args[name] ?? ''
+    else {
+      const body = parts.slice(2).join(',')
+      const branches = {}
+      for (const m of body.matchAll(/\s*(=?[\w-]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g))
+        branches[m[1]] = m[2]
+      const v = args[name]
+      const pick = branches[v] ?? branches[`=${v}`] ?? branches.other ?? ''
+      out += icu(pick.replace(/#/g, v ?? ''), args)
+    }
+    i = j + 1
+  }
+  return out.replace(/\s{2,}/g, ' ').trim()
+}
 
 /**
  * Expands `{app:key}` and `{brand}` in a piece of guide text.
@@ -62,10 +102,16 @@ const TOKEN = /\{(app|brand)(?::([A-Za-z0-9_.-]+))?\}/g
  */
 export function expand(text, locale = 'en') {
   const keys = []
-  const out = text.replace(TOKEN, (_, kind, key) => {
+  const out = text.replace(TOKEN, (_, kind, key, rawArgs) => {
     if (kind === 'brand') return brand.identity.nameEn
     keys.push(key)
-    return app(key, locale)
+    const args = Object.fromEntries(
+      (rawArgs ?? '')
+        .split(',')
+        .filter(Boolean)
+        .map((p) => p.split('=')),
+    )
+    return icu(app(key, locale), args)
   })
   return { text: out, keys }
 }

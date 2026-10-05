@@ -6,32 +6,49 @@
 //   seeded    PostgreSQL restored from a story snapshot, the service, the web
 //             app and local stand-ins for WhatsApp, mail and the model. For the
 //             shorts that press buttons and need the press to stick.
-const stacks = new Map()
+//
+// A stack is described before it is started: its fingerprint (what its data
+// is) goes into every cache key, and `ensure()` starts it only when something
+// actually has to be shot or recorded. A build where everything is cached
+// never starts a server at all.
+const descriptors = new Map()
 
-export async function getStack(kind = 'fixtures') {
-  if (stacks.has(kind)) return stacks.get(kind)
-  let stack
-  if (kind === 'fixtures') {
-    const fx = await import('./fixtures.mjs')
-    const s = await fx.start()
-    stack = {
-      id: `fixtures-${fx.PORT}`,
-      kind,
-      ...s,
-      // The fixture data itself is part of every screen's import closure, so
-      // all the stack adds is the pinned moment.
-      fingerprint: () => `fixtures@${s.now}`,
-      stop: fx.stop,
-    }
-  } else if (kind === 'seeded') {
-    const sd = await import('./seeded.mjs')
-    stack = await sd.start()
-  } else throw new Error(`unknown stack "${kind}"`)
-  stacks.set(kind, stack)
-  return stack
+export function stackFor(kind = 'fixtures') {
+  if (descriptors.has(kind)) return descriptors.get(kind)
+  let running
+  let mod
+  const load = async () =>
+    (mod ??= await import(kind === 'seeded' ? './seeded.mjs' : './fixtures.mjs'))
+  const desc = {
+    kind,
+    fingerprint: (spec = {}) => {
+      if (kind === 'fixtures')
+        return `fixtures@${process.env.GUIDE_NOW ?? '2026-10-14T09:30:00+03:00'}`
+      if (!mod) throw new Error('seeded stack: call prime() first')
+      return mod.fingerprint(spec)
+    },
+    /** Loads the module so `fingerprint` can run (the seeded stack reads its story to hash it). */
+    prime: load,
+    ensure: async () => {
+      if (running) return running
+      const m = await load()
+      const s = await m.start()
+      running = { id: `${kind}-${m.PORT ?? ''}`, kind, ...s, fingerprint: desc.fingerprint }
+      return running
+    },
+    stop: async () => {
+      if (mod) await mod.stop()
+      running = undefined
+    },
+  }
+  if (!['fixtures', 'seeded'].includes(kind)) throw new Error(`unknown stack "${kind}"`)
+  descriptors.set(kind, desc)
+  return desc
 }
 
+/** Kept for callers that want a running stack straight away. */
+export const getStack = (kind) => stackFor(kind).ensure()
+
 export async function stopAll() {
-  for (const s of stacks.values()) await s.stop?.()
-  stacks.clear()
+  for (const d of descriptors.values()) await d.stop()
 }

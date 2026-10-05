@@ -189,8 +189,13 @@ export default async function DashboardPage() {
 
       {/* ---- the four numbers -------------------------------------------
           Only the two that represent a live cost carry a tone. A row where
-          everything is coloured says nothing at a glance. */}
-      <div className="mb-4 grid grid-cols-1 gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
+          everything is coloured says nothing at a glance.
+          `data-guide` is the user guide's handle on the row (docs/guide):
+          the row has no heading or role of its own to find it by. */}
+      <div
+        data-guide="dashboard-numbers"
+        className="mb-4 grid grid-cols-1 gap-4 @xl:grid-cols-2 @3xl:grid-cols-4"
+      >
         <Metric
           label={t('overdueReplies')}
           value={formatNumber(overview.enquiries.breached, locale)}
