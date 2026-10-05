@@ -209,7 +209,7 @@ function placeholderNotes(options, hasArtwork) {
   }
   if (!options.supportPhone) notes.push('contact.supportPhone — empty')
   if (!options.addressEn) notes.push('contact.addressEn and addressAr — empty')
-  notes.push('documents.registrationLine* — the CR and customs licence numbers')
+  notes.push('documents.registrations — the CR and customs licence numbers (empty prints nothing)')
   if (!hasArtwork) {
     notes.push('logo — a generated monogram tile, not the client’s own mark')
   }
@@ -318,10 +318,14 @@ export const ${camel(options.key)}Brand = defineBrand({
 
   documents: {
     // The client's to supply. Inventing plausible numbers would put a false
-    // registration on every quotation this deployment prints.
-    registrationLineEn: 'Commercial Registration — · Customs Licence —',
-    registrationLineAr:
-      'السجل التجاري — · رخصة جمركية —',
+    // registration on every quotation this deployment prints; an empty value
+    // prints nothing, label included.
+    registrations: [
+      { labelEn: 'Commercial Registration', labelAr: 'السجل التجاري', value: '' },
+      { labelEn: 'Customs Licence', labelAr: 'رخصة جمركية', value: '' },
+    ],
+    registrationNoteEn: '',
+    registrationNoteAr: '',
     footerEn: 'All business is transacted under our Standard Trading Conditions.',
     footerAr:
       'تخضع جميع المعاملات لشروط التعامل القياسية لدينا.',

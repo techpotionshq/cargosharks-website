@@ -33,6 +33,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { named } from '@/lib/named'
+import { OWED_INVOICE_STATUSES } from '@qabandi/core'
 import type { CurrencyAmount } from '@/lib/by-currency'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
@@ -181,6 +182,14 @@ export async function listInvoices(
  */
 export type OutstandingByCurrency = CurrencyAmount
 
+/*
+  The owed states, from the one rule in `core` that every overdue flag reads
+  (`isInvoiceOverdue`). Written into the statement as literals — they are
+  constants, not input — so the SQL counts and the row flags cannot drift to
+  two different lists again.
+*/
+const OWED = sql.raw(OWED_INVOICE_STATUSES.map((status) => `'${status}'`).join(', '))
+
 /**
  * The receivables position.
  *
@@ -203,10 +212,14 @@ export async function invoiceSummary(actor: Actor): Promise<{
   return withActor(actor, async (tx) => {
     const counts = await tx.execute(sql`
       select
-        count(*) filter (where status in ('issued', 'part_paid'))::int     as issued,
+        count(*) filter (where status in (${OWED}))::int                   as issued,
         count(*) filter (where status = 'paid')::int                         as paid,
-        count(*) filter (where status in ('issued', 'part_paid')
-                           and due_on < current_date)::int                   as overdue
+        -- isInvoiceOverdue: owed, past its due day, something left on it,
+        -- and not a credit note, which is owed to the customer.
+        count(*) filter (where status in (${OWED})
+                           and not is_credit_note
+                           and due_on < current_date
+                           and total - amount_paid - amount_credited > 0)::int as overdue
       from invoices
     `)
     const row = counts.rows[0] as unknown as
@@ -232,7 +245,7 @@ export async function invoiceSummary(actor: Actor): Promise<{
       select currency,
              sum(total - amount_paid - amount_credited)::text as amount
       from invoices
-      where status in ('issued', 'part_paid')
+      where status in (${OWED})
       group by currency
       having sum(total - amount_paid - amount_credited) <> 0
       order by sum(total - amount_paid - amount_credited) desc, currency
@@ -402,7 +415,7 @@ export async function receivablesAgeing(actor: Actor): Promise<{ byCurrency: Cur
         select coalesce(due_on, current_date) as due_on, currency,
                (total - amount_paid - amount_credited) as balance
           from invoices
-         where status in ('issued', 'part_paid')
+         where status in (${OWED})
            and total > amount_paid + amount_credited
       )
       select
@@ -492,7 +505,7 @@ export async function topDebtors(
              greatest(0, current_date - min(i.due_on))::int  as "daysOverdue"
         from invoices i
         join customers c on c.id = i.customer_id
-       where i.status in ('issued', 'part_paid')
+       where i.status in (${OWED})
          and i.total > i.amount_paid + i.amount_credited
        group by c.id, c.legal_name_en, c.legal_name_ar, i.currency
        order by sum(i.total - i.amount_paid - i.amount_credited) desc, i.currency

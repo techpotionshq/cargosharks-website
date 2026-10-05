@@ -971,7 +971,14 @@ export async function NotificationTemplateDialog({
       iconOnly={Boolean(template?.id)}
       labels={{
         open: template?.id ? tc('edit') : t('override'),
-        title: t('title', { event: eventKey }),
+        // The event's name, not its key: "Wording for enquiry.created" put an
+        // identifier in the title of a dialog an administrator reads. Keys
+        // are nested by prefix in the catalogue (see the notifications page).
+        title: t('title', {
+          event: t.has(`events.${eventKey}` as 'events.job.created')
+            ? t(`events.${eventKey}` as 'events.job.created')
+            : eventKey,
+        }),
         description: t('description'),
         submit: tc('save'),
         submitting: tc('saving'),

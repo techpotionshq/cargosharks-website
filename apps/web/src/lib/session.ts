@@ -17,6 +17,7 @@ import { usePilotFixtures, useDemoLogin } from '@/lib/pilot/source'
 import { demoSession } from '@/lib/pilot/demo'
 import { DEFAULT_TIME_ZONE, resolveTimeZone } from '@/lib/time'
 import { clientAddressFrom } from '@/lib/client-address'
+import { getBrand } from '@/lib/brand'
 import {
   authSession,
   principalBranchRoles,
@@ -100,10 +101,12 @@ const PILOT_SESSION: Session = {
     /*
       `.example` is reserved (RFC 2606) and cannot be registered, which is the
       point: this address is printed on the demo sign-in screen, so it is read
-      by prospects rather than only by tests. It previously carried the domain
-      of the client who used to be the default brand.
+      by prospects rather than only by tests. It comes from the brand
+      (`operations@<key>.example`), because a fixed one printed the supplier's
+      domain on the client's demo, and before that the client's on the
+      supplier's.
     */
-    email: 'operations@cargosharks.example',
+    email: getBrand().demo.operationsEmail,
     locale: 'en',
     timezone: DEFAULT_TIME_ZONE,
   },

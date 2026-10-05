@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { fileRefusal } from '@/lib/file-refusal'
@@ -29,7 +28,9 @@ export async function GET(
   context: { params: Promise<{ id: string; kind: string }> },
 ): Promise<Response> {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  // A page for a browser (an expired session following a download link), the
+  // same JSON as before for anything else.
+  if (!session) return fileRefusal(request, 'unauthenticated')
   // The same rule as the page that links here, before anything else runs, so a
   // role the page refuses is refused here too (R4, `lib/download-access.ts`).
   if (!mayDownload(session, 'jobDocument')) return fileRefusal(request, 'not_found')
@@ -42,7 +43,7 @@ export async function GET(
   // Not a uuid is not a record, and used to reach the service as a 500 (A17).
   if (!isUuid(id)) return fileRefusal(request, 'not_found')
   if (!KINDS.includes(kind as (typeof KINDS)[number])) {
-    return NextResponse.json({ error: 'unknown_kind', allowed: KINDS }, { status: 400 })
+    return fileRefusal(request, 'unknown_kind', { allowed: KINDS })
   }
 
   const locale = new URL(request.url).searchParams.get('locale') === 'ar' ? 'ar' : 'en'

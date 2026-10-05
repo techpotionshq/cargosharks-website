@@ -28,6 +28,8 @@
 import { useId, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Icon, type IconName } from './icon'
+import { useFieldValidity } from './validity'
+import { DateInput } from './date-input'
 import {
   CONTROL,
   CONTROL_BAD,
@@ -157,10 +159,17 @@ const FIELD_BAND = 'row-span-3 grid grid-cols-1 grid-rows-subgrid gap-y-0'
 
 /** The label / control / message wrapper. Every control below uses it. */
 export function Field({ label, name, span = 6, hint, error, required, children }: FieldProps) {
-  const describedBy = error ? `${name}-error` : hint ? `${name}-hint` : undefined
+  /*
+    The browser's refusal, in the app's words and in the app's place (see
+    `ui/validity.ts`). A message from the browser check wins over a server
+    error from the previous attempt: it is about what is in the box now.
+  */
+  const validity = useFieldValidity<HTMLDivElement>()
+  const shown = validity.message ?? error
+  const describedBy = shown ? `${name}-error` : hint ? `${name}-hint` : undefined
 
   return (
-    <div className={`${SPAN[span]} ${FIELD_BAND}`}>
+    <div ref={validity.ref} data-qb-field="" className={`${SPAN[span]} ${FIELD_BAND}`}>
       <label
         htmlFor={name}
         className="mb-1.5 block text-caption font-semibold tracking-wide text-ink-muted uppercase"
@@ -173,14 +182,14 @@ export function Field({ label, name, span = 6, hint, error, required, children }
         ) : null}
       </label>
       {children}
-      {error ? (
+      {shown ? (
         <p
           id={describedBy}
           role="alert"
           className="mt-1.5 flex items-center gap-1 text-caption font-medium text-critical"
         >
           <Icon name="alert" size={12} weight="fill" />
-          {error}
+          {shown}
         </p>
       ) : hint ? (
         <p id={describedBy} className="mt-1.5 text-caption text-ink-subtle">
@@ -232,8 +241,10 @@ export function Input({
   ...field
 }: InputProps) {
   const invalid = Boolean(field.error)
+  // A day is drawn in the app's format, not the browser's — `ui/date-input.tsx`.
+  const Control = type === 'date' ? DateInput : 'input'
   const control = (
-    <input
+    <Control
       id={field.name}
       name={field.name}
       type={type}
@@ -249,7 +260,7 @@ export function Input({
         strong character, and it is inert for the numeric and date types.
       */
       dir="auto"
-      defaultValue={defaultValue ?? ''}
+      defaultValue={defaultValue == null ? '' : String(defaultValue)}
       placeholder={placeholder}
       step={step}
       min={min}
