@@ -4,6 +4,9 @@ import {
   RATE_EXTRACTION_SCHEMA,
   rateReplyContext,
   readExtractedRateReply,
+  rateReplyReview,
+  replyIsRankable,
+  UNCLASSIFIED_CHARGE,
   summariseRateReply,
   type RateReplyLane,
   type RawExtractedRateReply,
@@ -302,5 +305,150 @@ describe('rateReplyContext', () => {
     expect(rateReplyContext(e, divisor5000).kg?.toString()).toBe('456')
     // With no rule loaded, the gross stands rather than a guessed divisor.
     expect(rateReplyContext(e).kg?.toString()).toBe('336')
+  })
+})
+
+/*
+  R1, live run 5. EK quoted "Air freight USD 3.60 per kg chargeable (minimum
+  USD 150) / Fuel surcharge USD 0.55 per kg / Screening and handling USD 40 per
+  shipment" on 380 kg chargeable: USD 1,617. The model returned the USD 40 line
+  with no charge type, the line was rejected, and the reply ranked Cheapest at
+  1,577 with nothing on screen to say a line had gone.
+*/
+describe('a priced line the model cannot classify (R1)', () => {
+  const airLane: RateReplyLane = { mode: 'air', originCode: 'AEJEA', destinationCode: 'KWSWK' }
+  const withOther: ImportLookups = {
+    ...lookups,
+    chargeTypes: new Set(['AIR_FREIGHT', 'FUEL_SURCHARGE', UNCLASSIFIED_CHARGE.toUpperCase()]),
+  }
+  const ek = (over: Partial<RawExtractedRateReply> = {}) =>
+    reply({
+      origin: null,
+      destination: null,
+      mode: 'air',
+      lines: [
+        rline({
+          chargeType: 'air_freight',
+          basis: 'per_kg',
+          rate: '3.60',
+          minimum: '150',
+          containerType: null,
+          description: 'Air freight',
+        }),
+        rline({
+          chargeType: 'fuel_surcharge',
+          basis: 'per_kg',
+          rate: '0.55',
+          containerType: null,
+          description: 'Fuel surcharge',
+        }),
+        rline({
+          chargeType: null,
+          basis: 'flat',
+          rate: '40',
+          containerType: null,
+          description: 'Screening and handling',
+        }),
+      ],
+      ...over,
+    })
+
+  /** What `rate-extract.ts` stores, reduced to the fields the review reads. */
+  const stored = (raw: RawExtractedRateReply, lk: ImportLookups) => {
+    const result = readExtractedRateReply(raw, lk, airLane)
+    const summary = summariseRateReply(result.lines.rows, { kg: '380', days: 1 })
+    return {
+      result,
+      summary,
+      response: {
+        ok: result.lines.ok,
+        issues: result.lines.issues,
+        currency: result.currency,
+        unclassified: result.unclassified,
+        statedTotal: result.statedTotal,
+        totals: summary.totals.map((t) => ({
+          currency: t.currency,
+          amount: t.amount.amount.toString(),
+        })),
+      },
+    }
+  }
+
+  it('keeps the line as "other", so the total is the whole 1,617', () => {
+    const { result, summary, response } = stored(ek(), withOther)
+    expect(result.lines.ok).toBe(true)
+    expect(result.lines.rows).toHaveLength(3)
+    expect(result.lines.rows[2]!.values.chargeCode).toBe(UNCLASSIFIED_CHARGE.toUpperCase())
+    expect(result.unclassified).toEqual([{ line: 3, description: 'Screening and handling' }])
+    expect(summary.primary?.amount.amount.toFixed(2)).toBe('1617.00')
+
+    // Flagged for a person, naming the line, but ranked: the figure is whole.
+    const review = rateReplyReview(response)
+    expect(review.needed).toBe(true)
+    expect(review.ranked).toBe(true)
+    expect(review.unclassified[0]!.description).toBe('Screening and handling')
+  })
+
+  it('keeps a code the deployment does not hold the same way, naming what the model wrote', () => {
+    const { result } = stored(
+      ek({
+        lines: [
+          rline({
+            chargeType: 'SCREENING',
+            basis: 'flat',
+            rate: '40',
+            containerType: null,
+            description: null,
+          }),
+        ],
+      }),
+      withOther,
+    )
+    expect(result.lines.rows[0]!.values.chargeCode).toBe(UNCLASSIFIED_CHARGE.toUpperCase())
+    expect(result.unclassified).toEqual([{ line: 1, description: 'SCREENING' }])
+  })
+
+  it('without an "other" row, rejects the line and keeps the reply out of the ranking', () => {
+    const noOther: ImportLookups = {
+      ...withOther,
+      chargeTypes: new Set(['AIR_FREIGHT', 'FUEL_SURCHARGE']),
+    }
+    const { result, summary, response } = stored(ek(), noOther)
+    expect(result.lines.ok).toBe(false)
+    expect(summary.primary?.amount.amount.toFixed(2)).toBe('1577.00')
+    const review = rateReplyReview(response)
+    expect(review.rejected).toBe(1)
+    expect(review.ranked).toBe(false)
+    expect(replyIsRankable(response)).toBe(false)
+  })
+
+  it('accepts a stated total that matches the lines at the precision printed', () => {
+    const { response } = stored(ek({ statedTotal: '1,617.00' }), withOther)
+    expect(rateReplyReview(response).totalMismatch).toBeNull()
+  })
+
+  it('flags a stated total the lines do not reach, and does not rank it', () => {
+    // The model dropped the screening line outright: the lines say 1,577.
+    const dropped = ek({ statedTotal: '1617.00', lines: (ek().lines as RawRateLine[]).slice(0, 2) })
+    const { response } = stored(dropped, withOther)
+    const review = rateReplyReview(response)
+    expect(review.totalMismatch).toEqual({ currency: 'USD', stated: '1617', computed: '1577' })
+    expect(review.needed).toBe(true)
+    expect(review.ranked).toBe(false)
+  })
+
+  it('reads a reply stored before any of this as clean', () => {
+    const review = rateReplyReview({
+      ok: true,
+      issues: [],
+      totals: [{ currency: 'USD', amount: '10' }],
+    })
+    expect(review).toEqual({
+      needed: false,
+      ranked: true,
+      unclassified: [],
+      rejected: 0,
+      totalMismatch: null,
+    })
   })
 })

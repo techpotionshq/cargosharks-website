@@ -1654,6 +1654,8 @@ export interface SupplierBillRow {
   readonly dueOn: string | null
   readonly assetId: string | null
   readonly varianceAcceptedReason: string | null
+  /** The total is the lines' sum and awaits confirmation (R2). Absent in the pilot. */
+  readonly totalUnconfirmed?: boolean
   readonly disputeReason: string | null
   readonly notes: string | null
   readonly approvedAt: Date | null
@@ -2098,6 +2100,23 @@ export interface RateRequestView {
   readonly canPromote: boolean
   /** The buy card this reply was promoted into, once accepted. */
   readonly rateCardId: string | null
+  /**
+   * Why a person should check this reply before relying on it (R1), or null
+   * when nothing needs checking. Optional because the pilot replies are clean.
+   */
+  readonly review?: {
+    /** False where the total is short or in doubt, so it is not ranked. */
+    readonly ranked: boolean
+    /** The broker's names for lines kept as "other" for want of a charge type. */
+    readonly unclassified: readonly { readonly line: number; readonly description: string }[]
+    /** Lines that did not read at all. */
+    readonly rejected: number
+    readonly totalMismatch: {
+      readonly currency: string
+      readonly stated: string
+      readonly computed: string
+    } | null
+  } | null
 }
 
 export interface RateRequestsView {

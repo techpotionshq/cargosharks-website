@@ -48,6 +48,7 @@ import {
 } from '@qabandi/core'
 import { chargeableRuleFor } from './chargeable'
 import { findCoveringRateCard, type CoveringRateCard, type CoveringRateLine } from './rate-cards'
+import { newerRateReplies } from './rate-promotion'
 import type { Tx } from './actor'
 
 /** What pricing can answer with — the caller turns each into a sentence. */
@@ -317,6 +318,23 @@ export async function priceEnquiryToQuote(
     : // Buy plus house margin sells exactly what was bought, each above cost.
       []
 
+  /*
+    A reply on this enquiry newer than the buy card (R3): the card may be
+    stale, so the draft is held for a person and says which reply to look at.
+  */
+  const newer = buyCard ? await newerRateReplies(tx, enquiryId, buyCard.id) : []
+  const reviewConcerns = [
+    ...concerns,
+    ...newer.map((reply) => ({
+      kind: 'newer_reply' as const,
+      partnerEn: reply.partnerEn,
+      partnerAr: reply.partnerAr,
+      quotedTotal: reply.quotedTotal,
+      quotedCurrency: reply.quotedCurrency,
+      respondedOn: reply.respondedOn,
+    })),
+  ]
+
   const validUntil = new Date(pricedAt)
   validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
 
@@ -377,7 +395,7 @@ export async function priceEnquiryToQuote(
         })),
         exclusions: splitLines(enquiry.exclusionsEn),
         exclusionsAr: splitLines(enquiry.exclusionsAr),
-        review: { needed: concerns.length > 0, concerns },
+        review: { needed: reviewConcerns.length > 0, concerns: reviewConcerns },
       },
       /*
         Lines in the quotation's currency, like its total.

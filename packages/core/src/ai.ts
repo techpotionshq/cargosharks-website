@@ -497,6 +497,7 @@ export const EXTRACTABLE_FIELDS: Readonly<Record<AiSurface, readonly string[]>> 
   rate_mapping: ['mapping'],
   rate_extract: [
     'chargeType',
+    'description',
     'basis',
     'rate',
     'currency',
@@ -505,6 +506,7 @@ export const EXTRACTABLE_FIELDS: Readonly<Record<AiSurface, readonly string[]>> 
     'containerType',
     'validFrom',
     'validTo',
+    'statedTotal',
     'origin',
     'destination',
     'mode',

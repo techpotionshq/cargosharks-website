@@ -449,6 +449,27 @@
       "when": 1791010619936,
       "tag": "0064_productive_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1791185946385,
+      "tag": "0065_other_charge_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791186292738,
+      "tag": "0066_rate_card_supersede",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791186659281,
+      "tag": "0067_supplier_invoice_total_unconfirmed",
+      "breakpoints": true
     }
   ]
 }

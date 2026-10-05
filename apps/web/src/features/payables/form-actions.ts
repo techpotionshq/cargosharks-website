@@ -532,6 +532,7 @@ export const setSupplierInvoiceStatus = refuseForbidden(async function setSuppli
   const action = read(form, 'action')
   const reason = read(form, 'reason')
   const acceptVariance = form.get('acceptVariance') === 'on'
+  const confirmTotal = form.get('confirmTotal') === 'on'
 
   if (!billId || !action) return failWith(tv('nothingToDo'))
 
@@ -545,6 +546,7 @@ export const setSupplierInvoiceStatus = refuseForbidden(async function setSuppli
         status: supplierInvoices.status,
         fxRate: supplierInvoices.fxRate,
         total: supplierInvoices.total,
+        totalUnconfirmed: supplierInvoices.totalUnconfirmed,
         // Qualified by hand: Drizzle prints a single-table select's columns
         // unqualified, and a bare "id" inside the subquery is the line's.
         lines: sql<number>`(select count(*)::int from supplier_invoice_lines l
@@ -573,6 +575,15 @@ export const setSupplierInvoiceStatus = refuseForbidden(async function setSuppli
       if (Number(bill.lines) === 0 || !dec(bill.total ?? 0).gt(0)) {
         return { error: 'empty' as const }
       }
+
+      /*
+        A total nobody has seen printed (R2). The model read the lines and no
+        total, so the bill was captured with their sum; a line it missed would
+        make that short. Approving is where a person confirms the figure
+        against the PDF, explicitly, and the update below records that they
+        did — the audit trail names who.
+      */
+      if (bill.totalUnconfirmed && !confirmTotal) return { error: 'total_unconfirmed' as const }
 
       /*
         The gate this whole feature exists for.
@@ -627,6 +638,7 @@ export const setSupplierInvoiceStatus = refuseForbidden(async function setSuppli
           disputeReason: null,
           varianceAcceptedAt: dirty > 0 ? new Date() : null,
           varianceAcceptedReason: dirty > 0 ? (reason ?? null) : null,
+          totalUnconfirmed: false,
           updatedAt: new Date(),
         })
         .where(
@@ -696,6 +708,7 @@ export const setSupplierInvoiceStatus = refuseForbidden(async function setSuppli
     not_approvable: tv('billNotAwaitingApproval'),
     empty: tv('billHasNoLines'),
     needs_review: tv('varianceNeedsReview'),
+    total_unconfirmed: tv('confirmTotalFirst'),
     needs_reason: tv('sayWhy'),
     paid_against: tv('billPaidAgainst'),
     not_disputable: tv('billNotDisputable'),

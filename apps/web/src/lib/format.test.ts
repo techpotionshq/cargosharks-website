@@ -19,6 +19,7 @@ import {
   formatDateTime,
   formatDay,
   formatLane,
+  formatMeasure,
   formatMoney,
   formatMoneyParts,
   formatNumber,
@@ -358,6 +359,37 @@ describe('formatPercent and formatNumber', () => {
 
   it('uses Western numerals in Arabic', () => {
     expect(formatNumber(1234, 'ar')).not.toMatch(/[٠-٩]/)
+  })
+})
+
+/*
+  R13, live run 5: the cargo table printed the stored scale,
+  "48000.000000 · 110.000000".
+*/
+describe('formatMeasure', () => {
+  it('prints kilograms to at most two places, grouped', () => {
+    expect(formatMeasure('48000.000000', 'kg', 'en')).toBe('48,000')
+    expect(formatMeasure('336.500000', 'kg', 'en')).toBe('336.5')
+    expect(formatMeasure('12.345678', 'kg', 'en')).toBe('12.35')
+  })
+
+  it('prints cubic metres to three places', () => {
+    expect(formatMeasure('110.000000', 'cbm', 'en')).toBe('110.000')
+    expect(formatMeasure('2.28', 'cbm', 'en')).toBe('2.280')
+  })
+
+  it('keeps Western digits in Arabic', () => {
+    expect(formatMeasure('48000.000000', 'kg', 'ar')).toMatch(/^48[,٬]000$/)
+    expect(formatMeasure('110.000000', 'cbm', 'ar')).toMatch(/^110[.٫]000$/)
+  })
+
+  it('formats a long decimal string without a float in between', () => {
+    expect(formatMeasure('123456789012.345678', 'cbm', 'en')).toBe('123,456,789,012.346')
+  })
+
+  it('shows a dash for nothing recorded', () => {
+    expect(formatMeasure(null, 'kg', 'en')).toBe('—')
+    expect(formatMeasure('', 'cbm', 'ar')).toBe('—')
   })
 })
 

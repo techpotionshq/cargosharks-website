@@ -7,6 +7,7 @@ import {
   invoiceTotal,
   namesAShipment,
   isSelfConsistent,
+  onlyTheTotalIsMissing,
   ENQUIRY_EXTRACTION_SCHEMA,
   ENQUIRY_FIELDS,
   proposedQuantity,
@@ -393,6 +394,34 @@ describe('the cross-check has to have something to check against', () => {
   it('accepts a multi-line invoice once a net is stated', () => {
     const checked = read({ subtotal: '1800.000', total: '1800.000', lines: [line(), line()] })
     expect(isSelfConsistent(checked, KWD, 0.8)).toBe(true)
+  })
+
+  /*
+    R2, live run 5: EK's bill read three good lines at 0.95 and no total, and
+    was refused as "not confident". It is still not consistent, but it is a
+    bill a person can confirm on the draft: that is all this says.
+  */
+  it('says when the printed total is the only thing missing', () => {
+    const blind = read({ subtotal: null, total: null, lines: [line(), line()], confidence: 0.95 })
+    expect(isSelfConsistent(blind, KWD, 0.8)).toBe(false)
+    expect(onlyTheTotalIsMissing(blind, KWD, 0.8)).toBe(true)
+  })
+
+  it('does not say so when anything else is wrong too', () => {
+    const lines = [line(), line()]
+    const blind = { subtotal: null, total: null, lines }
+    // Unsure, a line that does not add up, a header that did not read.
+    expect(onlyTheTotalIsMissing(read({ ...blind, confidence: 0.5 }), KWD, 0.8)).toBe(false)
+    expect(
+      onlyTheTotalIsMissing(
+        read({ ...blind, lines: [line(), line({ amount: '901.000' })] }),
+        KWD,
+        0.8,
+      ),
+    ).toBe(false)
+    expect(onlyTheTotalIsMissing(read({ ...blind, invoiceNumber: '' }), KWD, 0.8)).toBe(false)
+    // A total was printed: the ordinary cross-check decides, not this.
+    expect(onlyTheTotalIsMissing(read({ lines }), KWD, 0.8)).toBe(false)
   })
 })
 
