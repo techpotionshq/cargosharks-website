@@ -1,0 +1,94 @@
+{
+  "shorts": {
+    "01-whatsapp-intake": {
+      "msg": "A customer asks for a price on WhatsApp.",
+      "queue": "Seconds later it is an enquiry in the queue, linked to their company.",
+      "asks": "The assistant spots what is missing and asks once: here, the container type.",
+      "thread": "The whole conversation stays on the enquiry, with what the assistant sent.",
+      "read": "Every detail is read from the chat, with the exact words it came from.",
+      "accept": "Nothing is saved until a person accepts it.",
+      "ready": "Accepted, the enquiry is complete and ready to price."
+    },
+    "02-rates-and-quotations": {
+      "request": "Ask every partner who covers the route for a price, in one click.",
+      "replies": "Their email replies are read into prices, converted and compared.",
+      "award": "The winning reply becomes a rate card, so the next quote prices itself.",
+      "price": "{app:quote.priceIt} adds the customer’s margin. Buy, sell and margin sit side by side.",
+      "quote": "A draft quotation is ready, with the margin you will make.",
+      "send": "Send it. The margin freezes and the customer can accept it online."
+    },
+    "03-customer-accepts-quote": {
+      "list": "Your customer signs in to their own portal and sees every price you sent.",
+      "detail": "Every charge, your covering note and the date the offer ends.",
+      "accept": "She accepts with one click. No email or phone call needed.",
+      "office": "The office sees it at once, and one click opens the shipment with the agreed prices."
+    },
+    "04-shipments-and-milestones": {
+      "board": "The Shipments page lists every live shipment and where it stands.",
+      "milestones": "Each step keeps a planned, a revised and an actual date.",
+      "record": "When the vessel arrives, record it on the day.",
+      "stage": "{app:jobActions.setStatus} changes the stage, and the customer’s tracking page follows.",
+      "track": "Customers track it themselves with the reference and a container number."
+    },
+    "05-documents-and-house-bill": {
+      "panel": "Four documents are built from the shipment’s own parties and cargo lines.",
+      "preview": "Preview any of them in English or Arabic. A preview stores nothing.",
+      "issue": "Issue keeps the exact copy handed over. A new version never overwrites it.",
+      "release": "Release is a separate decision: only then can the customer see it.",
+      "register": "Every document, every version, in one register."
+    },
+    "06-invoicing-and-payments": {
+      "unbilled": "Shipments with charges nobody has invoiced yet are listed for finance.",
+      "draft": "Draft invoice copies the agreed charges onto a draft in one click.",
+      "issue": "Approve, then issue. Issuing gives the next number and cannot be undone.",
+      "receipt": "When the money arrives, record the receipt and match it to the invoice.",
+      "paid": "The invoice shows as paid, here and in the customer’s portal."
+    },
+    "07-supplier-bills": {
+      "board": "Payables shows what partners have billed, and where it disagrees with the shipment.",
+      "capture": "Capture the agent’s bill exactly as they printed it.",
+      "match": "Match each line to the cost the shipment expected. The verdict says if it agrees.",
+      "approve": "Only finance approves it for payment, with any difference in front of them."
+    },
+    "08-reports": {
+      "totals": "The margin report totals revenue, cost and gross profit for the shipments that sailed.",
+      "lane": "Group it by customer, trade lane, mode or salesperson.",
+      "mode": "Or by mode, to see which kind of freight pays best.",
+      "export": "{app:reports.exportCsv} takes the whole report into a spreadsheet.",
+      "kpis": "The dashboard puts win rate and average margin side by side. Read them together."
+    },
+    "09-arabic": {
+      "switch": "One click switches the whole product to Arabic.",
+      "rtl": "The layout reads right to left, with the menu on the right.",
+      "enquiry": "The same records, in Arabic: the enquiry and its WhatsApp conversation.",
+      "quote": "Quotations and documents follow, with an Arabic PDF for every one.",
+      "track": "Customer pages follow the same choice, like public tracking.",
+      "back": "Switch back to English the same way."
+    },
+    "10-vessel-positions": {
+      "card": "Each sea shipment shows where its ship was last heard, and how long ago.",
+      "reported": "The destination and ETA come from the ship's own transponder, so they are shown as reported, not as your date.",
+      "identity": "When only the name matches, a person confirms the ship before any position shows.",
+      "board": "The dashboard map puts a dot on every vessel the system has heard from.",
+      "setting": "Vessel positions stay off until an administrator switches them on."
+    },
+    "11-exchange-rates": {
+      "setting": "Exchange rates are typed by hand until someone chooses a daily feed.",
+      "modes": "Choose a feed you name, or two public providers checked against each other, after a clear warning.",
+      "source": "Every rate on file says where it came from and when it arrived.",
+      "converted": "Every conversion uses the day's rate, and says so."
+    },
+    "12-on-your-phone": {
+      "home": "The whole system works in the browser on a phone.",
+      "menu": "One tap opens the menu sheet: every section, search, tracking and sign-out.",
+      "section": "Pick a section and its lists fit the screen.",
+      "assistant": "The assistant has its own button in the top bar.",
+      "track": "Customers track a shipment on their phone, with no login."
+    },
+    "13-notification-emails": {
+      "bell": "Every alert arrives in the bell, newest first.",
+      "choose": "Under {app:notifications.emailTitle}, untick the groups you do not want by email.",
+      "save": "Save, and only those emails stop. The bell still shows everything."
+    }
+  }
+}

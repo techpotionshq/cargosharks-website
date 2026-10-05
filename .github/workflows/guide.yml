@@ -1,0 +1,61 @@
+# Which parts of the user guide a pull request makes out of date.
+#
+# Informational only, and deliberately so: a renamed button should not block a
+# merge, but the person merging should see that two screenshots and a short now
+# show the old name. The job prints `pnpm guide:stale` into the run's summary
+# and never fails the pull request. Building and publishing the guide stay a
+# person's decision (docs/guide/README.md), because they record a browser and
+# speak through a paid voice model.
+#
+# Actions are pinned to commit SHAs for the reasons given at the top of ci.yml.
+
+name: Guide
+
+on:
+  pull_request:
+
+concurrency:
+  group: guide-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.5.2'
+
+jobs:
+  stale:
+    name: Guide staleness (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The merge base with the target branch has to be in the clone.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: List what the change makes stale
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          pnpm -s guide:stale --base "$BASE" | tee stale.txt
+          {
+            echo '## User guide: what this change makes stale'
+            echo
+            echo '```'
+            cat stale.txt
+            echo '```'
+            echo
+            echo 'Rebuild with `pnpm guide:build` (only the listed pictures, recordings and steps re-render).'
+          } >> "$GITHUB_STEP_SUMMARY"

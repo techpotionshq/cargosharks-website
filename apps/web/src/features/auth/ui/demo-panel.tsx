@@ -55,7 +55,12 @@ export function DemoPanel({
   }
 
   return (
-    <div className="mt-4 rounded-md border border-line bg-surface-sunken px-2.5 py-2">
+    // `data-guide` lets the user guide (docs/guide) leave this panel out of its
+    // sign-in picture: the guide is shot on the demo, its readers sign in for real.
+    <div
+      data-guide="demo-access"
+      className="mt-4 rounded-md border border-line bg-surface-sunken px-2.5 py-2"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="eyebrow flex items-center gap-1 text-accent">
           <Icon name="live" size={11} />

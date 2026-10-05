@@ -1056,7 +1056,7 @@ verb('impact', 'what a change to this file can break, without running anything',
   if (!file) return fail(`${target} is not an indexed source file.`)
 
   const { importedBy } = graph()
-  heading(file)
+  if (!args.includes('--json')) heading(file)
 
   const seen = new Set([file])
   const frontier = [file]
@@ -1074,6 +1074,21 @@ verb('impact', 'what a change to this file can break, without running anything',
   const tests = reached.filter((f) => f.includes('.test.')).sort()
   const pages = routes().filter((r) => seen.has(r.file))
   const direct = [...(importedBy.get(file) ?? [])].sort()
+
+  // `--json` is for tools that act on the answer — `pnpm guide:stale` maps a
+  // diff to the screens it changes this way. Nothing is truncated here.
+  if (args.includes('--json')) {
+    out(
+      JSON.stringify({
+        file,
+        direct,
+        reached: reached.sort(),
+        tests,
+        screens: pages.map((r) => ({ url: r.url, file: r.file })),
+      }),
+    )
+    return
+  }
 
   out(`  ${direct.length} direct importer(s), ${reached.length} reachable transitively`)
 

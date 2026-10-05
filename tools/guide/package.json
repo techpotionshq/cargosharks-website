@@ -1,0 +1,15 @@
+{
+  "name": "@qabandi/guide",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Builds the user guide (manual, shorts, voice) from docs/guide, incrementally.",
+  "type": "module",
+  "bin": {
+    "guide": "./bin/guide.mjs"
+  },
+  "dependencies": {
+    "@qabandi/brand": "workspace:*",
+    "playwright-core": "^1.62.1",
+    "tsx": "^4.23.12"
+  }
+}
