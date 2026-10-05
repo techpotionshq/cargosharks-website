@@ -21,7 +21,7 @@ describe.skipIf(!enabled)('consolidation reads', () => {
   })
 
   it('lists consolidations for a scoped actor', async () => {
-    expect(Array.isArray(await listConsolidations(homeActor))).toBe(true)
+    expect(Array.isArray((await listConsolidations(homeActor)).rows)).toBe(true)
   })
 
   /**
@@ -30,7 +30,7 @@ describe.skipIf(!enabled)('consolidation reads', () => {
    * it cannot find, so a sentinel would assert nothing at all.
    */
   it('offers attachable jobs the actor can see', async () => {
-    const [consolidation] = await listConsolidations(homeActor)
+    const [consolidation] = (await listConsolidations(homeActor)).rows
     const options = await listAttachableJobs(
       homeActor,
       consolidation?.id ?? '00000000-0000-7000-8000-0000000000f1',

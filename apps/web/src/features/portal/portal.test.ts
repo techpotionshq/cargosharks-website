@@ -40,6 +40,8 @@ const {
 } = await import('@qabandi/db')
 const { AWAY_CUSTOMER, CUSTOMER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
+/** One wide page: these tests ask what a customer may see, not how it pages. */
+const WIDE = { page: 1, size: 500 }
 const { getPortalInvoice, getPortalQuote, listPortalInvoices, listPortalQuotes } =
   await import('./queries')
 const { decidePortalQuote } = await import('./form-actions')
@@ -262,7 +264,7 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
 
   describe('reads', () => {
     it('lists only the sent, current quotations of the contact’s own company', async () => {
-      const ids = (await listPortalQuotes(mine)).map((q) => q.id)
+      const ids = (await listPortalQuotes(mine, 'en', WIDE)).rows.map((q) => q.id)
       expect(ids).toContain(sent)
       expect(ids).toContain(lapsed)
       expect(ids).not.toContain(draft)
@@ -271,7 +273,7 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
     })
 
     it('shows another company’s contact none of them', async () => {
-      const ids = (await listPortalQuotes(theirs)).map((q) => q.id)
+      const ids = (await listPortalQuotes(theirs, 'en', WIDE)).rows.map((q) => q.id)
       expect(ids).toContain(theirQuote)
       for (const id of [sent, lapsed, draft, replaced]) expect(ids).not.toContain(id)
       expect(await getPortalQuote(theirs, sent)).toBeUndefined()
@@ -290,7 +292,7 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
     })
 
     it('lists issued invoices only, with the balance worked out in numeric', async () => {
-      const rows = await listPortalInvoices(mine)
+      const rows = (await listPortalInvoices(mine, 'en', WIDE)).rows
       const ids = rows.map((row) => row.id)
       expect(ids).toContain(myIssued)
       expect(ids).not.toContain(myDraftInvoice)
@@ -304,8 +306,8 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
     })
 
     it('gives a staff actor nothing through the portal reads (A9)', async () => {
-      expect(await listPortalQuotes(bothBranchesActor)).toEqual([])
-      expect(await listPortalInvoices(bothBranchesActor)).toEqual([])
+      expect((await listPortalQuotes(bothBranchesActor)).rows).toEqual([])
+      expect((await listPortalInvoices(bothBranchesActor)).rows).toEqual([])
       expect(await getPortalQuote(bothBranchesActor, sent)).toBeUndefined()
     })
   })

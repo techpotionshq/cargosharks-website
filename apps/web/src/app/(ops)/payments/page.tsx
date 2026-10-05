@@ -13,6 +13,8 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listPayments, paymentSummary } from '@/features/ledger/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { formatByCurrency } from '@/lib/by-currency'
@@ -31,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>
+  searchParams: Promise<{ view?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
@@ -42,24 +44,31 @@ export default async function PaymentsPage({
   if (!can(session, 'receivable.read')) notFound()
   const t = await getTranslations('payments')
   const tc = await getTranslations('common')
-  const view = (await searchParams).view === 'unallocated' ? 'unallocated' : 'all'
+  const params = await searchParams
+  const view = params.view === 'unallocated' ? 'unallocated' : 'all'
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const [all, summary] = await Promise.all([
-    listPayments(session.actor, locale),
+  /*
+    The filter the summary promised, in the query. "Unallocated 3" sat above
+    the table with no way to see which three, so it became a filter, cut from
+    the newest two hundred receipts in memory; it is a query filter now and
+    pages over every receipt, with its count from the same predicate.
+  */
+  const [paymentsPage, summary] = await Promise.all([
+    listPayments(
+      session.actor,
+      locale,
+      { withBalanceOnly: view === 'unallocated' },
+      pageRequest(params.page),
+    ),
     paymentSummary(session.actor),
   ])
+  const rows = paymentsPage.rows
 
-  // Decimal, never a float: this is money minus money, and the filter below
-  // and the flag on each row must agree to the last fils.
-  const remaining = (row: (typeof all)[number]) => dec(row.amount).minus(dec(row.allocated))
-  /*
-    The filter the summary promised. "Unallocated 3" sat above the table with
-    no way to see which three; it is the one figure here a finance clerk acts
-    on, so it is now a filter of its own, counted from the same rows.
-  */
-  const rows = view === 'unallocated' ? all.filter((row) => remaining(row).gt(0)) : all
+  // Decimal, never a float: this is money minus money, and the flag on each
+  // row must agree with the filter to the last fils.
+  const remaining = (row: (typeof rows)[number]) => dec(row.amount).minus(dec(row.allocated))
 
   return (
     <Register
@@ -77,15 +86,15 @@ export default async function PaymentsPage({
         { label: t('unallocated'), value: summary.unallocated },
       ]}
       filters={[
-        { label: tc('all'), href: '/payments', count: all.length, active: view === 'all' },
+        { label: tc('all'), href: '/payments', count: summary.count, active: view === 'all' },
         {
           label: t('unallocated'),
           href: '/payments?view=unallocated',
-          count: summary.unallocated,
+          count: summary.withBalance,
           active: view === 'unallocated',
         },
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={paymentsPage.total === 0}
       empty={{ icon: 'payments', title: t('noneYet'), description: t('noneYetHint') }}
     >
       <TableShell>
@@ -181,6 +190,11 @@ export default async function PaymentsPage({
           })}
         </TBody>
       </TableShell>
+      <Pager
+        page={paymentsPage}
+        path="/payments"
+        params={{ view: view === 'all' ? undefined : view }}
+      />
     </Register>
   )
 }

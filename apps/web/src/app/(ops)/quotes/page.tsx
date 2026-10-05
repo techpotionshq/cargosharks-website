@@ -14,6 +14,8 @@ import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listQuotes, quoteStatusCounts } from '@/features/ledger/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
@@ -39,19 +41,19 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function QuotesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ status?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { status } = await searchParams
+  const { status, page } = await searchParams
   const t = await getTranslations('quotes')
   const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const [rows, counts] = await Promise.all([
-    listQuotes(session.actor, status, locale),
+  const [quotesPage, counts] = await Promise.all([
+    listQuotes(session.actor, status, locale, pageRequest(page)),
     quoteStatusCounts(session.actor),
   ])
 
@@ -82,7 +84,7 @@ export default async function QuotesPage({
           active: status === row.status,
         })),
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={quotesPage.total === 0}
       empty={{
         icon: 'quotes',
         title: status ? t('noneMatching') : t('noneYet'),
@@ -105,7 +107,7 @@ export default async function QuotesPage({
           </TR>
         </THead>
         <TBody>
-          {rows.map((row) => {
+          {quotesPage.rows.map((row) => {
             const margin = marginPercent(row.totalSell, row.totalCost)
             const marginClass =
               margin === null
@@ -162,6 +164,7 @@ export default async function QuotesPage({
           })}
         </TBody>
       </TableShell>
+      <Pager page={quotesPage} path="/quotes" params={{ status }} />
     </Register>
   )
 }

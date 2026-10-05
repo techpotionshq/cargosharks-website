@@ -11,6 +11,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listSettlements, listSettleablePartners } from '@/features/payables/queries'
@@ -45,7 +47,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function SettlementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ partner?: string; status?: string }>
+  searchParams: Promise<{ partner?: string; status?: string; page?: string }>
 }) {
   const timeZone = await getTimeZone()
 
@@ -58,8 +60,13 @@ export default async function SettlementsPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const filters = await searchParams
 
-  const [rows, settleable, t, tc] = await Promise.all([
-    listSettlements(session.actor, { partnerId: filters.partner, status: filters.status }, locale),
+  const [settlementsPage, settleable, t, tc] = await Promise.all([
+    listSettlements(
+      session.actor,
+      { partnerId: filters.partner, status: filters.status },
+      locale,
+      pageRequest(filters.page),
+    ),
     listSettleablePartners(session.actor, locale),
     getTranslations('settlements'),
     getTranslations('common'),
@@ -75,7 +82,7 @@ export default async function SettlementsPage({
       />
 
       <Card padding="none">
-        {rows.length === 0 ? (
+        {settlementsPage.total === 0 ? (
           <EmptyState
             icon="finance"
             title={t('none')}
@@ -102,7 +109,7 @@ export default async function SettlementsPage({
               </TR>
             </THead>
             <TBody>
-              {rows.map((row) => (
+              {settlementsPage.rows.map((row) => (
                 <TR key={row.id}>
                   <TD>
                     <Link
@@ -161,6 +168,11 @@ export default async function SettlementsPage({
             </TBody>
           </TableShell>
         )}
+        <Pager
+          page={settlementsPage}
+          path="/settlements"
+          params={{ partner: filters.partner, status: filters.status }}
+        />
       </Card>
     </>
   )

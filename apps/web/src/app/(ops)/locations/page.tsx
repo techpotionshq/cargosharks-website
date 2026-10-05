@@ -10,7 +10,9 @@
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { listLocations } from '@/features/network/queries'
+import { listLocations, locationCounts } from '@/features/network/queries'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
@@ -34,17 +36,20 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function LocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; page?: string }>
 }) {
   const session = await requireSession()
-  const { q } = await searchParams
+  const { q, page } = await searchParams
   const t = await getTranslations('locations')
   const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const rows = await listLocations(session.actor, q)
-  const used = rows.filter((row) => row.useCount > 0).length
+  const [locationsPage, counts] = await Promise.all([
+    listLocations(session.actor, q, pageRequest(page)),
+    locationCounts(session.actor, q),
+  ])
+  const rows = locationsPage.rows
 
   return (
     <Register
@@ -59,10 +64,10 @@ export default async function LocationsPage({
         label: tc('search'),
       }}
       summary={[
-        { label: t('total'), value: rows.length },
-        { label: t('inUse'), value: used },
+        { label: t('total'), value: counts.total },
+        { label: t('inUse'), value: counts.inUse },
       ]}
-      isEmpty={rows.length === 0}
+      isEmpty={locationsPage.total === 0}
       empty={{
         icon: 'locations',
         title: q ? t('noneMatching') : t('noneYet'),
@@ -127,6 +132,7 @@ export default async function LocationsPage({
           ))}
         </TBody>
       </TableShell>
+      <Pager page={locationsPage} path="/locations" params={{ q }} />
     </Register>
   )
 }

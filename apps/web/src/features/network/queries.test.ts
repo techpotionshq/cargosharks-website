@@ -37,26 +37,43 @@ describe.skipIf(!enabled)('network reads', () => {
     collation, which a JS sort does not reproduce everywhere, so it is not
     asserted.)
   */
-  it('lists partners, capped at a page', async () => {
-    const rows = await listPartners(homeActor)
-    expect(rows.length).toBeGreaterThan(0)
-    expect(rows.length).toBeLessThanOrEqual(200)
+  it('lists partners a page at a time, with the total', async () => {
+    const page = await listPartners(homeActor)
+    expect(page.rows.length).toBeGreaterThan(0)
+    expect(page.rows.length).toBeLessThanOrEqual(page.size)
+    expect(page.total).toBeGreaterThanOrEqual(page.rows.length)
+  })
+
+  /*
+    The type tab is a query filter now, not a cut of the first page, and the
+    counts on the tabs add up to what "All" pages through.
+  */
+  it('filters partners by type in the query, and the tab counts agree', async () => {
+    const agents = await listPartners(homeActor, { type: 'agent' })
+    expect(agents.rows.every((p) => p.type === 'agent')).toBe(true)
+
+    const byType = await partnerTypeCounts(homeActor)
+    const all = await listPartners(homeActor)
+    expect(byType.find((t) => t.type === 'agent')?.count).toBe(agents.total)
+    expect(byType.reduce((sum, t) => sum + Number(t.count), 0)).toBe(all.total)
   })
 
   /** The search narrows rather than matching everything. */
   it('narrows partners by search', async () => {
-    const hits = await listPartners(homeActor, 'AGT-FIXTURE')
-    expect(hits.map((p) => p.code)).toContain('AGT-FIXTURE')
+    const hits = await listPartners(homeActor, { search: 'AGT-FIXTURE' })
+    expect(hits.rows.map((p) => p.code)).toContain('AGT-FIXTURE')
 
-    expect(await listPartners(homeActor, 'zzz-no-such-partner')).toEqual([])
+    expect((await listPartners(homeActor, { search: 'zzz-no-such-partner' })).rows).toEqual([])
   })
 
   it('lists locations', async () => {
-    expect(Array.isArray(await listLocations(homeActor))).toBe(true)
+    expect(Array.isArray((await listLocations(homeActor)).rows)).toBe(true)
   })
 
   it('narrows locations by search', async () => {
-    expect(await listLocations(homeActor, 'zzz-no-such-location')).toEqual([])
+    const none = await listLocations(homeActor, 'zzz-no-such-location')
+    expect(none.rows).toEqual([])
+    expect(none.total).toBe(0)
   })
 
   it('counts the network without dropping the fixture partner', async () => {
@@ -106,7 +123,7 @@ describe.skipIf(!enabled)('network reads', () => {
       partnerId: PARTNER,
       ip: null,
     }
-    const rows = await listAgentShipments(agent, 'ar')
+    const rows = (await listAgentShipments(agent, 'ar', { page: 1, size: 500 })).rows
     const ids = rows.map((row) => row.id)
 
     expect(ids).toContain(HOME_JOB)
@@ -116,6 +133,6 @@ describe.skipIf(!enabled)('network reads', () => {
   })
 
   it('lists nothing for a principal with no partner', async () => {
-    expect(await listAgentShipments(homeActor)).toEqual([])
+    expect((await listAgentShipments(homeActor)).rows).toEqual([])
   })
 })

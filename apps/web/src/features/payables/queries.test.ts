@@ -37,11 +37,11 @@ describe.skipIf(!enabled)('payables reads', () => {
 
   describe('the registers', () => {
     it('lists supplier bills for a scoped actor', async () => {
-      expect(Array.isArray(await listSupplierInvoices(homeActor))).toBe(true)
+      expect(Array.isArray((await listSupplierInvoices(homeActor)).rows)).toBe(true)
     })
 
     it('lists supplier payments', async () => {
-      expect(Array.isArray(await listSupplierPayments(homeActor))).toBe(true)
+      expect(Array.isArray((await listSupplierPayments(homeActor)).rows)).toBe(true)
     })
 
     /*
@@ -64,7 +64,7 @@ describe.skipIf(!enabled)('payables reads', () => {
     })
 
     it('lists settlements', async () => {
-      expect(Array.isArray(await listSettlements(homeActor))).toBe(true)
+      expect(Array.isArray((await listSettlements(homeActor)).rows)).toBe(true)
     })
 
     it('lists partners a settlement could be run for', async () => {

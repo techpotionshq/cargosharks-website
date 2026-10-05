@@ -12,6 +12,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { Pager } from '@/ui/pager'
+import { pageRequest } from '@/lib/paging'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import {
@@ -57,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PayablesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; partner?: string }>
+  searchParams: Promise<{ status?: string; partner?: string; page?: string; paymentsPage?: string }>
 }) {
   const timeZone = await getTimeZone()
   const today = todayIn()
@@ -71,15 +73,21 @@ export default async function PayablesPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const filters = await searchParams
 
-  const [rows, summary, ageing, payments, t, tc] = await Promise.all([
+  const [billsPage, summary, ageing, paymentsPage, t, tc] = await Promise.all([
     listSupplierInvoices(
       session.actor,
       { status: filters.status, partnerId: filters.partner },
       locale,
+      pageRequest(filters.page),
     ),
     payablesSummary(session.actor),
     payablesAgeing(session.actor),
-    listSupplierPayments(session.actor, locale),
+    listSupplierPayments(
+      session.actor,
+      locale,
+      { withBalanceOnly: true },
+      pageRequest(filters.paymentsPage),
+    ),
     getTranslations('payables'),
     getTranslations('common'),
   ])
@@ -93,9 +101,9 @@ export default async function PayablesPage({
     Only payments with something left to place need the lookup at all, so a
     fully allocated register costs no queries.
   */
-  const openPayments = payments.filter(
-    (payment) => Number(payment.amount) - Number(payment.allocated) > 0,
-  )
+  // Asked of the query (`withBalanceOnly`) and paged, rather than cut from
+  // the newest two hundred payments here.
+  const openPayments = paymentsPage.rows
   const billsByPartner = new Map(
     await Promise.all(
       [...new Set(openPayments.map((payment) => payment.partnerId))].map(
@@ -165,7 +173,7 @@ export default async function PayablesPage({
         />
 
         <Card className="@4xl:col-span-12" padding="none">
-          {rows.length === 0 ? (
+          {billsPage.total === 0 ? (
             <EmptyState icon="payments" title={t('none')} description={t('noneHint')} />
           ) : (
             <TableShell>
@@ -186,7 +194,7 @@ export default async function PayablesPage({
                 </TR>
               </THead>
               <TBody>
-                {rows.map((row) => {
+                {billsPage.rows.map((row) => {
                   const variance = Number(row.varianceBase)
                   // The rule the "Overdue" tile counts by (`core`), so every
                   // bill in that count is marked here. The tile said one and
@@ -269,6 +277,7 @@ export default async function PayablesPage({
               </TBody>
             </TableShell>
           )}
+          <Pager page={billsPage} path="/payables" params={filters} />
         </Card>
       </Grid>
 
@@ -288,7 +297,7 @@ export default async function PayablesPage({
           <p className="mt-1 text-body-sm text-ink-muted">{t('paymentsHint')}</p>
         </div>
 
-        {openPayments.length === 0 ? (
+        {paymentsPage.total === 0 ? (
           <EmptyState icon="check" title={t('allAllocated')} description={t('allAllocatedHint')} />
         ) : (
           <TableShell className="border-t border-line">
@@ -370,6 +379,7 @@ export default async function PayablesPage({
             </TBody>
           </TableShell>
         )}
+        <Pager page={paymentsPage} path="/payables" params={filters} param="paymentsPage" />
       </Card>
     </>
   )
