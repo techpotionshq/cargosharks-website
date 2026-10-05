@@ -276,7 +276,12 @@ export function Meter({
   const pct = max <= 0 ? 0 : Math.min(100, Math.max(0, (value / max) * 100))
   return (
     <div
-      className={['h-2 w-full overflow-hidden rounded-full bg-surface-sunken', className]
+      // No `w-full`. A block already fills its container, and does it net of
+      // its own margins; `w-full` is 100% *plus* any margin a caller adds. The
+      // single-option quotation indents its meter with `ms-8`, so the green
+      // margin bar ran 32px past the edge of its card. Every caller sits in
+      // a block parent, so the width they get is unchanged.
+      className={['block h-2 min-w-0 overflow-hidden rounded-full bg-surface-sunken', className]
         .filter(Boolean)
         .join(' ')}
       role="meter"

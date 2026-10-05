@@ -107,7 +107,23 @@ window.__ann = (() => {
     /** Zoom the page (origin top-left) so doc point under screen rect r goes to screen centre. */
     zoom(r, sc, ms) {
       const b = document.body, vw = innerWidth, vh = innerHeight;
-      if (!window.__pinned) window.__pinned = [...b.querySelectorAll('*')].filter((e) => { const p = getComputedStyle(e).position; return p === 'fixed' || p === 'sticky'; });
+      // Hide what is pinned to the VIEWPORT: under a transformed body a fixed
+      // topbar or a document-sticky sidebar lands mid-page. A sticky element
+      // inside its own scroll box is not one of those: it moves with the body
+      // like any other content. Every table header is that case (THead is
+      // sticky inside TableShell's overflow-x-auto box), and hiding them all
+      // was why every zoomed register in the shorts had an empty header row.
+      const viewportPinned = (e) => {
+        const p = getComputedStyle(e).position;
+        if (p === 'fixed') return true;
+        if (p !== 'sticky') return false;
+        for (let a = e.parentElement; a && a !== b && a !== document.documentElement; a = a.parentElement) {
+          const s = getComputedStyle(a);
+          if (/(auto|scroll|hidden|clip)/.test(s.overflowX + ' ' + s.overflowY)) return false;
+        }
+        return true;
+      };
+      if (!window.__pinned) window.__pinned = [...b.querySelectorAll('*')].filter(viewportPinned);
       window.__pinned.forEach((e) => { e.style.transition = 'opacity .2s'; e.style.opacity = '0'; });
       const pcx = r.x + r.width / 2 + scrollX, pcy = r.y + r.height / 2 + scrollY;
       let tx = vw / 2 + scrollX - sc * pcx, ty = vh / 2 + scrollY - sc * pcy;
