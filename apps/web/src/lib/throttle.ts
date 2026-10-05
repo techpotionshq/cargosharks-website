@@ -1,4 +1,5 @@
 import 'server-only'
+import { afterFailure, afterSuccess, lockoutState, type LockoutCounters } from '@qabandi/core'
 
 /**
  * The per-address sign-in throttle — the other half of FR-ID-05.
@@ -162,29 +163,92 @@ export function createThrottle(limit: number, windowMs: number): Throttle {
 }
 
 /**
- * The sign-in budget: ten attempts per address per fifteen minutes.
+ * The sign-in budget per address: fifty *failed* attempts per fifteen minutes.
  *
- * Spent *before* the password is checked, and counting every attempt rather
- * than only the failures. Counting failures alone would let an attacker who
- * has one valid credential recover the budget between guesses at other
- * accounts, and the point here is to bound the rate of the whole conversation.
+ * ## Why failures, and why so many
+ *
+ * This used to be ten attempts of any kind, and Better Auth's own limiter
+ * (three per ten seconds) sat in front of it. Run 5 put forty people behind one
+ * address and thirty-seven of them were told "Too many requests" (R11). The
+ * address is a poor key for a person: an office is one NAT address, and until
+ * `CF-Connecting-IP` was read (`lib/client-address.ts`) the whole company was
+ * one Cloudflare edge address. A budget that every successful sign-in spends
+ * is a budget the morning rush exhausts.
+ *
+ * So a correct password spends nothing, and only a 401 — "no such user" or
+ * "wrong password", which Better Auth answers identically — counts. That still
+ * bounds the attack this exists for: walking a list of addresses through the
+ * form, where every probe of an unknown address is a failure. And it is never
+ * cleared by a success, so an attacker holding one valid credential cannot
+ * sign in between guesses to buy the budget back.
+ *
+ * Fifty is generous on purpose. A shared office of fifty mistyping once each
+ * before nine is ordinary; fifty guesses a quarter-hour from one address,
+ * spread over accounts that each lock at five (`signInFailuresByEmail`), is
+ * not a useful attack.
+ *
+ * Read with `peek` before the password check and spent with `hit` after a
+ * failure, so a burst of simultaneous wrong attempts can overrun it by the
+ * size of the burst. That is bounded by concurrency, and the per-account lock
+ * behind it is the precise control.
  */
-const signIn = createThrottle(10, 15 * 60 * 1000)
+const signInFailuresByAddress = createThrottle(50, 15 * 60 * 1000)
 
-export function recordSignInAttempt(address: string | null, now = Date.now()): ThrottleVerdict {
-  return signIn.hit(address, now)
+/**
+ * The per-account half: the `core` lockout policy, run in memory for *every*
+ * address typed into the form, whether or not it has an account.
+ *
+ * The persistent lock (`lib/lockout.ts`) only exists for real accounts, so on
+ * its own "this account is locked" confirmed that the address had one. Running
+ * the same arithmetic here for any address — five failures, a fifteen-minute
+ * lock, thirty minutes of quiet forgives the run — means an unknown address
+ * locks at the same attempt, for the same time, with the same answer. The
+ * response no longer depends on whether we hold an account, and the stored
+ * lock stays behind it as the control that survives a restart and is shared
+ * between processes.
+ */
+const signInFailuresByEmail = new Map<string, LockoutCounters>()
+
+/** Is sign-in from this address still within its failure budget? Spends nothing. */
+export function checkSignInAddress(address: string | null, now = Date.now()): ThrottleVerdict {
+  return signInFailuresByAddress.peek(address, now)
+}
+
+/** The in-memory lock standing against an email address, known or not. */
+export function readEmailLock(email: string | null, now = Date.now()): ThrottleVerdict {
+  const counters = email ? signInFailuresByEmail.get(email) : undefined
+  if (!counters) return { allowed: true, minutesRemaining: 0 }
+  const state = lockoutState(counters, new Date(now))
+  return { allowed: !state.locked, minutesRemaining: state.minutesRemaining }
+}
+
+/** Count one wrong password against the address and the email. */
+export function recordSignInFailureInMemory(
+  address: string | null,
+  email: string | null,
+  now = Date.now(),
+): void {
+  signInFailuresByAddress.hit(address, now)
+  if (!email) return
+  const previous = signInFailuresByEmail.get(email) ?? afterSuccess()
+  // Same ceiling and eviction rule as `createThrottle`, for the same reason:
+  // the keys are whatever strangers type.
+  if (!signInFailuresByEmail.has(email) && signInFailuresByEmail.size >= MAX_TRACKED) {
+    const oldest = signInFailuresByEmail.keys().next()
+    if (!oldest.done) signInFailuresByEmail.delete(oldest.value)
+  }
+  signInFailuresByEmail.delete(email)
+  signInFailuresByEmail.set(email, afterFailure(previous, new Date(now)))
 }
 
 /**
- * Clear an address's budget after a successful sign-in.
+ * Forget an email's run after its correct password.
  *
- * An office behind one NAT address is the case this exists for: ten people
- * sharing a public IP would otherwise spend a shared budget on ordinary
- * Sunday-morning sign-ins and lock the eleventh out of a working product.
- * Success is the signal that the traffic is people rather than a script.
+ * The address budget is deliberately left alone — see
+ * `signInFailuresByAddress`.
  */
-export function clearSignInAttempts(address: string | null): void {
-  signIn.clear(address)
+export function clearSignInFailuresInMemory(email: string | null): void {
+  if (email) signInFailuresByEmail.delete(email)
 }
 
 /**
@@ -258,7 +322,8 @@ export function recordTrackingMiss(reference: string, verifier: string, now = Da
 
 /** Test seam. Not exported from any barrel; nothing in the product calls it. */
 export function __resetThrottle(): void {
-  signIn.reset()
+  signInFailuresByAddress.reset()
+  signInFailuresByEmail.clear()
   resetByAddress.reset()
   resetByEmail.reset()
   trackByAddress.reset()

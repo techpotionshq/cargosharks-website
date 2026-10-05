@@ -22,16 +22,30 @@ import 'server-only'
  * ## What the refusals say
  *
  * A thrown `APIError` with a `code` the action recognises and the minutes
- * until it lifts. The lock message concedes that the address has an account —
- * see the long note in `signIn` for why that is conceded, and why only after
- * five failures. The throttle messages describe the caller, not the account,
- * and count every request the same whether or not the address is ours.
+ * until it lifts. None of them depends on whether the address has an account:
+ * the lock is computed in memory for every address typed (`lib/throttle.ts`),
+ * so an unknown address is "locked" at the same fifth failure as a real one.
+ * The stored lock only ever agrees with it, or outlives it across a restart.
+ * The throttle messages describe the caller, not the account.
+ *
+ * ## Successful sign-ins spend nothing (R11)
+ *
+ * The address budget counts failures only, and Better Auth's own per-address
+ * limiter is switched off for this one path (`auth.ts`). Forty colleagues
+ * behind one office address, or one Cloudflare edge, signing in at nine are
+ * forty successes, and none of them is refused.
  */
 
 import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { clientAddressFrom } from './client-address'
 import { clearSignInFailures, readLockout, recordSignInFailure } from './lockout'
-import { clearSignInAttempts, recordResetRequest, recordSignInAttempt } from './throttle'
+import {
+  checkSignInAddress,
+  clearSignInFailuresInMemory,
+  readEmailLock,
+  recordResetRequest,
+  recordSignInFailureInMemory,
+} from './throttle'
 
 /** The codes the forms translate. Stated once so the two sides cannot drift. */
 export const AUTH_REFUSAL = {
@@ -80,14 +94,19 @@ function refuse(
  */
 export async function guardBefore(ctx: GuardContext): Promise<void> {
   if (ctx.path === '/sign-in/email') {
-    // Every attempt, before anything else looks at it — the budget bounds the
-    // rate of the whole conversation, including addresses that are nobody's.
-    const throttle = recordSignInAttempt(addressOf(ctx))
+    // The address's failure budget first: a caller who has spent it learns
+    // nothing about any account, not even whether it is locked.
+    const throttle = checkSignInAddress(addressOf(ctx))
     if (!throttle.allowed) {
       refuse('TOO_MANY_REQUESTS', AUTH_REFUSAL.signInThrottled, throttle.minutesRemaining)
     }
 
+    // Then the account. The in-memory lock runs for every address typed, so
+    // an unknown one is refused at the same attempt and in the same words as
+    // a real one; the stored lock behind it is what survives a restart.
     const email = emailOf(ctx)
+    const memory = readEmailLock(email)
+    if (!memory.allowed) refuse('FORBIDDEN', AUTH_REFUSAL.accountLocked, memory.minutesRemaining)
     const lock = email ? await readLockout(email) : null
     if (lock?.locked) refuse('FORBIDDEN', AUTH_REFUSAL.accountLocked, lock.minutesRemaining)
     return
@@ -121,11 +140,17 @@ export async function recordAfter(ctx: GuardContext): Promise<void> {
   const returned = ctx.context?.returned
   try {
     if (isAPIError(returned)) {
-      if (returned.statusCode === 401) await recordSignInFailure(email)
+      if (returned.statusCode === 401) {
+        recordSignInFailureInMemory(addressOf(ctx), email)
+        await recordSignInFailure(email)
+      }
       return
     }
+    // The address budget is not refunded: it counts failures only, so a
+    // success never spent it, and refunding it would let a caller holding one
+    // good password reset the budget between guesses at other accounts.
+    clearSignInFailuresInMemory(email)
     await clearSignInFailures(email)
-    clearSignInAttempts(addressOf(ctx))
   } catch (error) {
     // Logged rather than thrown: this runs on the path back to the person, and
     // a database hiccup here should not turn "wrong password" into a 500. A
@@ -133,6 +158,16 @@ export async function recordAfter(ctx: GuardContext): Promise<void> {
     // reports itself as present and is not, which is why it is logged.
     console.error({ error }, 'sign-in outcome could not be recorded')
   }
+}
+
+/**
+ * Better Auth's `rateLimit`, as `auth.ts` passes it: the library's limiter
+ * with its sign-in rule switched off, because the hooks here govern that path
+ * (R11, see the note in `auth.ts`). Exported so the load test runs the same
+ * setting the application does.
+ */
+export const AUTH_RATE_LIMIT = {
+  customRules: { '/sign-in/email': false as const },
 }
 
 /** The pair, as `betterAuth({ hooks })` takes them. */

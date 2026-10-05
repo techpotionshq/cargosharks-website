@@ -33,7 +33,7 @@ import {
   authVerification,
 } from '@qabandi/db'
 import { getBrand } from '@/lib/brand'
-import { authHooks } from '@/lib/auth-guard'
+import { AUTH_RATE_LIMIT, authHooks } from '@/lib/auth-guard'
 import { BETTER_AUTH_IP_ADDRESS } from '@/lib/client-address'
 import { AsyncLocalStorage } from 'node:async_hooks'
 
@@ -243,6 +243,22 @@ export const auth = betterAuth({
     `/api/auth/*` route and for `auth.api.*` alike.
   */
   hooks: authHooks,
+
+  /*
+    Better Auth's own limiter, minus the one path the hooks above govern.
+
+    Its default for `/sign-in/*` is three requests per ten seconds per address,
+    counting successes, and it runs before the hooks. Behind one office NAT, or
+    with every visitor arriving from a Cloudflare edge, that refused 37 of 40
+    colleagues signing in together (run 5, R11). The hooks count failures per
+    address and lock per account, which protects a password without spending a
+    budget on people who type theirs correctly, so the library's rule is
+    turned off for `/sign-in/email` only. Everything else — the two-factor
+    challenge, password reset, the other `/sign-in/*` paths — keeps the
+    library's defaults. `enabled` is left alone: on in production, off in
+    development, as the library decides.
+  */
+  rateLimit: AUTH_RATE_LIMIT,
 
   session: {
     // Database-backed and opaque, never a stateless JWT: FR-ID-08 requires

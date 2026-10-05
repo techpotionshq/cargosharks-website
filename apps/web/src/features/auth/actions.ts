@@ -78,23 +78,19 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
     for this form. What is left here is translating the refusal into the
     operator's language.
 
-    ## The oracle the lock message does concede, and why
+    ## Why the lock message is not an oracle
 
     Everything else in this file works to make an unknown address
-    indistinguishable from a wrong password. The lock message breaks that:
-    only a real account can be locked, so being told about a lock confirms the
-    address exists.
+    indistinguishable from a wrong password. The lock message used to break
+    that, because only a real account could be locked. The guard now runs the
+    same lock in memory for every address typed (`lib/throttle.ts`), so an
+    unknown address is locked at the same fifth failure, for the same fifteen
+    minutes, in the same words (R11).
 
-    It is conceded deliberately, for a price an attacker has to pay in full.
-    Reaching the message costs five failed attempts against that one address,
-    and the per-address budget allows ten in fifteen minutes — so enumerating a
-    list is slow, loud, and self-limiting.
-
-    The alternative is worse in a way that is easy to underrate: refusing a
-    correct password with "wrong email or password" and no further explanation.
-    That is indistinguishable from the product being broken. It generates a
-    support call, and the fix somebody reaches for under that pressure is to
-    turn the lockout off.
+    The lock is still told rather than disguised as "wrong email or password".
+    Refusing a correct password with no explanation is indistinguishable from
+    the product being broken; it generates a support call, and the fix
+    somebody reaches for under that pressure is to turn the lockout off.
   */
   let response: Response
   try {
@@ -173,9 +169,9 @@ async function isTwoFactorChallenge(response: Response): Promise<boolean> {
 /**
  * The sentence for a refusal the guard raised, or null for anything else.
  *
- * Both messages are safe to be specific about except the lock, whose
- * concession is argued in `signIn` above: the throttle describes the caller,
- * not the account.
+ * Both are safe to be specific about: the throttle describes the caller, and
+ * the lock is answered alike for addresses with and without an account (see
+ * `signIn` above).
  */
 function refusalMessage(
   t: (key: string, values?: Record<string, string | number>) => string,
