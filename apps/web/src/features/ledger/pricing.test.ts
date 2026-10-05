@@ -430,7 +430,8 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
     */
     /*
       Run 6 priced in October on a January rate, and only the customer's
-      footnote said so. JPY, on days no other suite writes, with a readiness
+      footnote said so. BHD (seeded; JPY is not), on days no other suite
+      writes, with a readiness
       day in the past so the rate pricing takes is measured against that day.
     */
     it('holds a draft converted at a rate more than a week old, and names it', async () => {
@@ -446,9 +447,9 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
         tx
           .insert(fxRates)
           .values({
-            fromCurrency: 'JPY',
+            fromCurrency: 'BHD',
             toCurrency: 'KWD',
-            rate: '0.00200000',
+            rate: '0.81000000',
             source: 'manual',
             effectiveOn: '2026-02-01',
           })
@@ -457,8 +458,8 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       await card(
         on,
         'sell',
-        [{ chargeTypeId: documentation, basis: 'flat', rate: '10000', currency: 'JPY' }],
-        { currency: 'JPY', ...valid },
+        [{ chargeTypeId: documentation, basis: 'flat', rate: '100.000', currency: 'BHD' }],
+        { currency: 'BHD', ...valid },
       )
 
       await priceEnquiry({}, form({ enquiryId: stale }))
@@ -468,7 +469,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       }
       expect(snapshot.review.needed).toBe(true)
       expect(snapshot.review.concerns.filter((c) => c.kind === 'stale_rate')).toEqual([
-        { kind: 'stale_rate', currency: 'JPY', effectiveOn: '2026-02-01', ageDays: 28 },
+        { kind: 'stale_rate', currency: 'BHD', effectiveOn: '2026-02-01', ageDays: 28 },
       ])
 
       // A rate within the week is not stale.
