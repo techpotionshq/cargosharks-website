@@ -7,6 +7,8 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  staleConversions,
+  STALE_RATE_DAYS,
   D,
   checkPegs,
   crossCheck,
@@ -201,5 +203,28 @@ describe('convertToBase', () => {
     expect(convertToBase('900', 'USD', 'KWD', '0', 3)).toBeNull()
     expect(convertToBase(null, 'USD', 'KWD', '0.3', 3)).toBeNull()
     expect(convertToBase('abc', 'USD', 'KWD', '0.3', 3)).toBeNull()
+  })
+})
+
+describe('staleConversions', () => {
+  it('names a rate more than a week older than the day it is measured against', () => {
+    expect(
+      staleConversions(
+        [
+          { from: 'USD', effectiveOn: '2026-01-01' },
+          { from: 'EUR', effectiveOn: '2026-10-01' },
+        ],
+        '2026-10-05',
+      ),
+    ).toEqual([{ currency: 'USD', effectiveOn: '2026-01-01', ageDays: 277 }])
+  })
+
+  it('allows exactly a week, and never calls a rate dated after the reference stale', () => {
+    const day = (effectiveOn: string) =>
+      staleConversions([{ from: 'USD', effectiveOn }], '2026-10-08')
+    expect(STALE_RATE_DAYS).toBe(7)
+    expect(day('2026-10-01')).toEqual([])
+    expect(day('2026-09-30')).toHaveLength(1)
+    expect(day('2026-10-20')).toEqual([])
   })
 })

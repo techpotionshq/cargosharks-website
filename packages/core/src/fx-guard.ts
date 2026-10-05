@@ -299,6 +299,45 @@ export function fxStaleness(
   return { stale: stalePairs.length > 0, ageDays, newest, stalePairs }
 }
 
+/** How old a rate may be before pricing holds the draft for a person. */
+export const STALE_RATE_DAYS = 7
+
+/** A rate a quotation line was converted at that was older than it should be. */
+export interface StaleConversion {
+  readonly currency: string
+  readonly effectiveOn: string
+  readonly ageDays: number
+}
+
+/**
+ * The rates a draft was converted at that were stale on the day it was priced.
+ *
+ * Run 6 priced a USD card into KWD on the demo's January rate in October, and
+ * the customer's footnote said so truthfully: "converted at the rate on 01 Jan
+ * 2026". The footnote was right. What was missing was anyone being told before
+ * it went out. A feed that has stopped, or a branch that never switched one on,
+ * fails the same quiet way, so pricing names the rate and its age instead.
+ *
+ * `reference` is the day the rate is measured against: the pricing day, or the
+ * enquiry's readiness day when that is earlier, because pricing deliberately
+ * takes the rate on or before a past readiness day and that rate is not stale
+ * for it. A future readiness day measures against today, since no rate for a
+ * day that has not happened yet can exist.
+ */
+export function staleConversions(
+  converted: readonly { readonly from: string; readonly effectiveOn: string }[],
+  reference: string,
+  maxDays: number = STALE_RATE_DAYS,
+): StaleConversion[] {
+  return converted
+    .map((rate) => ({
+      currency: rate.from,
+      effectiveOn: rate.effectiveOn,
+      ageDays: daysBetween(rate.effectiveOn, reference),
+    }))
+    .filter((rate) => rate.ageDays > maxDays)
+}
+
 /**
  * The day a quotation's lines were converted at, or null if none were.
  *

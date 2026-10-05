@@ -38,6 +38,7 @@ import {
   summariseMargin,
   toScale,
   todayIn,
+  staleConversions,
   type Basis,
   type ChargeContext,
   type MarginRule,
@@ -331,8 +332,24 @@ export async function priceEnquiryToQuote(
     stale, so the draft is held for a person and says which reply to look at.
   */
   const newer = buyCard ? await newerRateReplies(tx, enquiryId, buyCard.id) : []
+
+  /*
+    The rates lines were actually converted at, once: the stale check below
+    and the snapshot's `converted` (which decides the customer's footnote)
+    must agree about which rates those were.
+  */
+  const convertedRates = rates.filter((r) => priced.some((line) => line.amount.currency === r.from))
+  const today = todayIn()
+  const stale = staleConversions(convertedRates, on < today ? on : today)
+
   const reviewConcerns = [
     ...concerns,
+    ...stale.map((rate) => ({
+      kind: 'stale_rate' as const,
+      currency: rate.currency,
+      effectiveOn: rate.effectiveOn,
+      ageDays: rate.ageDays,
+    })),
     ...newer.map((reply) => ({
       kind: 'newer_reply' as const,
       partnerEn: reply.partnerEn,
@@ -389,16 +406,14 @@ export async function priceEnquiryToQuote(
           (`quoteConversionDate` in core). A card already in the base currency
           converts nothing, and a footnote there would be noise.
         */
-        converted: rates
-          .filter((r) => priced.some((line) => line.amount.currency === r.from))
-          .map((r) => ({
-            from: r.from,
-            to: r.to,
-            rate: dec(r.rate).toString(),
-            source: r.source,
-            effectiveOn: r.effectiveOn,
-            takenAt: new Date(r.takenAt).toISOString(),
-          })),
+        converted: convertedRates.map((r) => ({
+          from: r.from,
+          to: r.to,
+          rate: dec(r.rate).toString(),
+          source: r.source,
+          effectiveOn: r.effectiveOn,
+          takenAt: new Date(r.takenAt).toISOString(),
+        })),
         inclusions: revenue.map((line) => nameFor(line.chargeTypeKey, sellCard ?? buyCard!)),
         /*
           The buy side line by line, in the quotation's currency and converted
