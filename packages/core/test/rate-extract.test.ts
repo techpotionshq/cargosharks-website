@@ -382,11 +382,64 @@ describe('a priced line the model cannot classify (R1)', () => {
     expect(result.unclassified).toEqual([{ line: 3, description: 'Screening and handling' }])
     expect(summary.primary?.amount.amount.toFixed(2)).toBe('1617.00')
 
-    // Flagged for a person, naming the line, but ranked: the figure is whole.
+    /*
+      Flagged for a person, naming the line. The figure is whole and shown as
+      it stands, but not ranked: "Cheapest" on a reply with an unnamed charge
+      in it was a recommendation nobody had checked (live run 6).
+    */
     const review = rateReplyReview(response)
     expect(review.needed).toBe(true)
-    expect(review.ranked).toBe(true)
+    expect(review.ranked).toBe(false)
     expect(review.unclassified[0]!.description).toBe('Screening and handling')
+  })
+
+  /*
+    Live run 6: the model wrote "OTHER" itself. It passed as a code we hold,
+    so no review note appeared, the reply ranked Cheapest, and "Make rate card"
+    wrote a card with an unnamed line.
+  */
+  it('treats a line the model itself coded "other" as unclassified', () => {
+    const coded = ek({
+      lines: [
+        ...(ek().lines as RawRateLine[]).slice(0, 2),
+        rline({
+          chargeType: 'OTHER',
+          basis: 'flat',
+          rate: '40',
+          containerType: null,
+          description: 'Screening and handling',
+        }),
+        rline({
+          chargeType: 'other',
+          basis: 'flat',
+          rate: '15',
+          containerType: null,
+          description: null,
+        }),
+      ],
+    })
+    const { result, response } = stored(coded, withOther)
+    expect(result.lines.ok).toBe(true)
+    // "OTHER" is not a name to quote back; the line number stands in for it.
+    expect(result.unclassified).toEqual([
+      { line: 3, description: 'Screening and handling' },
+      { line: 4, description: '' },
+    ])
+    const review = rateReplyReview(response)
+    expect(review.needed).toBe(true)
+    expect(review.ranked).toBe(false)
+  })
+
+  it('reads an "other" row stored with no unclassified list as unclassified', () => {
+    const review = rateReplyReview({
+      ok: true,
+      issues: [],
+      rows: [{ chargeCode: 'AIR_FREIGHT' }, { chargeCode: 'OTHER' }],
+      totals: [{ currency: 'USD', amount: '10' }],
+    })
+    expect(review.needed).toBe(true)
+    expect(review.ranked).toBe(false)
+    expect(review.unclassified).toEqual([{ line: 2, description: '' }])
   })
 
   it('keeps a code the deployment does not hold the same way, naming what the model wrote', () => {

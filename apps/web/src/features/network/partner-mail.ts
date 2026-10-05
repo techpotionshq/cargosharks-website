@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, notExists } from 'drizzle-orm'
 import {
   assets,
   messageAttachments,
@@ -54,6 +54,19 @@ export async function partnerMail(actor: Actor, partnerId: string): Promise<Part
           isNull(messages.enquiryId),
           isNull(messages.jobId),
           isNull(messages.readAt),
+          /*
+            Nor mail already filed as a bill. The intake reads a supplier's
+            attachment on arrival and writes the bill without touching the
+            mail, so a filed bill's mail stayed here under a heading that says
+            "not filed as a bill" (live run 6). The bill is the record now.
+          */
+          notExists(
+            tx
+              .select({ one: supplierInvoices.id })
+              .from(messageAttachments)
+              .innerJoin(supplierInvoices, eq(supplierInvoices.assetId, messageAttachments.assetId))
+              .where(eq(messageAttachments.messageId, messages.id)),
+          ),
         ),
       )
       .orderBy(desc(messages.createdAt))

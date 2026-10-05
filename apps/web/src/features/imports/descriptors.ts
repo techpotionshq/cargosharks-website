@@ -45,6 +45,7 @@ export type ImportCheckCode =
   | 'containerTypeNeeded'
   | 'zeroRateNeedsMinimum'
   | 'etaBeforeEtd'
+  | 'dueBeforeIssue'
   | 'totalMismatch'
   | 'overpaid'
   | 'nothingOutstanding'
@@ -980,7 +981,8 @@ export const openReceivableDescriptor: ImportDescriptor = {
     },
   ],
   /**
-   * Three arithmetic checks, and each catches a different real defect.
+   * A date-order check, then three arithmetic checks, and each catches a
+   * different real defect.
    *
    * The first is a sheet exported with tax in a column nobody added in. The
    * second is an invoice that is already settled and does not belong in an
@@ -989,6 +991,23 @@ export const openReceivableDescriptor: ImportDescriptor = {
    * but not something to import silently as a negative balance.
    */
   check: (row): IssueDetail<ImportCheckCode> | null => {
+    /*
+      An invoice due before it was issued is a transposed pair of columns or
+      a mistyped day, never a term anyone agreed (live run 6: issued 19 Sep,
+      due 16 Sep, imported). Accepted, it ages as overdue from the day it
+      lands and chases a customer who is not late. ISO strings, so they
+      compare as text.
+    */
+    const issuedOn = row.issuedOn as string
+    const dueOn = row.dueOn as string | null
+    if (dueOn && dueOn < issuedOn) {
+      return {
+        code: 'dueBeforeIssue',
+        values: { issued: issuedOn, due: dueOn },
+        message: `Due date ${dueOn} is before the issue date ${issuedOn}; check the two columns are not swapped`,
+      }
+    }
+
     const subtotal = Number(row.subtotal as string)
     const tax = Number((row.taxAmount as string) ?? '0')
     const total = Number(row.total as string)

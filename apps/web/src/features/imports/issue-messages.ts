@@ -116,6 +116,8 @@ function describeProblem(t: Translate<'importsValidation'>, issue: ImportIssue):
       return t('zeroRateNeedsMinimum')
     case 'etaBeforeEtd':
       return t('etaBeforeEtd')
+    case 'dueBeforeIssue':
+      return t('dueBeforeIssue', values)
     case 'totalMismatch':
       return t('totalMismatch', values)
     case 'overpaid':

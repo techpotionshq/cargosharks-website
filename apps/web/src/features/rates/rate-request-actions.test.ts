@@ -505,4 +505,40 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
     expect(state.message).toMatch(/^ratesValidation\.promoteLaneMismatch/)
     expect(await cardsOf(agent)).toEqual([])
   })
+
+  /*
+    Live run 6: a reply with a line kept as "other" was made into a card with
+    an unnamed line, past the note asking for a name first (R1).
+  */
+  it('refuses a reply with a line nobody has named, and writes no card', async () => {
+    const agent = await makeAgent()
+    const { enquiryId, rateRequestId } = await makeRequest(
+      'parsed',
+      {
+        ok: true,
+        rows: [replyRow({ validFrom: '2041-02-01' })],
+        unclassified: [{ line: 2, description: 'Screening and handling' }],
+      },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
+
+    expect(state.message).toMatch(/^ratesValidation\.promoteUnclassified:/)
+    expect(await cardsOf(agent)).toEqual([])
+  })
+
+  it('refuses a reply whose model coded a line "other" itself', async () => {
+    const agent = await makeAgent()
+    const { enquiryId, rateRequestId } = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2041-03-01', chargeCode: 'OTHER' })] },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
+
+    expect(state.message).toMatch(/^ratesValidation\.promoteUnclassifiedLine/)
+    expect(await cardsOf(agent)).toEqual([])
+  })
 })

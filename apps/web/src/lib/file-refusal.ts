@@ -139,3 +139,23 @@ export async function fileRefusal(
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store' },
   })
 }
+
+/**
+ * `fetch` to the service, with an unreachable service as `null`, not a throw.
+ *
+ * Every file route checked `response.ok` and answered a failed render with
+ * the `render_failed` page, but a service that was down, refused the
+ * connection or ran past the 45-second timeout made `fetch` throw before that
+ * check ran. The route then died as a bare 500 with an empty body (live run
+ * 6), the one failure the refusal page was written for. A `null` here is the
+ * caller's cue to give the same page a failed render gets.
+ */
+export async function reachService(url: string, init: RequestInit): Promise<Response | null> {
+  try {
+    return await fetch(url, init)
+  } catch (error) {
+    // Kept in the server log: the page says "try again", the log says why.
+    console.error('[file-route] service unreachable', url, error)
+    return null
+  }
+}

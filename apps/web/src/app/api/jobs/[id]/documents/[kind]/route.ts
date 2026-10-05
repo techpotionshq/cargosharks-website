@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/session'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { fileRefusal } from '@/lib/file-refusal'
+import { fileRefusal, reachService } from '@/lib/file-refusal'
 import { mayDownload } from '@/lib/download-access'
 import { isUuid } from '@/lib/ids'
 
@@ -55,17 +55,21 @@ export async function GET(
     return fileRefusal(request, 'not_configured')
   }
 
-  const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/documents/job/${id}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
-    body: JSON.stringify({ actor: session.actor, locale, kind, store: false }),
-    signal: AbortSignal.timeout(45_000),
-  })
+  // A service that is down or timed out is a failed render, not a 500.
+  const response = await reachService(
+    `${serviceUrl.replace(/\/$/, '')}/internal/documents/job/${id}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ actor: session.actor, locale, kind, store: false }),
+      signal: AbortSignal.timeout(45_000),
+    },
+  )
 
-  if (!response.ok) {
+  if (!response || !response.ok) {
     // Passed through unchanged: a job outside this principal's branches is
     // invisible, not forbidden (FR-ID-04).
-    return fileRefusal(request, response.status === 404 ? 'not_found' : 'render_failed')
+    return fileRefusal(request, response?.status === 404 ? 'not_found' : 'render_failed')
   }
 
   return new Response(response.body, {

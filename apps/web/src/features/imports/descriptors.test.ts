@@ -549,6 +549,29 @@ describe('open receivables', () => {
     })
   })
 
+  /*
+    Live run 6: issued 19 Sep, due 16 Sep, imported, and aged as overdue the
+    day it landed. A due date before the issue date is a per-row error.
+  */
+  it('rejects a due date earlier than the issue date', () => {
+    const report = readImport(
+      [
+        'Invoice number,Customer code,Currency,Issue date,Due date,Net amount,Tax amount,Gross total,Amount received',
+        'INV-10240,AGL,KWD,2026-09-19,2026-09-16,500.000,0,500.000,0',
+        'INV-10241,AGL,KWD,2026-09-19,2026-09-19,500.000,0,500.000,0',
+      ].join('\n'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.ok).toBe(false)
+    expect(report.issues).toHaveLength(1)
+    expect(report.issues[0]).toMatchObject({
+      line: 2,
+      code: 'dueBeforeIssue',
+      values: { issued: '2026-09-19', due: '2026-09-16' },
+    })
+  })
+
   /** A settled invoice is not an open receivable, and imports as noise. */
   it('rejects an invoice with nothing outstanding', () => {
     const report = readImport(

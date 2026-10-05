@@ -162,10 +162,11 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
   /*
     R1, live run 5: EK's USD 40 screening line came back with no charge type
     and was dropped, so the reply ranked Cheapest at 1,577 instead of 1,617
-    with no warning. The line is now kept as "other": the reply ranks on its
-    whole figure and carries a review note naming the line.
+    with no warning. The line is now kept as "other": the reply shows its
+    whole figure and carries a review note naming the line. Live run 6: it
+    is not ranked Cheapest, nor offered as a card, until the line is named.
   */
-  it('ranks a reply with a line kept as "other" on its full total, and flags it', async () => {
+  it('shows a reply with a line kept as "other" on its full total, flagged and unranked', async () => {
     const enquiryId = await makeEnquiry()
     await reply(
       enquiryId,
@@ -182,11 +183,28 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
     const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
 
     const ek = view!.requests.find((r) => Number(r.quotedTotal) === 1617)!
-    expect(ek.isCheapest).toBe(true)
-    expect(ek.canPromote).toBe(true)
+    expect(ek.quotedTotal).toBe('1617.000000')
+    expect(ek.isCheapest).toBe(false)
+    expect(ek.canPromote).toBe(false)
+    expect(ek.review).toMatchObject({ ranked: false })
     expect(ek.review?.unclassified).toEqual([{ line: 3, description: 'Screening and handling' }])
-    // The clean rival carries no note at all.
-    expect(view!.requests.find((r) => Number(r.quotedTotal) === 1700)!.review).toBeNull()
+    // The clean rival carries no note at all, and is the cheapest clean reply.
+    const clean = view!.requests.find((r) => Number(r.quotedTotal) === 1700)!
+    expect(clean.review).toBeNull()
+    expect(clean.isCheapest).toBe(true)
+  })
+
+  it('badges no reply when every answered one is flagged', async () => {
+    const enquiryId = await makeEnquiry()
+    await reply(
+      enquiryId,
+      'parsed',
+      { total: '900.000', currency: 'KWD' },
+      { rows: [{ chargeCode: 'OTHER' }] },
+    )
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+    expect(view!.requests[0]!.review?.unclassified).toHaveLength(1)
+    expect(view!.requests.some((r) => r.isCheapest)).toBe(false)
   })
 
   it('keeps a short or doubtful total out of the cheapest', async () => {

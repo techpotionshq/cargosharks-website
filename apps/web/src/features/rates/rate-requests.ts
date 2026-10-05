@@ -143,13 +143,19 @@ export async function getEnquiryRateRequests(
         with the mismatch, and never offered as this enquiry's buy rate (S14):
         accepted, it wrote a card for a lane nobody asked to cover.
       */
+      /*
+        Nor a reply with a line nobody has named (live run 6): accepted, it
+        wrote a card with an unnamed "other" line every later quote priced
+        from. `promoteRateReply` refuses it too; this only stops offering it.
+      */
       const canPromote =
         row.status === 'parsed' &&
         response.ok === true &&
         response.declined !== true &&
         !response.laneMismatch &&
         row.rateCardId === null &&
-        lineCount > 0
+        lineCount > 0 &&
+        (review?.unclassified.length ?? 0) === 0
 
       return {
         id: row.id,
@@ -190,8 +196,10 @@ export async function getEnquiryRateRequests(
     */
     /*
       Nor one whose total is short or in doubt (R1): lines that did not
-      validate, or a broker's stated total the lines disagree with. A reply
-      whose only flag is a line kept as "other" is whole, and ranks on it.
+      validate, or a broker's stated total the lines disagree with. Nor one
+      with a line kept as "other" (live run 6): its figure is whole and shown
+      as it stands, but "Cheapest" on a reply carrying an unnamed charge was a
+      recommendation nobody had checked. `review.ranked` says all three.
       Compared as decimals, not floats, like every amount.
     */
     const ranked = requests.filter(
