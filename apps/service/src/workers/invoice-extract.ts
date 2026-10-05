@@ -56,6 +56,7 @@ import {
 import {
   describeFinding,
   isSelfConsistent,
+  onlyTheTotalIsMissing,
   parseModelJson,
   readExtractedInvoice,
   invoiceTotal,
@@ -126,8 +127,13 @@ export interface ExtractInvoiceResult {
   readonly findings: readonly ArithmeticFinding[]
   /** Whether the document reconciles and cleared the floor. */
   readonly consistent: boolean
-  /** Set only where `write` was asked for and the extraction was consistent. */
+  /** Set where `write` was asked for and the bill was written. */
   readonly supplierInvoiceId?: string
+  /**
+   * The page printed no total and the lines were complete, so the total is
+   * their sum and the bill (if written) waits for a person to confirm it (R2).
+   */
+  readonly totalFromLines?: boolean
   /** Why nothing was written, in one line, where nothing was. */
   readonly refusal?: string
   /**
@@ -229,25 +235,36 @@ export async function extractSupplierInvoice(
     first reading scrolled away, is answered from the ledger rather than billed
     again. A revised prompt changes the hash and misses.
 
-    Except when a person retries a refusal (D1): the cached answer is the one
-    that was refused, so reusing it made "Read as a bill" repeat the refusal
-    forever without asking anyone. A reused answer that still does not read is
-    asked again, once; a reused answer that reads is kept, and costs nothing.
+    Except when a person asks again ("Read as a bill", or uploading the scan
+    a second time). That is a request for a new reading, and it gets one —
+    always, not only when the cached answer failed to parse (D1, R2). Live
+    run 5: EK's cached answer parsed perfectly and lacked only its total, so
+    the old "reads as a bill" test kept it, and "Read as a bill" repeated
+    the refusal twice with no new model call. The ledger keeps every answer.
   */
-  const first = await ask(true)
-  let invocationId = first.invocationId
-  let extracted = readExtractedInvoice(parseModelJson(first.response.text), reference.lookups)
-  if (input.retry && first.reused && !readsAsBill(extracted)) {
-    const fresh = await ask(false)
-    invocationId = fresh.invocationId
-    extracted = readExtractedInvoice(parseModelJson(fresh.response.text), reference.lookups)
-  }
+  const asked = await ask(!input.retry)
+  const invocationId = asked.invocationId
+  const extracted = readExtractedInvoice(parseModelJson(asked.response.text), reference.lookups)
 
   const spec = specFor(extracted.header.currency)
   const findings = spec ? reconcileInvoice(extracted, spec) : []
   const consistent = spec ? isSelfConsistent(extracted, spec, CONFIDENCE_FLOOR) : false
+  /*
+    Complete lines and no printed total (R2): captured with the lines' sum,
+    flagged so approval waits for a person to confirm it. Never `consistent`
+    — that word is kept for a bill whose figures were checked against each
+    other, and this one had nothing to check against.
+  */
+  const totalFromLines =
+    !consistent && spec !== undefined && onlyTheTotalIsMissing(extracted, spec, CONFIDENCE_FLOOR)
 
-  const base = { invocationId, extracted, findings, consistent }
+  const base = {
+    invocationId,
+    extracted,
+    findings,
+    consistent,
+    ...(totalFromLines ? { totalFromLines: true } : {}),
+  }
 
   /*
     The same bill, read again (ai-10). `(partner_id, reference)` is unique, so
@@ -263,7 +280,7 @@ export async function extractSupplierInvoice(
   if (existing) return { ...base, ...alreadyCaptured(number!, existing) }
 
   if (!input.write) return base
-  if (!consistent) {
+  if (!consistent && !totalFromLines) {
     const code = refusalCodeFor(extracted, findings)
     return {
       ...base,
@@ -275,7 +292,7 @@ export async function extractSupplierInvoice(
 
   let written: Awaited<ReturnType<typeof write>>
   try {
-    written = await write(input, extracted, spec!, asset.id, reference)
+    written = await write(input, extracted, spec!, asset.id, reference, totalFromLines)
   } catch (error) {
     // Captured by somebody else between the check above and this insert.
     const raced = number && isUniqueViolation(error)
@@ -309,15 +326,6 @@ export async function extractSupplierInvoice(
       refusalValues: values,
     }
   }
-}
-
-/**
- * Whether a reading came back as a bill at all: every header field read and
- * the lines validated. Arithmetic is judged later; this is only "worth keeping
- * rather than asking again".
- */
-function readsAsBill(extracted: ExtractedInvoice): boolean {
-  return extracted.headerIssues.length === 0 && extracted.lines.ok
 }
 
 /** The bill this supplier already has on file under this number, if any. */
@@ -457,6 +465,7 @@ async function write(
   spec: CurrencySpec,
   assetId: string,
   reference: Reference,
+  totalFromLines = false,
 ): Promise<{ id: string } | { noRateTo: string }> {
   const { header } = extracted
   const code = spec.code
@@ -515,6 +524,8 @@ async function write(
           two screens end up disagreeing about what a bill is worth.
         */
         total: header.total ?? toDb(invoiceTotal(extracted, spec)),
+        // Summed from the lines, so a person confirms it before approval (R2).
+        totalUnconfirmed: totalFromLines,
         invoiceDate: header.invoiceDate,
         dueOn: header.dueOn ?? null,
         assetId,

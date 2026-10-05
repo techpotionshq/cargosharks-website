@@ -2562,7 +2562,8 @@
     "paymentReference": "Reference",
     "paymentAmount": "Amount",
     "paymentUnallocated": "Unapplied",
-    "noOpenBills": "No open bill"
+    "noOpenBills": "No open bill",
+    "totalFromLines": "The bill printed no total, so {total} is the sum of its lines. It needs checking against the PDF before the bill can be approved."
   },
   "payableForm": {
     "capture": "Capture bill",
@@ -2640,7 +2641,9 @@
       "who": "Whose bill, and when",
       "money": "What it comes to",
       "moneyHint": "The total is the sum of the lines; add them next."
-    }
+    },
+    "totalFromLinesWarning": "This bill printed no total. {total} is the sum of the lines we read. Check it against the PDF before approving.",
+    "confirmTotal": "I have checked the total against the bill"
   },
   "settlements": {
     "eyebrow": "Agent accounts",
@@ -4051,7 +4054,8 @@
     "billHasNoLines": "This bill has no lines, so there is nothing to approve. Add what the supplier charged first.",
     "noRateOnFilePayment": "No {from} to {to} rate is on file. Enter the rate the payment was made at.",
     "billAlreadyCaptured": "Bill {reference} from this supplier is already captured, so nothing new was written.",
-    "openCapturedBill": "Open the bill"
+    "openCapturedBill": "Open the bill",
+    "confirmTotalFirst": "This total was added up from the lines, because the bill printed none. Check it against the PDF and tick the box to confirm it."
   },
   "creditValidation": {
     "chooseCustomer": "Choose a customer",

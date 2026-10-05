@@ -355,6 +355,48 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(await billStatus(id)).toBe('approved')
     })
 
+    /*
+      R2, live run 5: a bill read with complete lines and no printed total is
+      captured with the lines' sum and `total_unconfirmed`. It cannot be
+      approved until the approver confirms that figure against the PDF; the
+      approval records the confirmation by clearing the flag.
+    */
+    it('refuses to approve a summed total until a person confirms it', async () => {
+      const id = await enterBill()
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .update(supplierInvoices)
+          .set({ totalUnconfirmed: true })
+          .where(eq(supplierInvoices.id, id)),
+      )
+      const approve = (extra: Record<string, string> = {}) =>
+        setSupplierInvoiceStatus(
+          {},
+          form({
+            supplierInvoiceId: id,
+            action: 'approve',
+            acceptVariance: 'on',
+            reason: 'Matched by hand',
+            ...extra,
+          }),
+        )
+
+      expect((await approve()).message).toBe('payablesValidation.confirmTotalFirst')
+      expect(await billStatus(id)).toBe('received')
+
+      expect((await approve({ confirmTotal: 'on' })).message).toBeUndefined()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({
+            status: supplierInvoices.status,
+            totalUnconfirmed: supplierInvoices.totalUnconfirmed,
+          })
+          .from(supplierInvoices)
+          .where(eq(supplierInvoices.id, id)),
+      )
+      expect(row).toEqual({ status: 'approved', totalUnconfirmed: false })
+    })
+
     it('records who accepted the variance and why', async () => {
       const id = await enterBill()
       await setSupplierInvoiceStatus(

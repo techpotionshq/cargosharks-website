@@ -691,6 +691,33 @@ export function isSelfConsistent(
 }
 
 /**
+ * Whether the only thing between this reading and `isSelfConsistent` is a
+ * total the page did not print (R2, live run 5).
+ *
+ * EK's bill came back with three correct lines at confidence 0.95 and
+ * `total: null` — its "Total due" was laid out over three lines — and was
+ * refused as "not confident enough", which it was not. Every other test
+ * passes: the header read, the lines validated, each line's own arithmetic
+ * holds, the model was sure. What is missing is the second figure that would
+ * catch a dropped line, and that is a check a person can make against the PDF
+ * in seconds. So such a bill may be captured with its total summed from the
+ * lines, flagged so it cannot be approved until somebody confirms the figure;
+ * it is never treated as consistent.
+ */
+export function onlyTheTotalIsMissing(
+  extracted: ExtractedInvoice,
+  spec: CurrencySpec,
+  confidenceThreshold: number,
+): boolean {
+  if (extracted.headerIssues.length > 0) return false
+  if (!extracted.lines.ok) return false
+  if (extracted.lines.rows.length < 2) return false
+  if (extracted.confidence < confidenceThreshold) return false
+  if (extracted.header.subtotal !== undefined || extracted.header.total !== undefined) return false
+  return reconcileInvoice(extracted, spec).length === 0
+}
+
+/**
  * The header total, or the sum of the lines where the page printed none.
  *
  * Every caller wants this and none of them should decide it: a supplier

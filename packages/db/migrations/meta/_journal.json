@@ -463,6 +463,13 @@
       "when": 1791186292738,
       "tag": "0066_rate_card_supersede",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791186659281,
+      "tag": "0067_supplier_invoice_total_unconfirmed",
+      "breakpoints": true
     }
   ]
 }

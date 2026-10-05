@@ -1654,6 +1654,8 @@ export interface SupplierBillRow {
   readonly dueOn: string | null
   readonly assetId: string | null
   readonly varianceAcceptedReason: string | null
+  /** The total is the lines' sum and awaits confirmation (R2). Absent in the pilot. */
+  readonly totalUnconfirmed?: boolean
   readonly disputeReason: string | null
   readonly notes: string | null
   readonly approvedAt: Date | null
