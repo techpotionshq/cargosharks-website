@@ -1358,6 +1358,16 @@ export function compareLane(
   const differs = (text: string | undefined, code: string, side: string): boolean => {
     if (!text) return false
     if (asLocode(text) === asLocode(code)) return false
+    /*
+      "Ningbo (CNNGB)": our own RFQ subject's form, which the model copies
+      back. The code in the brackets is the claim; the name beside it was
+      looked up whole, missed, and stored a false "not a place we hold" on
+      every such reply (live run 6, N6). Judged on the code, as a bare one is.
+    */
+    const bracketed = /\(([^()]+)\)\s*$/.exec(text.trim())?.[1]
+    if (bracketed && LOCODE.test(asLocode(bracketed))) {
+      return asLocode(bracketed) !== asLocode(code)
+    }
     const codes = lane.places?.[text.trim().toLowerCase()]
     if (codes && codes.length > 0) return !codes.some((c) => asLocode(c) === asLocode(code))
     if (LOCODE.test(text.trim())) return true

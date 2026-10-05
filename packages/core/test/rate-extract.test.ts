@@ -167,6 +167,25 @@ describe('readExtractedRateReply', () => {
       expect(result.laneMismatch).toBeDefined()
     })
 
+    /* Live run 6 (N6): the model echoes our subject's "Name (CODE)" form. */
+    it('reads the code in "Name (CODE)" and raises no place warning for it', () => {
+      const ours = readExtractedRateReply(
+        reply({ origin: 'Shanghai (CNSHA)', destination: 'Shuwaikh (KW SWK)' }),
+        lookups,
+        asked,
+      )
+      expect(ours.laneMismatch).toBeUndefined()
+      expect(ours.headerIssues).toEqual([])
+
+      const other = readExtractedRateReply(
+        reply({ origin: 'Ningbo (CNNGB)', destination: 'Shuwaikh (KWSWK)' }),
+        lookups,
+        asked,
+      )
+      expect(other.laneMismatch).toContain('Ningbo (CNNGB)')
+      expect(other.headerIssues).toEqual([])
+    })
+
     it('reports a name it cannot resolve without calling it a mismatch', () => {
       const result = readExtractedRateReply(
         reply({ origin: 'Dubai', destination: 'Shuwaikh' }),
