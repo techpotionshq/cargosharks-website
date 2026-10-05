@@ -7,6 +7,11 @@
  * query string, so the token has to be lifted out of the URL by this server
  * component and handed to the form as a hidden field.
  *
+ * ## A dead link is found on arrival
+ *
+ * The token is looked up before the form is drawn (`resetTokenUsable`). An
+ * expired, used or invented one gets the same answer as no token at all.
+ *
  * ## No token is a real state, not an error page
  *
  * People arrive here by pasting a truncated link, by following one that a mail
@@ -25,6 +30,7 @@ import { MIN_PASSWORD_LENGTH } from '@/lib/auth'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Logo } from '@/ui/logo'
 import { ResetPasswordForm } from '@/features/auth/ui/reset-forms'
+import { resetTokenUsable } from '@/features/auth/reset-token'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('resetPassword')
@@ -34,12 +40,20 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ResetPasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string }>
+  searchParams: Promise<{ token?: string; error?: string }>
 }) {
   const existing = await getSession()
   if (existing) redirect(homeFor(existing))
 
-  const { token } = await searchParams
+  const { token, error } = await searchParams
+  /*
+    Checked now, not after two passwords have been typed. A link that went
+    through Better Auth's own route and failed arrives as `?error=INVALID_TOKEN`
+    with no token; a pasted one arrives with a token that may be expired or
+    used. Both get the same plain message and the way to ask for another.
+  */
+  const usable = token ? await resetTokenUsable(token) : false
+  const broken = Boolean(error) || (Boolean(token) && !usable)
   const t = await getTranslations('resetPassword')
   const brand = getBrand()
   const resolved = await getLocale()
@@ -54,7 +68,7 @@ export default async function ResetPasswordPage({
           {t('title')}
         </h1>
 
-        {token ? (
+        {token && usable ? (
           <>
             <p className="mt-1.5 text-title leading-relaxed text-ink-muted">{t('subtitle')}</p>
 
@@ -73,7 +87,12 @@ export default async function ResetPasswordPage({
           </>
         ) : (
           <>
-            <p className="mt-1.5 text-title leading-relaxed text-ink-muted">{t('noTokenHint')}</p>
+            <p
+              role={broken ? 'alert' : undefined}
+              className="mt-1.5 text-title leading-relaxed text-ink-muted"
+            >
+              {broken ? t('errorBadToken') : t('noTokenHint')}
+            </p>
 
             <Link
               href="/forgot-password"

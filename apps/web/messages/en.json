@@ -608,7 +608,7 @@
   },
   "signIn": {
     "title": "Sign in",
-    "subtitle": "Operations, finance and administration.",
+    "subtitle": "Sign in to your account.",
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
