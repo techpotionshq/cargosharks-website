@@ -23,6 +23,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import type { EnquiryEditLike, EnquirySummary, Mode } from '@/lib/pilot/types'
+import { OPEN_ENQUIRY_STATUSES } from '@qabandi/core'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotEnquiries, pilotEnquiryForEdit } from '@/lib/pilot/fixtures'
@@ -40,7 +41,7 @@ export interface EnquiryListFilters {
   readonly limit?: number
 }
 
-const OPEN = ['new', 'assigned', 'rating', 'quoted']
+const OPEN: readonly string[] = OPEN_ENQUIRY_STATUSES
 
 /**
  * `locale` names the ports in the reader's language (F27). The customer
