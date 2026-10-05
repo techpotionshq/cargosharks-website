@@ -419,3 +419,16 @@ describe('the quotation', () => {
     })
   })
 })
+
+/* See the same block in `invoice.test.ts`: no placeholder registration line. */
+describe('the quotation registration line', () => {
+  for (const locale of ['en', 'ar'] as const) {
+    it(`prints no placeholder registration in ${locale}`, () => {
+      const html = renderQuotationHtml(quote(), locale)
+      expect(html).not.toContain('Commercial Registration')
+      expect(html).not.toContain('Customs Licence')
+      expect(html).not.toContain('السجل التجاري')
+      expect(html).not.toContain('رخصة جمركية')
+    })
+  }
+})

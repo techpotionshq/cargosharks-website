@@ -13,7 +13,7 @@
  * show and what they mean, not in what they read.
  */
 
-import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
+import { documentBrandCss, documentRegistrationHtml, PRINT_THEME_ATTR } from './brand'
 
 export type DocumentLocale = 'en' | 'ar'
 
@@ -448,6 +448,7 @@ export function letterhead(
   <div class="entity">
     <strong>${esc(entity)}</strong>
     ${view.branch.taxRegistration ? `<div class="muted">${esc(view.branch.taxRegistration)}</div>` : ''}
+    ${documentRegistrationHtml(locale)}
   </div>
 </div>`
 }

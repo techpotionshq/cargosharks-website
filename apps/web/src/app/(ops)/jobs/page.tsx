@@ -17,7 +17,7 @@ import { formatDay, formatMoney, formatNumber, formatRelative } from '@/lib/form
 import { Card, CardHeader } from '@/ui/card'
 import { Button, EmptyState, Lane, PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
-import { Badge, customsTone, jobTone } from '@/ui/status'
+import { Badge, PAST_DUE_TEXT, customsTone, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneDots } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
@@ -348,11 +348,28 @@ export default async function JobsPage({
                       )}
                     </TD>
 
+                    {/*
+                      An arrival is labelled as one. A past date in this
+                      column used to be the actual arrival in green with no
+                      word beside it, so it read as an ETA gone by and
+                      approved of. A past ETA with no arrival is late, and is
+                      drawn in the one past-due red the product uses.
+                    */}
                     <TD align="end" numeric>
                       {job.ata ? (
-                        <span className="text-positive">
-                          {formatDay(job.ata, locale, timeZone)}
-                        </span>
+                        <>
+                          <span className="block">{formatDay(job.ata, locale, timeZone)}</span>
+                          <span className="block text-micro text-ink-subtle">{t('ata')}</span>
+                        </>
+                      ) : job.eta !== null && job.eta.getTime() < now ? (
+                        <>
+                          <span className={`block ${PAST_DUE_TEXT}`}>
+                            {formatDay(job.eta, locale, timeZone)}
+                          </span>
+                          <span className={`block text-micro ${PAST_DUE_TEXT}`}>
+                            {t('etaPassed')}
+                          </span>
+                        </>
                       ) : (
                         <>
                           <span className="block">{formatDay(job.eta, locale, timeZone)}</span>

@@ -2,7 +2,7 @@
  * The three numbers the sidebar wears.
  *
  * A badge on every item is decoration; a badge on the things that are *wrong
- * right now* is information. Open exceptions and unanswered enquiries are what
+ * right now* is information. Open exceptions and open enquiries are what
  * an operations manager is accountable for; supplier bills whose lines
  * disagree with the accrual are what a margin is lost to (0014). All three are
  * things somebody has to do something about today.
@@ -15,6 +15,7 @@
 import { cache } from 'react'
 import { sql } from 'drizzle-orm'
 import { withActor, type Actor } from '@qabandi/db'
+import { OPEN_ENQUIRY_STATUSES } from '@qabandi/core'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotEnquiries, pilotExceptions } from '@/lib/pilot/fixtures'
 
@@ -25,8 +26,14 @@ export interface NavCounts {
   readonly payablesToReview: number
 }
 
-/** Mirrors the `not in` of the statement below, so the two paths agree. */
-const CLOSED_ENQUIRY_STATUSES = new Set(['won', 'lost', 'cancelled'])
+/*
+  The enquiries badge counts what the enquiries register calls open, from the
+  one list in `core`. It counted only those with no first reply, so the menu
+  said 8 beside a screen that said "12 open", and nothing said which was which.
+  Literals in the statement below: constants, not input.
+*/
+const OPEN_ENQUIRIES = new Set<string>(OPEN_ENQUIRY_STATUSES)
+const OPEN_SQL = sql.raw(OPEN_ENQUIRY_STATUSES.map((status) => `'${status}'`).join(', '))
 
 export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> => {
   /*
@@ -47,9 +54,7 @@ export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> => {
   */
   if (usePilotFixtures()) {
     return {
-      openEnquiries: pilotEnquiries().filter(
-        (e) => !CLOSED_ENQUIRY_STATUSES.has(e.status) && e.firstRespondedAt === null,
-      ).length,
+      openEnquiries: pilotEnquiries().filter((e) => OPEN_ENQUIRIES.has(e.status)).length,
       openExceptions: pilotExceptions().length,
       // The pilot fixtures predate payables and carry no supplier bills.
       payablesToReview: 0,
@@ -61,8 +66,7 @@ export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> => {
       select
         (
           select count(*) from enquiries
-           where status not in ('won', 'lost', 'cancelled')
-             and first_responded_at is null
+           where status in (${OPEN_SQL})
         )::int as open_enquiries,
         (select count(*) from exceptions where closed_at is null)::int as open_exceptions,
         (

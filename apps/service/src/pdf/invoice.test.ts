@@ -253,3 +253,22 @@ describe('credit note document', () => {
     expect(html).not.toContain('Credits invoice')
   })
 })
+
+/*
+  The registration line under the letterhead. Al-Qabandi has not supplied its
+  commercial registration or customs licence, and the brand used to carry the
+  labels with dashes for the numbers. Nothing is printed until the numbers
+  exist; the numbers are never invented. `BRAND` is unset in the test run, so
+  this is the Qabandi default.
+*/
+describe('the registration line', () => {
+  for (const locale of ['en', 'ar'] as const) {
+    it(`prints no placeholder registration in ${locale}`, () => {
+      const html = renderInvoiceHtml(base, locale)
+      expect(html).not.toContain('Commercial Registration')
+      expect(html).not.toContain('Customs Licence')
+      expect(html).not.toContain('السجل التجاري')
+      expect(html).not.toContain('رخصة جمركية')
+    })
+  }
+})

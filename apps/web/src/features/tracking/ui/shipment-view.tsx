@@ -90,7 +90,9 @@ export async function ShipmentView({
         </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 @2xl:grid-cols-4">
-          <Field label={tJob('status')}>
+          {/* The mode, labelled as one: it sat under "Status" beside the
+              status pill above, so "Sea FCL" read as a second status. */}
+          <Field label={t('mode')}>
             <span className="inline-flex items-center gap-1.5">
               <Icon name={modeIcon(result.mode)} size={15} className="text-ink-muted" />
               {tMode(result.mode)}
@@ -112,10 +114,22 @@ export async function ShipmentView({
             {result.notices.map((notice) => (
               <li
                 key={notice.code}
-                className="flex items-center gap-2 rounded-sm bg-caution-soft px-3 py-2 text-body-sm text-caution"
+                className="flex items-start gap-2 rounded-sm bg-caution-soft px-3 py-2 text-body-sm text-caution"
               >
-                <Icon name="alert" size={15} strokeWidth={2} />
-                <span className="font-medium">{nameOf(notice.nameEn, notice.nameAr)}</span>
+                <Icon name="alert" size={15} strokeWidth={2} className="mt-0.5 shrink-0" />
+                {/*
+                  The name, then what it means and what happens next. "Customs
+                  hold" alone told a consignee something was wrong and nothing
+                  else, which is a phone call to the forwarder every time.
+                */}
+                <span className="min-w-0">
+                  <span className="block font-medium">{nameOf(notice.nameEn, notice.nameAr)}</span>
+                  {t.has(`noticeHelp.${notice.code}` as 'noticeHelp.customs_hold') ? (
+                    <span className="mt-0.5 block text-ink">
+                      {t(`noticeHelp.${notice.code}` as 'noticeHelp.customs_hold')}
+                    </span>
+                  ) : null}
+                </span>
               </li>
             ))}
           </ul>

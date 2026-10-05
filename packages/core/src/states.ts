@@ -60,6 +60,21 @@ export const enquiryMachine = machine<EnquiryStatus>({
   ],
 })
 
+/**
+ * The enquiries still being worked: not won, lost, cancelled or expired.
+ *
+ * One list because two screens count it. The enquiries register said "12
+ * open" while the menu badge beside it said 8, because the badge counted only
+ * the ones with no first reply. A number beside a menu item reads as the
+ * number of things on that screen, so both now count this.
+ */
+export const OPEN_ENQUIRY_STATUSES = [
+  'new',
+  'assigned',
+  'rating',
+  'quoted',
+] as const satisfies readonly EnquiryStatus[]
+
 // --- quote (FR-RT-08) ------------------------------------------------------
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'superseded'

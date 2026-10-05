@@ -4,7 +4,7 @@
  * Pure, so the list, the detail page and the tests read one rule.
  */
 
-import { D } from '@qabandi/core'
+import { isInvoiceOverdue } from '@qabandi/core'
 import type { Tone } from '@/ui/status'
 
 export type PortalQuoteState = 'sent' | 'expired' | 'accepted' | 'rejected'
@@ -33,22 +33,18 @@ export const QUOTE_STATE_TONE: Record<PortalQuoteState, Tone> = {
 }
 
 /**
- * Overdue: an invoice (not a credit note) with something still owed, whose due
- * day has passed in Kuwait. The balance is compared as a `Decimal`, because
- * `'0.000000' > 0` is a question a string cannot answer.
+ * Overdue, for the portal: the shared rule in `core`, so a customer reads
+ * "overdue" on exactly the invoices the operator's register flags. Kept as a
+ * name here because the portal pages import it from this file.
  */
 export function isOverdue(
   invoice: {
+    readonly status: string
     readonly isCreditNote: boolean
     readonly balance: string
     readonly dueOn: string | null
   },
   today: string,
 ): boolean {
-  return (
-    !invoice.isCreditNote &&
-    invoice.dueOn !== null &&
-    invoice.dueOn < today &&
-    new D(invoice.balance).greaterThan(0)
-  )
+  return isInvoiceOverdue(invoice, today)
 }

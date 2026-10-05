@@ -17,6 +17,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
+import { ValidityMessages } from '@/ui/validity'
 import { getLocale, getMessages } from 'next-intl/server'
 import { brandCss, faviconDataUri } from '@qabandi/brand'
 import { directionOf, isLocale, DEFAULT_LOCALE } from '@/i18n/request'
@@ -113,7 +114,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body className="min-h-dvh bg-canvas text-ink antialiased">
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
+          {/* The app's words in the browser's refusals — `ui/validity.ts`. */}
+          <ValidityMessages />
+          {children}
+        </NextIntlClientProvider>
       </body>
     </html>
   )

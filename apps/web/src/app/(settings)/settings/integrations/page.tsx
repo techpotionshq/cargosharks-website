@@ -29,7 +29,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
-import { INTEGRATION_GROUPS } from '@qabandi/core'
+import { INTEGRATION_GROUPS, describeCron, integrationFailure } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { integrationKeyProblem, listIntegrations } from '@/features/admin/integrations'
@@ -254,6 +254,8 @@ export default async function IntegrationsPage() {
                                       tc('yes')
                                     ) : field.value === 'false' ? (
                                       tc('no')
+                                    ) : field.name === 'cron' && field.value ? (
+                                      scheduleWords(field.value, t)
                                     ) : field.value && /^[a-z]+:\/\/|@/.test(field.value) ? (
                                       <Breakable text={field.value} />
                                     ) : (
@@ -333,7 +335,11 @@ export default async function IntegrationsPage() {
 
                         {integration.missing.length > 0 && !integration.lastError ? (
                           <p className="mt-3 text-body-sm text-ink-muted">
-                            {t('missingHint', { fields: integration.missing.join(', ') })}
+                            {t('missingHint', {
+                              fields: integration.missing
+                                .map((name) => missingLabel(integration.key, name, t))
+                                .join(locale === 'ar' ? '، ' : ', '),
+                            })}
                           </p>
                         ) : null}
 
@@ -346,7 +352,22 @@ export default async function IntegrationsPage() {
                             support ticket instead. The text is the provider's,
                             so it is rendered as data — never as markup.
                           */
-                          <p className="mt-3 text-body-sm text-critical">{integration.lastError}</p>
+                          <div className="mt-3 text-body-sm">
+                            {/* The kind of failure in the reader's language,
+                                with the provider's own English one tap away
+                                for whoever has to raise it with them. */}
+                            <p className="text-critical">
+                              {t(`failures.${integrationFailure(integration.lastError)}`)}
+                            </p>
+                            <details className="mt-1 text-ink-muted">
+                              <summary className="cursor-pointer text-caption">
+                                {t('failures.detail')}
+                              </summary>
+                              <p dir="auto" className="mt-1 text-caption break-words">
+                                {integration.lastError}
+                              </p>
+                            </details>
+                          </div>
                         ) : null}
                       </div>
                     </Card>
@@ -359,4 +380,42 @@ export default async function IntegrationsPage() {
       </div>
     </>
   )
+}
+
+type Translate = Awaited<ReturnType<typeof getTranslations<'integrations'>>>
+
+/**
+ * A cron expression in words, or the expression when its shape is not one
+ * `describeCron` reads. "*\/30 * * * *" beside "Schedule" was a sentence only
+ * to whoever typed it.
+ */
+function scheduleWords(cron: string, t: Translate): string {
+  const schedule = describeCron(cron)
+  if (!schedule) return cron
+  const pad = (n: number) => String(n).padStart(2, '0')
+  switch (schedule.kind) {
+    case 'every_minute':
+      return t('schedule.every_minute')
+    case 'every_minutes':
+      return t('schedule.every_minutes', { minutes: schedule.minutes })
+    case 'hourly_at':
+      return t('schedule.hourly_at', { minutes: schedule.minutes.map(pad).join(', ') })
+    case 'every_hours':
+      return t('schedule.every_hours', { hours: schedule.hours, minute: pad(schedule.minute) })
+    case 'daily_at':
+      return t('schedule.daily_at', { time: `${pad(schedule.hour)}:${pad(schedule.minute)}` })
+  }
+}
+
+/**
+ * A missing setting by its label on this screen, not its config name. The
+ * hint read "Still needed before this can be switched on: consumerKey",
+ * naming a field the card above labels "Consumer key".
+ */
+function missingLabel(integrationKey: string, name: string, t: Translate): string {
+  const field = `fields.${integrationKey}.${name}` as 'fields.smtp.host'
+  if (t.has(field)) return t(field)
+  const secret = `secrets.${integrationKey}.${name}` as 'secrets.smtp.password'
+  if (t.has(secret)) return t(secret)
+  return name
 }

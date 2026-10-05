@@ -27,7 +27,7 @@ import { formatDate, trimDecimal } from '@/lib/format'
 import { Icon } from '@/ui/icon'
 import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Panel } from '@/ui/panel'
-import { Badge, invoiceTone } from '@/ui/status'
+import { Badge, PAST_DUE_TONE, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Money } from '@/ui/money'
 import { Notice } from '@/ui/notice'
@@ -78,7 +78,7 @@ export default async function PortalInvoicePage({ params }: { params: Promise<{ 
                 {statusLabel[invoice.status] ?? invoice.status}
               </Badge>
               {late ? (
-                <Badge tone="caution" icon="clock">
+                <Badge tone={PAST_DUE_TONE} icon="clock">
                   {t('overdue')}
                 </Badge>
               ) : null}
@@ -98,7 +98,7 @@ export default async function PortalInvoicePage({ params }: { params: Promise<{ 
       />
 
       {late && invoice.dueOn ? (
-        <Notice tone="caution" icon="clock" className="mb-4">
+        <Notice tone={PAST_DUE_TONE} icon="clock" className="mb-4">
           {t('overdueSince', { on: formatDate(invoice.dueOn, locale) })}
         </Notice>
       ) : null}

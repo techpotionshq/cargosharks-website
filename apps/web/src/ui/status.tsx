@@ -221,3 +221,16 @@ export function slaTone(dueAt: Date | null, respondedAt: Date | null, now: numbe
   if (remaining < 4 * 60 * 60 * 1000) return 'caution'
   return 'info'
 }
+
+/**
+ * The one look for a date that has passed — a due day, a deadline, an ETA.
+ *
+ * Past due is red, as `slaTone` already decided for the reply clock, and it is
+ * the same red everywhere. Before this an ETA two days gone sat in the
+ * shipments board's green, "Clearance due 3 days ago" was plain text, and the
+ * payables tile counted an overdue bill that no row marked. A row carries
+ * `flag={PAST_DUE_TONE}`, a pill `tone={PAST_DUE_TONE}`, and a bare date
+ * `className={PAST_DUE_TEXT}`.
+ */
+export const PAST_DUE_TONE = 'critical' satisfies Tone
+export const PAST_DUE_TEXT = 'font-medium text-critical'

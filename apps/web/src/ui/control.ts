@@ -43,7 +43,12 @@ export const FOCUS_RING = `${FOCUS_OUTLINE} focus-visible:border-focus`
 export const CONTROL_BASE =
   'w-full rounded-sm border bg-surface text-ink transition-colors placeholder:text-ink-subtle disabled:opacity-60'
 
-export const CONTROL_REST = `border-line-strong hover:border-ink-subtle ${FOCUS_RING}`
+/*
+  `aria-invalid` is set by the browser check in `ui/validity.ts` without a
+  re-render, so the bad state is drawn from the attribute as well as from the
+  `CONTROL_BAD` a server error selects.
+*/
+export const CONTROL_REST = `border-line-strong hover:border-ink-subtle aria-invalid:border-critical aria-invalid:bg-critical-soft/30 ${FOCUS_RING}`
 
 /** Invalid keeps its red border while focused; the ring still says where the caret is. */
 export const CONTROL_BAD = `border-critical bg-critical-soft/30 ${FOCUS_OUTLINE}`
