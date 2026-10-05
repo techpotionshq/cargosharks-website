@@ -4431,6 +4431,16 @@
     "storage_unavailable": {
       "title": "The file could not be fetched",
       "body": "The file store did not answer. Try again in a minute; if it keeps failing, tell your administrator."
+    },
+    "retry": "Try again",
+    "signIn": "Sign in",
+    "unauthenticated": {
+      "title": "Sign in to open this file",
+      "body": "Your session has ended. Sign in again, then open the link once more."
+    },
+    "unknown_kind": {
+      "title": "This document type does not exist",
+      "body": "The link asks for a kind of document the system does not produce. Go back and use the link on the page."
     }
   },
   "fxRateForm": {
