@@ -38,7 +38,13 @@ export async function cached(kind, key, ext, make) {
   }
   const tmp = `${path}.tmp-${process.pid}`
   rmSync(tmp, { recursive: true, force: true })
-  await make(tmp)
+  try {
+    await make(tmp)
+  } catch (e) {
+    // A failed take leaves frames behind; at 2x a recording runs to gigabytes.
+    rmSync(tmp, { recursive: true, force: true })
+    throw e
+  }
   renameSync(tmp, path)
   bump(kind, 'made')
   return { path, hit: false }
