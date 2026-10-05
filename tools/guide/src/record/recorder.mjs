@@ -249,7 +249,8 @@ export class Recorder {
             const p = Math.min(1, (now - t0) / ms)
             const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2
             window.scrollTo(0, from + d * e)
-            p < 1 ? requestAnimationFrame(step) : res()
+            if (p < 1) requestAnimationFrame(step)
+            else res()
           }
           requestAnimationFrame(step)
         })

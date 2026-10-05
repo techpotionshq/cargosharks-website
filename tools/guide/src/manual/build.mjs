@@ -262,6 +262,7 @@ export async function buildManual({ locales = ['en'], pdf = true, sections: only
     ])
       if (existsSync(join(FONT_DIR, f))) copyFileSync(join(FONT_DIR, f), join(assets, 'fonts', f))
     const chapters = []
+    const failures = []
     let shots = 0
     let made = 0
     for (const s of sections(locale)) {
@@ -269,7 +270,16 @@ export async function buildManual({ locales = ['en'], pdf = true, sections: only
       let md = expand(s.body, locale).text
       const found = findShots(md)
       for (const f of found.reverse()) {
-        const r = await shoot(stack, f.target)
+        let r
+        try {
+          r = await shoot(stack, f.target)
+        } catch (e) {
+          // One broken directive should not cost the other hundred pictures.
+          // The page shows where it is, and the build reports it and fails.
+          failures.push({ section: s.file, target: f.target, error: e.message.split('\n')[0] })
+          md = `${md.slice(0, f.start)}**[Missing picture: ${f.target.replace(/[[\]*_]/g, '')}]**${md.slice(f.end)}`
+          continue
+        }
         shots++
         if (!r.hit) made++
         copyFileSync(r.path, join(assets, `${r.key}.jpg`))
@@ -289,7 +299,7 @@ export async function buildManual({ locales = ['en'], pdf = true, sections: only
     const htmlFile = join(outDir, 'index.html')
     writeFileSync(htmlFile, html)
     let pdfFile = null
-    if (pdf && !only.length) {
+    if (pdf && !only.length && !failures.length) {
       const name = `${brandName.replace(/[^A-Za-z0-9]+/g, '-').replace(/-+$/, '')}-Guide${locale === 'en' ? '' : `-${locale}`}.pdf`
       const key = hash({ html, v: 1 })
       const r = await cached('pdf', key, '.pdf', (tmp) =>
@@ -301,7 +311,8 @@ export async function buildManual({ locales = ['en'], pdf = true, sections: only
     log(
       `manual (${locale}): ${chapters.length} sections, ${shots} shots (${made} new) in ${elapsed().toFixed(1)}s`,
     )
-    results.push({ locale, html: htmlFile, pdf: pdfFile, shots, made })
+    for (const f of failures) log(`SHOT FAILED in ${f.section}: ${f.target}\n    ${f.error}`)
+    results.push({ locale, html: htmlFile, pdf: pdfFile, shots, made, failures })
   }
   return results
 }

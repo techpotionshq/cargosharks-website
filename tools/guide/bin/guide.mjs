@@ -82,6 +82,11 @@ async function main() {
       const { stopAll } = await import('../src/stack/index.mjs')
       await stopAll()
     }
+    const failed = (report.manual ?? []).reduce((n, m) => n + m.failures.length, 0)
+    if (failed) {
+      process.exitCode = 1
+      log(`${failed} screenshot directive(s) failed; see above`)
+    }
     const problems = report.shorts.reduce((n, s) => n + s.problems, 0)
     if (problems) log(`WARNING: ${problems} annotation problem(s); see the *-check.txt files`)
     return
@@ -93,7 +98,11 @@ async function main() {
   }
   if (cmd === 'publish') {
     const { publish } = await import('../src/publish.mjs')
-    await publish({ dryRun: Boolean(args['dry-run']), prefix: args.prefix })
+    await publish({
+      dryRun: Boolean(args['dry-run']),
+      prefix: args.prefix,
+      links: Boolean(args.links),
+    })
     return
   }
   if (cmd === 'stack') {

@@ -104,16 +104,27 @@ export async function closeShots() {
   browser = undefined
 }
 
+const resolveMemo = (stackFp, list, fp) =>
+  join(mkdirp(join(CACHE, 'resolve')), `${hash([stackFp, list, fp])}.json`)
+
+/**
+ * The concrete path a directive resolved to last time, without starting
+ * anything (for `guide:stale`). Falls back to the list itself.
+ */
+export function peekPath(path, locale = 'en', stackFp = 'fixtures@2026-10-14T09:30:00+03:00') {
+  const m = path.match(/\{first:([^}]+)\}/)
+  if (!m) return path
+  const href = readJson(resolveMemo(stackFp, m[1], screen(m[1], locale).fingerprint))?.href
+  return href ? path.replace(m[0], href.slice(m[1].split('?')[0].length + 1)) : m[1]
+}
+
 /** Replaces `{first:/list}` placeholders with real ids from the stack. */
 async function resolvePath(desc, shot) {
   const m = shot.path.match(/\{first:([^}]+)\}/)
   if (!m) return shot.path
   const list = m[1]
   const fp = screen(list, shot.locale).fingerprint
-  const memo = join(
-    mkdirp(join(CACHE, 'resolve')),
-    `${hash([desc.fingerprint({}), list, fp])}.json`,
-  )
+  const memo = resolveMemo(desc.fingerprint({}), list, fp)
   let href = readJson(memo)?.href
   if (!href) {
     const stack = await desc.ensure()

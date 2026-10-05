@@ -39,7 +39,6 @@ import {
   log,
   mkdirp,
   sh,
-  sleep,
   srtTime,
 } from '../util.mjs'
 import { record } from '../record/session.mjs'

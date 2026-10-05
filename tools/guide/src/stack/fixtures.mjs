@@ -5,7 +5,7 @@
 // written. The guide adds two things: a pinned clock (see clock.mjs) so the
 // data is the same on every build, and the demo sign-in, so the portal and the
 // agent pages can be shown as the customer and the agent see them.
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
@@ -86,11 +86,25 @@ export async function start() {
   writeFileSync(pidFile(), String(child.pid))
   writeFileSync(envFile(), JSON.stringify({ now: GUIDE_NOW }))
   for (let i = 0; i < 180; i++) {
-    if (await up(`${BASE}/track`)) return { base: BASE, now: GUIDE_NOW }
+    if (await up(`${BASE}/track`)) {
+      restoreNextEnv()
+      return { base: BASE, now: GUIDE_NOW }
+    }
     if (!alive(child.pid)) throw new Error(`the web app exited; see ${join(dir(), 'web.log')}`)
     await sleep(1000)
   }
   throw new Error(`the web app did not answer on ${BASE}; see ${join(dir(), 'web.log')}`)
+}
+
+/**
+ * `next dev` rewrites apps/web/next-env.d.ts in its own style on every start,
+ * which then fails `pnpm format:check`. The committed file is the right one;
+ * put it back once the server has written its copy.
+ */
+function restoreNextEnv() {
+  const file = join(WEB, 'next-env.d.ts')
+  const r = spawnSync('git', ['diff', '--quiet', '--', file], { cwd: WEB })
+  if (r.status === 1) spawnSync('git', ['checkout', '--', file], { cwd: WEB })
 }
 
 /** Stops only the process group this stack started. */
@@ -102,4 +116,5 @@ export async function stop() {
   } catch {}
   writeFileSync(pidFile(), '')
   await sleep(1500)
+  restoreNextEnv()
 }
