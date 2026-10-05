@@ -143,6 +143,10 @@ export async function publish({ dryRun = false, prefix, links = false } = {}) {
     const body = readFileSync(f)
     const md5 = createHash('md5').update(body).digest('hex')
     const head = await request(c, 'HEAD', key)
+    // 404 means not there yet. Anything else that is not OK (a 403 from a bad
+    // signature or key) would otherwise read as "changed" and upload blind.
+    if (!head.ok && head.status !== 404)
+      throw new Error(`R2 refused to describe ${key}: ${head.status}`)
     if (head.ok && (head.headers.get('etag') ?? '').replace(/"/g, '') === md5) {
       same++
       continue
