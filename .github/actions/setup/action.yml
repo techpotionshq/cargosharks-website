@@ -1,0 +1,43 @@
+# pnpm, Node and the workspace's dependencies, the same way in every job.
+#
+# Written for a self-hosted runner that outlives the job, which a GitHub-hosted
+# VM does not (docs/CI.md):
+#
+# - pnpm goes into `runner.temp`, which the runner empties after every job,
+#   rather than the default `~/setup-pnpm`, which two runner instances on one
+#   machine would overwrite under each other.
+# - The pnpm store is cached through GitHub only on GitHub-hosted runners. On
+#   the self-hosted machine the store already persists on disk between jobs,
+#   so restoring a tarball of it would download hundreds of megabytes to
+#   overwrite files that are already there, while another job may be reading
+#   them.
+#
+# Actions are pinned to commit SHAs for the reasons given at the top of ci.yml.
+
+name: Setup
+description: Install pnpm and Node, then the workspace's locked dependencies.
+
+inputs:
+  node-version:
+    description: Node major version.
+    required: true
+  pnpm-version:
+    description: pnpm version, matching `packageManager` in package.json.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      with:
+        version: ${{ inputs.pnpm-version }}
+        dest: ${{ runner.temp }}/setup-pnpm
+
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

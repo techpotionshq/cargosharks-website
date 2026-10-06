@@ -7,12 +7,28 @@
 # person's decision (docs/guide/README.md), because they record a browser and
 # speak through a paid voice model.
 #
-# Actions are pinned to commit SHAs for the reasons given at the top of ci.yml.
+# Actions are pinned to commit SHAs for the reasons given at the top of ci.yml,
+# and the runner is chosen the way described there (`CI_RUNNER`).
 
 name: Guide
 
+# Only on a change that can make a page, a short or a caption stale: the
+# screens and what they render, the guide's own sources and its tooling. A pull
+# request touching none of these has nothing to report, and on a single
+# self-hosted runner an install it does not need is time another job waits.
+# Safe to filter by path because this check is informational and never
+# required (a required check filtered out never reports, and blocks the merge).
 on:
   pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'docs/guide/**'
+      - 'tools/guide/**'
+      - 'scripts/q.mjs'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/guide.yml'
+      - '.github/actions/**'
 
 concurrency:
   group: guide-${{ github.ref }}
@@ -25,7 +41,7 @@ env:
 jobs:
   stale:
     name: Guide staleness (informational)
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 10
     continue-on-error: true
     steps:
@@ -34,16 +50,10 @@ jobs:
           # The merge base with the target branch has to be in the clone.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: List what the change makes stale
         env:
