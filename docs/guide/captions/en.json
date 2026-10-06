@@ -3,7 +3,7 @@
     "01-whatsapp-intake": {
       "msg": "A customer asks for a price on WhatsApp.",
       "queue": "Seconds later it is an enquiry in the queue, linked to their company.",
-      "asks": "The assistant spots what is missing and asks once: here, the container type.",
+      "asks": "The assistant spots what is still missing and asks once: here, the number of packages.",
       "thread": "The whole conversation stays on the enquiry, with what the assistant sent.",
       "read": "Every detail is read from the chat, with the exact words it came from.",
       "accept": "Nothing is saved until a person accepts it.",

@@ -174,18 +174,19 @@ export default [
       await save(page, /save/i)
       // No quiet hours on either branch: the story's messages go out when sent.
       //
-      // And the branches named after the brand being built. seed-demo names them
-      // after one company on every branch of the repository, and a branch's
-      // legal name is the letterhead of its quotations, invoices and house
-      // bills, so a CargoSharks short printed Al-Qabandi PDFs. An administrator
-      // renames them here, as one would; a name that already carries the brand
-      // is left as seeded.
-      const { nameEn, nameAr, legalNameEn, legalNameAr } = ctx.brand.identity
+      // And the branches named as the brand's demo company. seed-demo names
+      // them after the brand's legal identity, and a branch's legal name is the
+      // letterhead of its quotations, invoices and house bills, so the seeded
+      // shorts printed one company and the fixture shorts another (CargoSharks
+      // Freight Technologies beside Gulf Harbour Freight Services). The demo
+      // block in packages/brand is what the fixtures name them, so an
+      // administrator renames them to that here, as one would; a branch already
+      // carrying its demo name is left as seeded.
+      const { homeEntityEn, homeEntityAr, regionalEntityEn, regionalEntityAr } = ctx.brand.demo
       const legalNames = {
-        KWI: [legalNameEn, legalNameAr],
-        DXB: [`${nameEn} Logistics FZE`, `${nameAr} للخدمات اللوجستية`],
+        KWI: [homeEntityEn, homeEntityAr],
+        DXB: [regionalEntityEn, regionalEntityAr],
       }
-      const mark = nameEn.split(/\s+/)[0]
       for (let i = 0; i < 2; i++) {
         await page.goto(`${base}/settings/branches`, { waitUntil: 'networkidle' })
         await page.getByRole('button', { name: /edit/i }).nth(i).click()
@@ -194,9 +195,11 @@ export default [
         if (await q.count()) await q.uncheck({ force: true })
         const code = await dlg(page).locator('input[name=code]').inputValue()
         const en = dlg(page).locator('input[name=legalNameEn]')
-        if (legalNames[code] && !(await en.inputValue()).includes(mark)) {
-          await en.fill(legalNames[code][0])
-          await dlg(page).locator('input[name=legalNameAr]').fill(legalNames[code][1])
+        const ar = dlg(page).locator('input[name=legalNameAr]')
+        const want = legalNames[code]
+        if (want && ((await en.inputValue()) !== want[0] || (await ar.inputValue()) !== want[1])) {
+          await en.fill(want[0])
+          await ar.fill(want[1])
         }
         await save(page, /save/i)
       }
