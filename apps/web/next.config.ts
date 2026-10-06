@@ -64,9 +64,33 @@ const config: NextConfig = {
   experimental: {
     // Server Actions are the only mutation path; nothing posts to an API route.
     serverActions: { bodySizeLimit: '10mb' },
+    /*
+      Next sizes its page-data and prerender pool from os.cpus(), which inside
+      a container is the host's core count, not the container's quota: on the
+      2-CPU, 4GB CI runner it started seven workers and the build was killed
+      at "Collecting page data". CI sets the real number; everywhere else
+      keeps Next's default.
+    */
+    ...(Number(process.env.QABANDI_CI_BUILD_WORKERS) > 0
+      ? { cpus: Number(process.env.QABANDI_CI_BUILD_WORKERS) }
+      : {}),
   },
   typedRoutes: true,
   serverExternalPackages: ['pg', 'pg-boss'],
+
+  /**
+   * CI's builds skip Next's own TypeScript pass, and nothing else does.
+   *
+   * `next build` keeps the compiler's process alive while it starts a second
+   * one for the type check, and on a 4GB runner the pair was killed (exit 137)
+   * at "Running TypeScript". The same commit's "Checks" job has already run
+   * `tsc --noEmit` over the workspace, and "CI result" needs both, so the
+   * second check bought nothing but the OOM. The runtime image and every local
+   * build leave the variable unset and keep the check.
+   */
+  typescript: {
+    ignoreBuildErrors: process.env.QABANDI_CI_SKIP_BUILD_TYPECHECK === '1',
+  },
 
   /**
    * Hosts `next dev` may serve its scripts to, besides localhost.

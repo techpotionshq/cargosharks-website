@@ -14,8 +14,8 @@ name: Guide
 
 # Only on a change that can make a page, a short or a caption stale: the
 # screens and what they render, the guide's own sources and its tooling. A pull
-# request touching none of these has nothing to report, and on a single
-# self-hosted runner an install it does not need is time another job waits.
+# request touching none of these has nothing to report, and on two
+# self-hosted runners an install it does not need is time another job waits.
 # Safe to filter by path because this check is informational and never
 # required (a required check filtered out never reports, and blocks the merge).
 on:

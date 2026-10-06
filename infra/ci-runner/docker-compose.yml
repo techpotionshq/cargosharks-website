@@ -1,86 +1,155 @@
-# The self-hosted GitHub Actions runner, as a Coolify Docker Compose resource.
+# The self-hosted GitHub Actions runners, as a Coolify Docker Compose resource.
 #
-# Paste this into a new Coolify resource (Docker Compose, empty), set
-# ACCESS_TOKEN in the resource's Environment Variables as a secret, and deploy.
-# docs/CI.md says what the workflows expect of it and why each line is here.
+# Two runners on a server they share with the demo apps and Coolify itself
+# (8 cores, 16GB). The rule this file encodes: CI never takes more than about
+# half the machine, and when the machine is busy the demos win.
 #
-# One container is one runner is one job at a time. That is the intended
-# setup: the workflows serialise themselves on it. A second runner is a second
-# copy of this service with its own name prefix (and the same mounts, which
-# are safe to share).
+#   runner-1, runner-2   2 CPUs and 4GB each, no swap, CPU weight 256
+#                        (Docker's default is 1024, so under contention a demo
+#                        container gets four times the CPU time of a runner)
+#
+# Deploy it from the repository so Coolify builds ./Dockerfile (docs/CI.md,
+# "The runners", has the exact settings): Docker Compose build pack, base
+# directory /infra/ci-runner. Put the registration token in the resource's
+# Environment Variables as GH_RUNNER_PAT, marked secret. Turn automatic
+# deployment off, or limit it to this folder with a watch path: a redeploy
+# restarts both runners and kills whatever job they are running.
+#
+# NOT covered by these limits: anything a job starts through the Docker socket
+# runs as a sibling on the host, not inside the runner. The workflows give each
+# of those its own ceiling and the same low weight:
+#
+#   Postgres service containers   1 CPU, 2GB (data on a 1GB tmpfs)   ci.yml
+#   Semgrep                       2 CPUs, 3GB                        security.yml
+#   Image builds (BuildKit)       2 CPUs, 4GB, one builder shared    security.yml
+#                                 by both runners
+#   TruffleHog                    unlimited, one short process       security.yml
+#
+# So the realistic peak is the two runners (4 CPUs, 8GB) plus a Postgres each,
+# and the image build replaces most of a runner's load while that runner waits
+# on it.
 #
 # Nothing here is deployed by CI. `scripts/ci-scope.mjs` treats this folder as
 # lint-only.
 
 services:
-  runner:
-    # Pin a dated tag in Coolify once one is known good; `ubuntu-noble` moves.
-    image: myoung34/github-runner:ubuntu-noble
+  runner-1:
+    # Built from ./Dockerfile: the upstream runner plus Chromium's system
+    # libraries and an Arabic font. Both services name the same image, so the
+    # second build is entirely cache.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qabandi-ci-runner:local
     restart: unless-stopped
 
     # Host networking, so a job's service containers (Postgres), which the
     # host's daemon publishes on a random host port, are reachable from the
     # job at 127.0.0.1:<port>. The workflows read that port back from
     # `job.services.postgres.ports`, and pick a free port for the web server
-    # the same way, so nothing here needs to be reserved.
+    # the same way, so nothing here needs to be reserved, and two runners on
+    # one network namespace never collide.
     network_mode: host
 
     environment:
       # Registration. A fine-grained token for majwadalam/cargosharks with
-      # Administration: read and write (or a classic token with `repo`). Keep
-      # it in Coolify as a secret, never in this file.
+      # Administration: read and write (or a classic token with `repo`). Kept
+      # in Coolify as the secret GH_RUNNER_PAT, never in this file.
       REPO_URL: https://github.com/majwadalam/cargosharks
-      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      ACCESS_TOKEN: ${GH_RUNNER_PAT}
       RUNNER_SCOPE: repo
       # `self-hosted` is added by GitHub. These three are what the workflows'
       # default `runs-on` asks for, together with it.
       LABELS: linux,x64,qabandi-ci
-      RUNNER_NAME_PREFIX: coolify-qabandi-ci
+      RUNNER_NAME_PREFIX: coolify-qabandi-ci-1
 
       # The work directory, at the same path in the container as on the host
       # (see `volumes`). Steps run `docker run -v "$PWD:..."` against the
       # host's daemon, which resolves `$PWD` on the host: the two paths have
-      # to be the same path or the mount is empty.
-      RUNNER_WORKDIR: /tmp/github-runner
+      # to be the same path or the mount is empty. One directory per runner,
+      # so two jobs never share a workspace.
+      RUNNER_WORKDIR: /tmp/github-runner-1
 
-      # Root inside the container, so `playwright install --with-deps` can
-      # apt-get Chromium's libraries without sudo. The Docker socket below is
-      # root on the host either way.
+      # Root inside the container. The workspace, Semgrep's output and the
+      # fallback `playwright install-deps` all assume it. The Docker socket
+      # below is root on the host either way.
       RUN_AS_ROOT: 'true'
 
-      # Node, Playwright's browsers and other tool downloads, kept in the
-      # named volume so they survive a redeploy.
+      # Node, Playwright's browsers and the Next.js build cache, kept in a
+      # named volume so they survive a redeploy. One volume per runner:
+      # setup-node and the Next cache are not safe for two writers at once.
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+      # A directory only this runner writes. `.github/actions/setup` links
+      # `apps/web/.next/cache` into it, which turns a 50s web build into an 8s
+      # one. Unset, jobs build cold; never point two runners at one directory.
+      QABANDI_CI_CACHE: /opt/hostedtoolcache/qabandi
 
-      # pnpm's store, on the same filesystem as the workspaces so installs
-      # hardlink rather than copy, and outside the container so it survives a
-      # redeploy. pnpm keeps it under $XDG_DATA_HOME/pnpm/store.
-      XDG_DATA_HOME: /tmp/github-runner/.data
+      # pnpm's store, on the same mount as the workspace so installs hardlink
+      # rather than copy (a hardlink cannot cross mount points, which is why
+      # it is per runner rather than one shared store). pnpm keeps it under
+      # $XDG_DATA_HOME/pnpm/store.
+      XDG_DATA_HOME: /tmp/github-runner-1/.data
 
     volumes:
-      # Service containers, `docker build`, Semgrep and TruffleHog all run on
+      # Service containers, image builds, Semgrep and TruffleHog all run on
       # the host's daemon through this socket. Whoever controls a workflow
       # controls the host: keep the repository private.
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path on both sides; see RUNNER_WORKDIR.
-      - /tmp/github-runner:/tmp/github-runner
-      - toolcache:/opt/hostedtoolcache
+      - /tmp/github-runner-1:/tmp/github-runner-1
+      - toolcache-1:/opt/hostedtoolcache
 
-    # Limits for the runner container: installs, typecheck, the Next build and
-    # Chromium. Containers it starts through the socket (Postgres, image
-    # builds, Semgrep) are siblings on the host and are NOT counted here.
-    cpus: 4
-    mem_limit: 8g
+    # Installs, typecheck, the unit suites, the Next build and Chromium. A
+    # quota of two CPUs rather than a pinned pair (`cpuset`), so the kernel
+    # can still place the work on whichever cores the demos leave idle.
+    # memswap_limit equal to mem_limit: no swap, so a runner that outgrows
+    # 4GB is stopped rather than slowing the whole host down.
+    cpus: '2'
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpu_shares: 256
+
+  runner-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qabandi-ci-runner:local
+    restart: unless-stopped
+    network_mode: host
+    # Identical to runner-1 except for the name, the work directory, the pnpm
+    # store under it and the tool-cache volume. The reasons are above.
+    environment:
+      REPO_URL: https://github.com/majwadalam/cargosharks
+      ACCESS_TOKEN: ${GH_RUNNER_PAT}
+      RUNNER_SCOPE: repo
+      LABELS: linux,x64,qabandi-ci
+      RUNNER_NAME_PREFIX: coolify-qabandi-ci-2
+      RUNNER_WORKDIR: /tmp/github-runner-2
+      RUN_AS_ROOT: 'true'
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+      QABANDI_CI_CACHE: /opt/hostedtoolcache/qabandi
+      XDG_DATA_HOME: /tmp/github-runner-2/.data
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/github-runner-2:/tmp/github-runner-2
+      - toolcache-2:/opt/hostedtoolcache
+    cpus: '2'
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpu_shares: 256
 
 # Disk is the one thing this setup grows without bound: image layers, the
-# build cache of two runtime images, pulled scanners. Turn on Coolify's Docker
-# cleanup for this server (Servers, the server, Docker Cleanup) on a weekly
-# schedule, or run from the host's cron:
+# image builder's cache, pulled scanners. Turn on Coolify's Docker cleanup for
+# this server (Servers, the server, Docker Cleanup) on a weekly schedule, and
+# add the builder's own cache, which that cleanup does not see, from the
+# host's cron:
 #
-#   0 3 * * 0  docker system prune -af --filter until=168h && docker builder prune -af --filter until=168h
+#   0 3 * * 0  docker system prune -af --filter until=168h; docker builder prune -af --filter until=168h; docker exec buildx_buildkit_qabandi-ci0 buildctl prune --keep-duration 168h || true
 #
-# `/tmp/github-runner` is on the host's /tmp, which a reboot or
+# `/tmp/github-runner-*` is on the host's /tmp, which a reboot or
 # systemd-tmpfiles may empty. That only costs the next job a cold pnpm store.
 volumes:
-  toolcache:
+  toolcache-1:
+  toolcache-2:

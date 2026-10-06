@@ -1,8 +1,10 @@
 /**
  * Which CI jobs a change needs: the first job of `.github/workflows/ci.yml`.
  *
- * CI runs on one self-hosted machine (docs/CI.md), so every job a change
- * cannot break is a job queued in front of one that can. This maps the paths
+ * CI runs on two small self-hosted runners on a machine shared with the demos
+ * (docs/CI.md), so every job a change cannot break is a job queued in front of
+ * one that can. `typecheck` and `unit` are steps of the one `Checks` job rather
+ * than jobs of their own; they are still decided here. This maps the paths
  * a pull request touches to the jobs that could fail because of them, and
  * says so in the run summary so a skipped job is never a mystery.
  *

@@ -22,12 +22,19 @@
 # runs on every change *and* every Monday, and the schedule is the half that
 # does the work.
 #
-# Four checks, each answering a different question:
+# Five checks, each answering a different question:
 #
-#   audit        do our dependencies have known advisories today
 #   secrets      did a credential ever reach a commit, anywhere in history
-#   image        does the runtime image carry a vulnerable OS package
+#   sast         does the code we wrote carry a known-bad pattern (Semgrep)
+#   audit        do our dependencies have known advisories today
 #   sbom         what, exactly, did we ship — an artifact a customer can ask for
+#   image        does the runtime image carry a vulnerable OS package
+#
+# Two jobs carry them, plus `Security result`. The first four are minutes of
+# work between them and used to be five jobs (with the dependency scope), each
+# a checkout and a slot on a runner; on two runners that was most of the
+# queue. They are now steps of `Security checks`. The image scan stays a job of
+# its own because it is the heavy one: two Docker builds and two Trivy runs.
 #
 # What runs when. Secrets and static analysis are cheap and read the code a
 # pull request changes, so they run on every one. The other three can only
@@ -68,21 +75,30 @@ env:
   PNPM_VERSION: '11.5.2'
 
 jobs:
-  # Whether this pull request changes what is installed or what is shipped.
-  # Anything other than a pull request answers yes.
-  scope:
-    name: Dependency scope
+  # Everything except the image, in one checkout. Each check runs whatever the
+  # one before it did (`!cancelled()`), so one finding never hides another;
+  # `Security result` still fails if any of them failed.
+  checks:
+    name: Security checks
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 5
+    timeout-minutes: 25
     outputs:
       deps: ${{ steps.scope.outputs.deps }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # The merge commit and the base branch's tip; see ci.yml's `scope`.
-          fetch-depth: 2
+          # Whole history, not the default single commit, for the secret scan:
+          # a credential that was committed and then removed is still a
+          # credential — the commit is what leaked it, and `git log -p` is a
+          # public API on any repository somebody is given. It also holds the
+          # merge commit's first parent, which the scope below diffs against.
+          fetch-depth: 0
 
-      - id: scope
+      # Whether this pull request changes what is installed or what is shipped.
+      # Anything other than a pull request answers yes. The merge commit's
+      # first parent is the base branch's tip; see ci.yml's `scope`.
+      - name: Dependency scope
+        id: scope
         run: |
           deps=true
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && files=$(git diff --name-only --no-renames HEAD^1 HEAD); then
@@ -91,16 +107,106 @@ jobs:
           fi
           echo "deps=$deps" | tee -a "$GITHUB_OUTPUT"
 
-  audit:
-    name: Dependency advisories
-    needs: scope
-    if: needs.scope.outputs.deps == 'true'
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # TruffleHog rather than gitleaks: the gitleaks action requires a paid
+      # licence key for organisation-owned repositories, and a scan that is off
+      # because a key expired is worse than one that was never added.
+      #
+      # `--only-verified` means it reports credentials it has confirmed are
+      # live against the issuing service, not strings that look like keys. The
+      # false-positive rate is what decides whether anyone reads this job.
+      #
+      # The action starts its own container through the host's daemon, so the
+      # runner's CPU and memory limits do not cover it; it is a single short
+      # process and is left as it is.
+      - name: Verified credentials in history
+        if: ${{ !cancelled() }}
+        uses: trufflesecurity/trufflehog@8c3e7bad3f4e708b080b9b19974007c06ac1ef16 # main as of 2026-08-25
+        with:
+          extra_args: --only-verified
 
-      - uses: ./.github/actions/setup
+      # Semgrep, not CodeQL, and the reason is billing rather than preference.
+      #
+      # CodeQL is the better engine and it is free only on public repositories:
+      # on a private one it needs GitHub Advanced Security, which is priced per
+      # committer and is not worth it for a team this size. Semgrep's OSS rules
+      # run anywhere, need no account and no token, and cover what matters here
+      # — injection, XSS sinks, weak crypto, hard-coded secrets.
+      #
+      # If this repository is ever made public, or GHAS is bought for another
+      # reason, replace this step with `github/codeql-action` and delete the
+      # note. Until then, an engine that runs beats a better one that does not.
+      #
+      # `docker run` rather than a job `container:`. A container job runs its
+      # steps as root, so the checkout it leaves behind is root-owned, and on a
+      # self-hosted runner the next job's checkout of the same workspace then
+      # fails to clean it. Run as the runner's own user (root in the Coolify
+      # container, where root owns the workspace anyway), with a named container
+      # so the step after can remove it if the job is cancelled mid-scan.
+      #
+      # `$PWD` is a path inside the runner, and the daemon that resolves the
+      # bind mount is the host's. They agree only because the runner's work
+      # directory is mounted at the same path on both (infra/ci-runner); the
+      # TruffleHog action's `-v .:/tmp` depends on the same thing.
+      #
+      # The scanner is a sibling of the runner container, not a child, so it
+      # gets limits of its own: two CPUs, 3GB, a low CPU weight so the demos on
+      # the same host win under contention, and `--jobs 2` so Semgrep does not
+      # start a process per host core inside its two CPUs.
+      - name: Static analysis
+        if: ${{ !cancelled() }}
+        run: >-
+          docker run --rm
+          --name "semgrep-${{ github.run_id }}-${{ github.run_attempt }}"
+          --cpus 2 --memory 3g --cpu-shares 256
+          --user "$(id -u):$(id -g)"
+          -e HOME=/tmp
+          -v "$PWD:/src" -w /src
+          semgrep/semgrep
+          semgrep scan
+          --jobs 2
+          --config p/typescript
+          --config p/react
+          --config p/nodejs
+          --config p/secrets
+          --config p/owasp-top-ten
+          --config p/sql-injection
+          --error
+          --skip-unknown-extensions
+          --exclude apps/landing/out
+          --exclude '**/dist/**'
+          --exclude '**/.next/**'
+
+      - name: Remove the scanner container
+        if: always()
+        run: docker rm -f "semgrep-${{ github.run_id }}-${{ github.run_attempt }}" >/dev/null 2>&1 || true
+
+      # Not a gate. An artifact.
+      #
+      # "Send us your SBOM" is on every enterprise security questionnaire and
+      # in the CAIQ (`docs/compliance/CAIQ.md`, SEF and AIS domains). Producing
+      # one on demand means someone reconstructing the tree by hand under
+      # deadline; producing one every build means answering with a link.
+      - name: Bill of materials
+        if: ${{ !cancelled() && steps.scope.outputs.deps != 'false' }}
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          format: cyclonedx-json
+          artifact-name: qabandi-sbom.cyclonedx.json
+          output-file: qabandi-sbom.cyclonedx.json
+
+      - name: Upload the bill of materials
+        if: ${{ !cancelled() && steps.scope.outputs.deps != 'false' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: qabandi-sbom.cyclonedx.json
+          retention-days: 90
+
+      # After the bill of materials, so that it is read from the lockfile as it
+      # always was, not from a `node_modules` this install would add.
+      - id: setup
+        if: ${{ !cancelled() && steps.scope.outputs.deps != 'false' }}
+        uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -113,43 +219,22 @@ jobs:
       # advisories this repository started with are pinned out in
       # `pnpm-workspace.yaml`, each with a note on why.
       - name: Advisories, high and above
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: pnpm audit --audit-level high
 
       - name: Advisories, everything else
-        if: always()
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: pnpm audit --audit-level moderate || true
 
-  secrets:
-    name: Secret scan
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          # Whole history, not the default single commit. A credential that was
-          # committed and then removed is still a credential — the commit is
-          # what leaked it, and `git log -p` is a public API on any repository
-          # somebody is given.
-          fetch-depth: 0
-
-      # TruffleHog rather than gitleaks: the gitleaks action requires a paid
-      # licence key for organisation-owned repositories, and a scan that is off
-      # because a key expired is worse than one that was never added.
-      #
-      # `--only-verified` means it reports credentials it has confirmed are
-      # live against the issuing service, not strings that look like keys. The
-      # false-positive rate is what decides whether anyone reads this job.
-      - name: Verified credentials in history
-        uses: trufflesecurity/trufflehog@8c3e7bad3f4e708b080b9b19974007c06ac1ef16 # main as of 2026-08-25
-        with:
-          extra_args: --only-verified
-
+  # After `Security checks`, because the scope is decided there. A finding
+  # in that job does not stop this one (`!cancelled()`); an unknown scope (the
+  # step never wrote one) runs it, the same bias as ci.yml.
   image:
     name: Runtime image
-    needs: scope
-    if: needs.scope.outputs.deps == 'true'
+    needs: checks
+    if: ${{ !cancelled() && needs.checks.outputs.deps != 'false' }}
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 20
+    timeout-minutes: 25
     # Trivy fetches its vulnerability database from mirror.gcr.io by default,
     # and on 6 October 2026 that mirror answered 404 for the layer, failing
     # the job before it scanned anything. Trivy tries these in order, so one
@@ -175,11 +260,47 @@ jobs:
       # daemon is shared by every job on the machine, so a fixed tag is one a
       # concurrent run can retag between this build and the scan below. The
       # last step removes both whatever happens.
+      #
+      # Built by a builder of our own, not the daemon's default one, because
+      # that is the only way to put a ceiling on a build. `docker build` runs
+      # every RUN step inside the host daemon's BuildKit with no limit at all:
+      # `pnpm install`, `next build` and an apt install of Chromium could take
+      # all eight cores from the demos on the same machine, and the runner
+      # container's own limits do not apply to it. `--cpus`/`--memory` on
+      # `docker build` belong to the legacy builder and are ignored here.
+      #
+      # A `docker-container` builder is a BuildKit daemon in a container, and
+      # that container takes limits: two CPUs, 4GB, a low CPU weight. Its
+      # layer cache lives in its own volume on the host and outlives the job,
+      # which is the local layer cache: an unchanged lockfile is a cached
+      # install. Both runners use the same builder (the container is found by
+      # name on the host), so concurrent image builds share the cache and the
+      # one ceiling. `--load` hands the result to the daemon for Trivy, which
+      # costs a tarball export per image and buys the limit.
+      #
+      # On a GitHub-hosted VM nothing is shared; it builds the same way.
+      - name: Set up a limited builder
+        run: |
+          # The builder's record lives in this container's ~/.docker, which a
+          # redeploy empties; the builder itself (a container on the host) is
+          # found again by name. A race between two runners creating it at
+          # once loses one `create`, so the bootstrap is retried.
+          docker buildx inspect qabandi-ci >/dev/null 2>&1 ||
+            docker buildx create --name qabandi-ci --driver docker-container \
+              --driver-opt cpu-period=100000 --driver-opt cpu-quota=200000 \
+              --driver-opt cpu-shares=256 --driver-opt memory=4g --driver-opt memory-swap=4g
+          docker buildx inspect --bootstrap qabandi-ci >/dev/null ||
+            { sleep 5; docker buildx inspect --bootstrap qabandi-ci >/dev/null; }
+
       - name: Build the web runtime image
-        run: docker build -t "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-web" .
+        run: >-
+          docker buildx build --builder qabandi-ci --load
+          -t "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-web" .
 
       - name: Build the service image
-        run: docker build --target service -t "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-service" .
+        run: >-
+          docker buildx build --builder qabandi-ci --load --target service
+          -t "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-service" .
 
       - name: Scan
         # v0.28.0 is permanently broken, which is why this job has never run: it
@@ -220,9 +341,9 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
 
-      # The layers stay in the build cache, which is what makes the next build
-      # fast; only the two tags go. Pruning the cache is the machine's job
-      # (docs/CI.md), not a job's.
+      # The layers stay in the builder's cache, which is what makes the next
+      # build fast; only the two tags go. Pruning the cache is the machine's job
+      # (docs/CI.md, and the cron line in infra/ci-runner), not a job's.
       - name: Remove the scanned images
         if: always()
         run: >-
@@ -231,94 +352,11 @@ jobs:
           "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-service"
           || true
 
-  sast:
-    name: Static analysis
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      # Semgrep, not CodeQL, and the reason is billing rather than preference.
-      #
-      # CodeQL is the better engine and it is free only on public repositories:
-      # on a private one it needs GitHub Advanced Security, which is priced per
-      # committer and is not worth it for a team this size. Semgrep's OSS rules
-      # run anywhere, need no account and no token, and cover what matters here
-      # — injection, XSS sinks, weak crypto, hard-coded secrets.
-      #
-      # If this repository is ever made public, or GHAS is bought for another
-      # reason, replace this job with `github/codeql-action` and delete the
-      # note. Until then, an engine that runs beats a better one that does not.
-      #
-      # `docker run` rather than a job `container:`. A container job runs its
-      # steps as root, so the checkout it leaves behind is root-owned, and on a
-      # self-hosted runner the next job's checkout of the same workspace then
-      # fails to clean it. Run as the runner's own user (root in the Coolify
-      # container, where root owns the workspace anyway), with a named container
-      # so the step after can remove it if the job is cancelled mid-scan.
-      #
-      # `$PWD` is a path inside the runner, and the daemon that resolves the
-      # bind mount is the host's. They agree only because the runner's work
-      # directory is mounted at the same path on both (infra/ci-runner); the
-      # TruffleHog action's `-v .:/tmp` depends on the same thing.
-      - name: Scan
-        run: >-
-          docker run --rm
-          --name "semgrep-${{ github.run_id }}-${{ github.run_attempt }}"
-          --user "$(id -u):$(id -g)"
-          -e HOME=/tmp
-          -v "$PWD:/src" -w /src
-          semgrep/semgrep
-          semgrep scan
-          --config p/typescript
-          --config p/react
-          --config p/nodejs
-          --config p/secrets
-          --config p/owasp-top-ten
-          --config p/sql-injection
-          --error
-          --skip-unknown-extensions
-          --exclude apps/landing/out
-          --exclude '**/dist/**'
-          --exclude '**/.next/**'
-
-      - name: Remove the scanner container
-        if: always()
-        run: docker rm -f "semgrep-${{ github.run_id }}-${{ github.run_attempt }}" >/dev/null 2>&1 || true
-
-  sbom:
-    name: Bill of materials
-    needs: scope
-    if: needs.scope.outputs.deps == 'true'
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      # Not a gate. An artifact.
-      #
-      # "Send us your SBOM" is on every enterprise security questionnaire and
-      # in the CAIQ (`docs/compliance/CAIQ.md`, SEF and AIS domains). Producing
-      # one on demand means someone reconstructing the tree by hand under
-      # deadline; producing one every build means answering with a link.
-      - name: Generate
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
-        with:
-          format: cyclonedx-json
-          artifact-name: qabandi-sbom.cyclonedx.json
-          output-file: qabandi-sbom.cyclonedx.json
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: sbom
-          path: qabandi-sbom.cyclonedx.json
-          retention-days: 90
-
   # The check to require, if any of these is to gate a merge: it always runs,
   # and a job the scope skipped counts as a pass.
   result:
     name: Security result
-    needs: [scope, audit, secrets, image, sast, sbom]
+    needs: [checks, image]
     if: always()
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 5
@@ -326,7 +364,7 @@ jobs:
       - name: Results
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}
-        run: echo "scope, audit, secrets, image, sast, sbom -> $RESULTS"
+        run: echo "checks, image -> $RESULTS"
 
       - name: Fail if a needed job did not pass
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

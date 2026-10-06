@@ -11,6 +11,8 @@
 #   so restoring a tarball of it would download hundreds of megabytes to
 #   overwrite files that are already there, while another job may be reading
 #   them.
+# - `next-cache` keeps `apps/web/.next/cache` between jobs, on a self-hosted
+#   runner that names a cache directory of its own (below).
 #
 # Actions are pinned to commit SHAs for the reasons given at the top of ci.yml.
 
@@ -24,6 +26,13 @@ inputs:
   pnpm-version:
     description: pnpm version, matching `packageManager` in package.json.
     required: true
+  next-cache:
+    description: >-
+      A name for this job's Next.js build cache (`e2e-offline`, `build`, ...).
+      Empty, the default, keeps no cache. Used only where the runner sets
+      QABANDI_CI_CACHE.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -45,3 +54,34 @@ runs:
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
+
+    # Turbopack's build cache, kept between runs. Measured on this repository:
+    # `next build` of apps/web takes about 50s cold and 8s warm.
+    #
+    # `actions/checkout` runs `git clean -ffdx`, which deletes `.next` with
+    # everything else that is ignored, so the cache cannot simply stay in the
+    # workspace. Instead `.next/cache` is a symlink into a directory the runner
+    # keeps. Next empties `.next` at the start of a build but spares the entry
+    # named `cache`, so the link survives the build that follows it.
+    #
+    # Only where the runner sets QABANDI_CI_CACHE (infra/ci-runner), and that
+    # directory must belong to one runner alone: one runner is one job at a
+    # time, so nothing ever writes the same Turbopack cache twice at once. Two
+    # builds sharing one would corrupt it. One directory per job kind, because
+    # the offline and seeded builds and the production build differ in their
+    # environment and would otherwise evict each other on every run.
+    - name: Link the Next.js build cache
+      if: inputs.next-cache != ''
+      shell: bash
+      env:
+        NAME: ${{ inputs.next-cache }}
+      run: |
+        if [ -z "${QABANDI_CI_CACHE:-}" ]; then
+          echo "QABANDI_CI_CACHE is not set on this runner; building without a persistent cache."
+          exit 0
+        fi
+        dir="$QABANDI_CI_CACHE/next/$NAME"
+        mkdir -p "$dir" apps/web/.next
+        rm -rf apps/web/.next/cache
+        ln -s "$dir" apps/web/.next/cache
+        echo "apps/web/.next/cache -> $dir ($(du -sh "$dir" | cut -f1))"
