@@ -69,6 +69,20 @@ const config: NextConfig = {
   serverExternalPackages: ['pg', 'pg-boss'],
 
   /**
+   * CI's builds skip Next's own TypeScript pass, and nothing else does.
+   *
+   * `next build` keeps the compiler's process alive while it starts a second
+   * one for the type check, and on a 4GB runner the pair was killed (exit 137)
+   * at "Running TypeScript". The same commit's "Checks" job has already run
+   * `tsc --noEmit` over the workspace, and "CI result" needs both, so the
+   * second check bought nothing but the OOM. The runtime image and every local
+   * build leave the variable unset and keep the check.
+   */
+  typescript: {
+    ignoreBuildErrors: process.env.QABANDI_CI_SKIP_BUILD_TYPECHECK === '1',
+  },
+
+  /**
    * Hosts `next dev` may serve its scripts to, besides localhost.
    *
    * Opening the dev server through a tunnel (ngrok, for the Kapso webhook)
