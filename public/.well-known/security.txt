@@ -1,0 +1,24 @@
+# Security contact for the Qabandi freight platform (RFC 9116).
+#
+# If you have found a vulnerability, please tell us before you tell anyone
+# else. We will not pursue anyone who reports in good faith, stays within the
+# scope below and gives us a reasonable chance to fix it.
+
+Contact: mailto:security@cargosharks.com
+Expires: 2027-08-25T00:00:00.000Z
+Preferred-Languages: en, ar
+Canonical: https://cargosharks.com/.well-known/security.txt
+
+# In scope
+#   The application, its API and its public tracking page, on any host we run.
+#
+# Out of scope
+#   Denial of service, volumetric or otherwise. Social engineering of staff or
+#   customers. Physical access. Findings from automated scanners with no
+#   demonstrated impact. Anything requiring a compromised device.
+#
+# Please do not access, modify or retain data belonging to anyone but yourself.
+# If you reach customer data by accident, stop, and tell us what you saw.
+#
+# We aim to acknowledge within two working days. The working week here is
+# Sunday to Thursday.

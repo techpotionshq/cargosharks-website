@@ -1,2 +1,0 @@
-ALTER TABLE "notification_outbox" ADD COLUMN "webhooks_expanded_at" timestamp with time zone;--> statement-breakpoint
-CREATE INDEX "notification_outbox_webhooks_idx" ON "notification_outbox" USING btree ("webhooks_expanded_at","created_at");

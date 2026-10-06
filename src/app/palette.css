@@ -1,0 +1,83 @@
+/**
+ * The marketing site's own palette. The only file on this site that holds a
+ * colour literal, and the only one allowed to.
+ *
+ * Everything here used to be a `color-mix()` off `@qabandi/brand`'s `--qb-*`
+ * ramps, on the reasoning that the site is a whitelabelled product's front door
+ * and an operator who re-skins the software should not find their marketing
+ * page in someone else's blue. That reasoning is right about the *product* and
+ * wrong about this page, and the cost of being wrong was concrete: every colour
+ * on the site was two or three mixes deep, so "make the header brighter" meant
+ * reasoning about what `neutral-50` mixed 35% into white then 78% into
+ * transparent lands at, and the answer kept being mid-grey. A palette you
+ * cannot see is a palette you cannot tune.
+ *
+ * So this is a real palette, picked, for one brand. `apps/web` and the PDF
+ * renderer are untouched and still take everything from `packages/brand` —
+ * `scripts/check-brand.mjs` allows this one file by name and nothing else, so
+ * a literal anywhere in a component still fails the build.
+ *
+ * **If the product is ever re-skinned, this file is the work.** That is the
+ * trade being made here and it is worth writing down: one file to re-pick
+ * against a new brand, in exchange for a marketing site whose colours can be
+ * reasoned about by looking at them.
+ *
+ * Two ramps and four accents, and nothing else exists:
+ *
+ *   paper → ink    the light page, where most of the site lives
+ *   void  → on-*   the dark bands: the hero, demurrage, the close, the footer
+ *   blue           anything you can click
+ *   amber          the one thread the page is about — a clock running
+ *   positive       a state that is good, used about twice
+ */
+
+:root {
+  /* ── The light page ─────────────────────────────────────────────────────── */
+
+  /* Very slightly cool and not pure white. A marketing page set on #fff has
+     nowhere left to go when it needs a surface *above* the page — which this
+     one does, for the product frames and the demurrage document. */
+  --pg-paper: #f7f8fa;
+  --pg-paper-sunk: #eef0f4;
+  --pg-paper-lift: #ffffff;
+
+  /* Near-black with a trace of blue rather than a grey. At display sizes a
+     neutral black reads flat next to a photograph; a few degrees of blue in it
+     reads as ink. */
+  --pg-ink: #0c1017;
+  --pg-ink-dim: #4b535e;
+  --pg-ink-faint: #858d99;
+
+  --pg-line: #e2e6ec;
+  --pg-line-strong: #cbd2db;
+
+  /* ── The dark bands ─────────────────────────────────────────────────────── */
+
+  /* Darker than the photographs behind it, so a scrim over a night port reads
+     as the same room as the footer. */
+  --pg-void: #05070c;
+  --pg-void-lift: #0e131c;
+  --pg-on-void: #f3f5f9;
+  --pg-on-void-dim: #a3adbd;
+  --pg-on-void-faint: #6b7688;
+  --pg-void-line: rgba(255, 255, 255, 0.13);
+
+  /* ── Accents ────────────────────────────────────────────────────────────── */
+
+  /* One blue, three weights. `blue` fills a button on either surface, `blue-ink`
+     is the same blue made readable *as text on paper*, and `blue-lit` is the
+     same again for text on a dark band. A single stop cannot do all three:
+     `--pg-blue` on white is about 3.4:1, which is a link nobody enjoys reading. */
+  --pg-blue: #2f6bff;
+  --pg-blue-ink: #1a4ed8;
+  --pg-blue-lit: #8bb0ff;
+  --pg-on-brand: #ffffff;
+
+  /* Amber is reserved. It appears on the demurrage eyebrow, the accruing
+     figure and the calculator's result, and nowhere else on the site — which is
+     what makes it mean "this is costing you money" rather than "this is a
+     highlight". */
+  --pg-amber: #e3a52f;
+
+  --pg-positive: #2f9e6b;
+}
