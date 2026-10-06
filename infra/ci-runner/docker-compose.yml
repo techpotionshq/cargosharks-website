@@ -1,0 +1,86 @@
+# The self-hosted GitHub Actions runner, as a Coolify Docker Compose resource.
+#
+# Paste this into a new Coolify resource (Docker Compose, empty), set
+# ACCESS_TOKEN in the resource's Environment Variables as a secret, and deploy.
+# docs/CI.md says what the workflows expect of it and why each line is here.
+#
+# One container is one runner is one job at a time. That is the intended
+# setup: the workflows serialise themselves on it. A second runner is a second
+# copy of this service with its own name prefix (and the same mounts, which
+# are safe to share).
+#
+# Nothing here is deployed by CI. `scripts/ci-scope.mjs` treats this folder as
+# lint-only.
+
+services:
+  runner:
+    # Pin a dated tag in Coolify once one is known good; `ubuntu-noble` moves.
+    image: myoung34/github-runner:ubuntu-noble
+    restart: unless-stopped
+
+    # Host networking, so a job's service containers (Postgres), which the
+    # host's daemon publishes on a random host port, are reachable from the
+    # job at 127.0.0.1:<port>. The workflows read that port back from
+    # `job.services.postgres.ports`, and pick a free port for the web server
+    # the same way, so nothing here needs to be reserved.
+    network_mode: host
+
+    environment:
+      # Registration. A fine-grained token for majwadalam/cargosharks with
+      # Administration: read and write (or a classic token with `repo`). Keep
+      # it in Coolify as a secret, never in this file.
+      REPO_URL: https://github.com/majwadalam/cargosharks
+      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      RUNNER_SCOPE: repo
+      # `self-hosted` is added by GitHub. These three are what the workflows'
+      # default `runs-on` asks for, together with it.
+      LABELS: linux,x64,qabandi-ci
+      RUNNER_NAME_PREFIX: coolify-qabandi-ci
+
+      # The work directory, at the same path in the container as on the host
+      # (see `volumes`). Steps run `docker run -v "$PWD:..."` against the
+      # host's daemon, which resolves `$PWD` on the host: the two paths have
+      # to be the same path or the mount is empty.
+      RUNNER_WORKDIR: /tmp/github-runner
+
+      # Root inside the container, so `playwright install --with-deps` can
+      # apt-get Chromium's libraries without sudo. The Docker socket below is
+      # root on the host either way.
+      RUN_AS_ROOT: 'true'
+
+      # Node, Playwright's browsers and other tool downloads, kept in the
+      # named volume so they survive a redeploy.
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+
+      # pnpm's store, on the same filesystem as the workspaces so installs
+      # hardlink rather than copy, and outside the container so it survives a
+      # redeploy. pnpm keeps it under $XDG_DATA_HOME/pnpm/store.
+      XDG_DATA_HOME: /tmp/github-runner/.data
+
+    volumes:
+      # Service containers, `docker build`, Semgrep and TruffleHog all run on
+      # the host's daemon through this socket. Whoever controls a workflow
+      # controls the host: keep the repository private.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path on both sides; see RUNNER_WORKDIR.
+      - /tmp/github-runner:/tmp/github-runner
+      - toolcache:/opt/hostedtoolcache
+
+    # Limits for the runner container: installs, typecheck, the Next build and
+    # Chromium. Containers it starts through the socket (Postgres, image
+    # builds, Semgrep) are siblings on the host and are NOT counted here.
+    cpus: 4
+    mem_limit: 8g
+
+# Disk is the one thing this setup grows without bound: image layers, the
+# build cache of two runtime images, pulled scanners. Turn on Coolify's Docker
+# cleanup for this server (Servers, the server, Docker Cleanup) on a weekly
+# schedule, or run from the host's cron:
+#
+#   0 3 * * 0  docker system prune -af --filter until=168h && docker builder prune -af --filter until=168h
+#
+# `/tmp/github-runner` is on the host's /tmp, which a reboot or
+# systemd-tmpfiles may empty. That only costs the next job a cold pnpm store.
+volumes:
+  toolcache:

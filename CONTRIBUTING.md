@@ -66,6 +66,9 @@ pnpm test:e2e    # every screen, both languages, on fixtures
 
 `pnpm lint` and `pnpm test:core` are fast enough to run constantly. The other
 three are what CI runs, in that order, ordered by how quickly they fail.
+[`docs/CI.md`](docs/CI.md) says where CI runs (a self-hosted runner, with a
+switch back to GitHub-hosted), and which jobs a pull request skips when its
+change cannot fail them.
 
 ---
 

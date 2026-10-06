@@ -1,3 +1,24 @@
+# Where this runs, and how to move it.
+#
+# Every job runs on the self-hosted runner labelled `qabandi-ci`, because the
+# GitHub-hosted minutes ran out. The labels live in one expression repeated on
+# each job (`runs-on` cannot read `env`, so it cannot be a variable here):
+#
+#   runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('[...]') }}
+#
+# With the repository variable `CI_RUNNER` unset, that is
+# ["self-hosted","linux","x64","qabandi-ci"]. To fall back to GitHub-hosted
+# runners without a commit, set `CI_RUNNER` (Settings, Secrets and variables,
+# Actions, Variables) to the JSON string "ubuntu-latest", quotes included. Any
+# JSON label array works too, for example ["self-hosted","linux","big"].
+# Delete the variable to come back. docs/CI.md has the runner's requirements.
+#
+# Not every change runs every job. The first job, `scope`, reads the pull
+# request's diff (scripts/ci-scope.mjs) and the rest run only when the change
+# can fail them; pushes to main and qabandi run everything. The last job,
+# `CI result`, always runs and is the one check branch protection needs: a
+# skipped job is a pass, a failed or cancelled one is not.
+#
 # Third-party actions are pinned to full commit SHAs, with the version they
 # were at in the trailing comment. Please do not "tidy" them back to `@v4`.
 #
@@ -15,7 +36,8 @@
 # reason the answer matters more than any feature gap: a platform sold with
 # support is a platform someone else has to trust you to change safely.
 #
-# Five jobs, ordered by how fast they fail:
+# Five jobs, ordered by how fast they fail (plus `scope` before and `CI result`
+# after):
 #
 #   quality   formatting, lint, the dependency-direction check, types
 #   unit      the domain engines — no database, no network, ~130ms
@@ -32,36 +54,71 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Both long-lived branches: `check-branch-identity` judges a push by the
+    # branch it lands on (docs/Branches.md).
+    branches: [main, qabandi]
   pull_request:
   workflow_dispatch:
 
+# A new push to a pull request cancels the run it makes stale. A push to main or
+# qabandi gets a group of its own (`run_id`), so a merge is never cancelled or
+# left waiting behind the merge before it: each one is the record of what
+# landed.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '11.5.2'
+  # Next writes its telemetry consent under the runner user's home directory,
+  # which outlives the job on a self-hosted machine.
+  NEXT_TELEMETRY_DISABLED: '1'
 
 jobs:
-  quality:
-    name: Format, lint, types
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  # What the change can break. Pushes, the schedule and the manual button
+  # answer "everything"; a pull request answers from its own diff. Needs only
+  # git and Node, so it is done before anything else has installed.
+  scope:
+    name: Change scope
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
+    timeout-minutes: 5
+    outputs:
+      typecheck: ${{ steps.scope.outputs.typecheck }}
+      unit: ${{ steps.scope.outputs.unit }}
+      database: ${{ steps.scope.outputs.database }}
+      e2e_offline: ${{ steps.scope.outputs.e2e_offline }}
+      e2e_full: ${{ steps.scope.outputs.e2e_full }}
+      build: ${{ steps.scope.outputs.build }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
-          version: ${{ env.PNPM_VERSION }}
+          # The pull request's merge commit and its first parent, the base
+          # branch's tip: `HEAD^1..HEAD` is exactly what merging would change.
+          fetch-depth: 2
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - id: scope
+        run: node scripts/ci-scope.mjs
+
+  quality:
+    name: Format, lint, types
+    needs: scope
+    # Always, whatever the scope says: formatting and the repository
+    # invariants are the floor every change is held to, docs included.
+    if: ${{ !cancelled() }}
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: ./.github/actions/setup
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       # Every job configures itself from one committed file, rather than from
       # its own `env:` block. The blocks drifted, and the drift was invisible:
@@ -82,26 +139,25 @@ jobs:
       - name: Lint and repository invariants
         run: pnpm lint
 
+      # Skipped for a change that holds no code (markdown, docs), which no
+      # compiler reads. Runs if `scope` itself failed, since then nobody knows.
       - name: Types
+        if: needs.scope.outputs.typecheck != 'false'
         run: pnpm typecheck
 
   unit:
     name: Unit tests
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.unit == 'true'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Configure the environment
         run: cp .env.ci .env
@@ -123,7 +179,9 @@ jobs:
 
   database:
     name: Migrations, seed and RLS policies
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.database == 'true'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 20
 
     services:
@@ -135,38 +193,44 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: qabandi
+        # The container's 5432 on a host port Docker picks. A fixed `5432:5432`
+        # is a collision the moment two jobs with a database share the machine,
+        # or the machine runs a Postgres of its own; the next step reads the
+        # port back.
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres -d qabandi"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
 
-    env:
-      # Provisioning runs as the superuser; everything after it does not.
-      # `db:provision` takes each role's password from its own connection
-      # string, so these three are the whole configuration.
-      ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/qabandi
-      MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
-      DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
-
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Configure the environment
         run: cp .env.ci .env
+
+      # Provisioning runs as the superuser; everything after it does not.
+      # `db:provision` takes each role's password from its own connection
+      # string, so these three are the whole configuration. Written to the job's
+      # environment here rather than in `env:`, because the host port is only
+      # known once the service container is up.
+      - name: Point at this job's database
+        env:
+          PGPORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          {
+            echo "PGPORT=$PGPORT"
+            echo "ADMIN_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:$PGPORT/qabandi"
+            echo "MIGRATION_DATABASE_URL=postgres://app_migrator:ci_migrator@127.0.0.1:$PGPORT/qabandi"
+            echo "DATABASE_URL=postgres://app_user:ci_user@127.0.0.1:$PGPORT/qabandi"
+          } >> "$GITHUB_ENV"
 
       # The same `01-roles.sql` the local container mounts, applied the way a
       # managed instance needs it. The two paths cannot drift, which is the
@@ -201,9 +265,9 @@ jobs:
       # CREATE DATABASE, so it cannot name a database that does not exist yet.
       - name: Provision, migrate and seed the test database
         env:
-          ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
-          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
-          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:${{ env.PGPORT }}/postgres
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:${{ env.PGPORT }}/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:${{ env.PGPORT }}/qabandi_test
         run: |
           pnpm db:provision
           pnpm db:migrate
@@ -214,8 +278,8 @@ jobs:
       # are deliberately different roles.
       - name: RLS policies and the negative matrix
         env:
-          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
-          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:${{ env.PGPORT }}/qabandi_test
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:${{ env.PGPORT }}/qabandi_test
         run: pnpm test:db
 
       # Coverage runs *here*, in the job that has a database, rather than
@@ -250,16 +314,16 @@ jobs:
       # allow — which makes it a mutation like any other.
       - name: Load the demo dataset
         env:
-          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
-          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:${{ env.PGPORT }}/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:${{ env.PGPORT }}/qabandi_test
         run: pnpm db:seed-demo
 
       - name: Coverage
         env:
-          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
-          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
-          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
-          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:${{ env.PGPORT }}/qabandi_test
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:${{ env.PGPORT }}/qabandi_test
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:${{ env.PGPORT }}/qabandi_test
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:${{ env.PGPORT }}/qabandi_test
         run: pnpm coverage
 
       # When the gate refuses, say by how much.
@@ -313,32 +377,53 @@ jobs:
 
   e2e-offline:
     name: End-to-end (no database)
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.e2e_offline == 'true'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 25
 
     env:
       QABANDI_PILOT_FIXTURES: '1'
-      E2E_PORT: '3100'
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Configure the environment
         run: cp .env.ci .env
 
+      # `--with-deps` installs Chromium's system libraries through apt-get:
+      # with `sudo` on a GitHub VM, directly when the job runs as root (the
+      # containerised runner, docs/CI.md). After the first run in a container
+      # it is an `apt-get update` and nothing to install. Only a self-hosted
+      # runner that is neither skips it, because it cannot: there, the
+      # libraries are installed once when the machine is set up.
+      #
+      # The browsers live in the runner's tool cache, which outlives the job, so
+      # Chromium is downloaded once per Playwright version rather than per run.
+      # Through `$GITHUB_ENV` so that the suite, later, looks in the same place.
       - name: Install browsers
-        run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
+        env:
+          HOSTED: ${{ runner.environment == 'github-hosted' }}
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
+          deps=''
+          if [ "$HOSTED" = true ] || [ "$(id -u)" = 0 ]; then deps='--with-deps'; fi
+          pnpm --filter @qabandi/web exec playwright install chromium $deps
+
+      # A port nothing else on the machine holds, rather than a fixed 3100: a
+      # second job on the same runner, or a stale server from a cancelled one,
+      # would otherwise answer this job's requests.
+      - name: Pick a free port for the web server
+        run: |
+          port=$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")
+          echo "E2E_PORT=$port" >> "$GITHUB_ENV"
+          echo "BETTER_AUTH_URL=http://127.0.0.1:$port" >> "$GITHUB_ENV"
 
       # Built and served as production, not `next dev`: RTL, brand tokens and
       # server components all behave differently under the dev server, and it
@@ -354,7 +439,10 @@ jobs:
       # workflow file is a key that looks real, gets copied into a deployment,
       # and signs sessions somebody else can mint.
       - name: Generate a signing key for this run
-        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+        run: >-
+          echo "BETTER_AUTH_SECRET=$(node -e
+          "console.log(require('crypto').randomBytes(32).toString('base64'))")"
+          >> "$GITHUB_ENV"
 
       - name: Build
         run: pnpm --filter @qabandi/web build
@@ -377,9 +465,15 @@ jobs:
           path: apps/web/playwright-report/
           retention-days: 14
 
+  # After the offline run rather than beside it. Both build the web app and
+  # drive Chromium, the heaviest work in the pipeline, and on one machine two
+  # at once is slower than one after the other. `!cancelled()` so it still runs
+  # when the offline job failed or was skipped by the scope.
   e2e-full:
     name: End-to-end (seeded database)
-    runs-on: ubuntu-latest
+    needs: [scope, e2e-offline]
+    if: ${{ !cancelled() && needs.scope.result == 'success' && needs.scope.outputs.e2e_full == 'true' }}
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 30
 
     services:
@@ -390,7 +484,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: qabandi
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U postgres -d qabandi"
           --health-interval 5s
@@ -398,39 +492,66 @@ jobs:
           --health-retries 20
 
     env:
-      ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/qabandi
-      MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
-      DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
       E2E_MODE: full
-      E2E_PORT: '3100'
       E2E_EMAIL: e2e@qabandi.test
       # A throwaway credential for a throwaway database. Written plainly rather
       # than as a secret: dressing it up as one invites somebody to reuse a
       # real password here.
       E2E_PASSWORD: e2eTestPassword123
-      # Better Auth derives its origin from the request without this and warns
-      # on every boot; the suite signs nobody in, but the warning is noise.
-      BETTER_AUTH_URL: http://127.0.0.1:3100
+      # `BETTER_AUTH_URL` is set beside the port it names, in the step that
+      # picks one. Better Auth derives its origin from the request without it
+      # and warns on every boot; the suite signs nobody in, but the warning is
+      # noise.
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Configure the environment
         run: cp .env.ci .env
 
+      # `--with-deps` installs Chromium's system libraries through apt-get:
+      # with `sudo` on a GitHub VM, directly when the job runs as root (the
+      # containerised runner, docs/CI.md). After the first run in a container
+      # it is an `apt-get update` and nothing to install. Only a self-hosted
+      # runner that is neither skips it, because it cannot: there, the
+      # libraries are installed once when the machine is set up.
+      #
+      # The browsers live in the runner's tool cache, which outlives the job, so
+      # Chromium is downloaded once per Playwright version rather than per run.
+      # Through `$GITHUB_ENV` so that the suite, later, looks in the same place.
       - name: Install browsers
-        run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
+        env:
+          HOSTED: ${{ runner.environment == 'github-hosted' }}
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
+          deps=''
+          if [ "$HOSTED" = true ] || [ "$(id -u)" = 0 ]; then deps='--with-deps'; fi
+          pnpm --filter @qabandi/web exec playwright install chromium $deps
+
+      # A port nothing else on the machine holds, rather than a fixed 3100: a
+      # second job on the same runner, or a stale server from a cancelled one,
+      # would otherwise answer this job's requests.
+      - name: Pick a free port for the web server
+        run: |
+          port=$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")
+          echo "E2E_PORT=$port" >> "$GITHUB_ENV"
+          echo "BETTER_AUTH_URL=http://127.0.0.1:$port" >> "$GITHUB_ENV"
+
+      - name: Point at this job's database
+        env:
+          PGPORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          {
+            echo "ADMIN_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:$PGPORT/qabandi"
+            echo "MIGRATION_DATABASE_URL=postgres://app_migrator:ci_migrator@127.0.0.1:$PGPORT/qabandi"
+            echo "DATABASE_URL=postgres://app_user:ci_user@127.0.0.1:$PGPORT/qabandi"
+          } >> "$GITHUB_ENV"
 
       - name: Provision, migrate and seed
         run: |
@@ -467,7 +588,10 @@ jobs:
       # workflow file is a key that looks real, gets copied into a deployment,
       # and signs sessions somebody else can mint.
       - name: Generate a signing key for this run
-        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+        run: >-
+          echo "BETTER_AUTH_SECRET=$(node -e
+          "console.log(require('crypto').randomBytes(32).toString('base64'))")"
+          >> "$GITHUB_ENV"
 
       - name: Build
         run: pnpm --filter @qabandi/web build
@@ -518,24 +642,47 @@ jobs:
 
   build:
     name: Production build
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.build != 'none'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Configure the environment
         run: cp .env.ci .env
 
+      # A change confined to the landing site builds that and what it imports
+      # (`brand`); anything else builds every package.
       - name: Build every package
+        if: needs.scope.outputs.build != 'landing'
         run: pnpm build
+
+      - name: Build the landing site
+        if: needs.scope.outputs.build == 'landing'
+        run: pnpm --filter "@qabandi/landing..." build
+
+  # The one check branch protection should require. It always runs, and fails
+  # only when a job that was needed failed or was cancelled; a job the scope
+  # skipped is a pass. Every other job keeps its name, so checks already marked
+  # required keep reporting (a skipped job reports success).
+  result:
+    name: CI result
+    needs: [scope, quality, unit, database, e2e-offline, e2e-full, build]
+    if: always()
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
+    timeout-minutes: 5
+    steps:
+      - name: Results
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: echo "scope, quality, unit, database, e2e-offline, e2e-full, build -> $RESULTS"
+
+      - name: Fail if a needed job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
