@@ -493,6 +493,7 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=3072
           QABANDI_CI_SKIP_BUILD_TYPECHECK: '1'
+          QABANDI_CI_BUILD_WORKERS: '2'
         run: pnpm --filter @qabandi/web build
 
       - name: Run
@@ -652,6 +653,7 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=3072
           QABANDI_CI_SKIP_BUILD_TYPECHECK: '1'
+          QABANDI_CI_BUILD_WORKERS: '2'
         run: pnpm --filter @qabandi/web build
 
       - name: Run
@@ -710,6 +712,8 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=3072
       # "Checks" typechecks this commit; see typescript in next.config.ts.
       QABANDI_CI_SKIP_BUILD_TYPECHECK: '1'
+      # The runner's CPU quota, which Next cannot see; see next.config.ts.
+      QABANDI_CI_BUILD_WORKERS: '2'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

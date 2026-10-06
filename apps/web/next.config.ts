@@ -64,6 +64,16 @@ const config: NextConfig = {
   experimental: {
     // Server Actions are the only mutation path; nothing posts to an API route.
     serverActions: { bodySizeLimit: '10mb' },
+    /*
+      Next sizes its page-data and prerender pool from os.cpus(), which inside
+      a container is the host's core count, not the container's quota: on the
+      2-CPU, 4GB CI runner it started seven workers and the build was killed
+      at "Collecting page data". CI sets the real number; everywhere else
+      keeps Next's default.
+    */
+    ...(Number(process.env.QABANDI_CI_BUILD_WORKERS) > 0
+      ? { cpus: Number(process.env.QABANDI_CI_BUILD_WORKERS) }
+      : {}),
   },
   typedRoutes: true,
   serverExternalPackages: ['pg', 'pg-boss'],
