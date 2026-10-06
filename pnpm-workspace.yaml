@@ -85,6 +85,11 @@ allowBuilds:
 # `@grpc/grpc-js` arrives under the OpenTelemetry SDK's OTLP gRPC exporters.
 # The advisory (getAuthContext returning an unauthorised certificate) was
 # published after the others; the fix is a patch release within 1.14.
+#
+# `source-map-js` (a DoS through indexed source-map offsets) arrives under
+# postcss and vite; `fast-copy` (stack exhaustion on deep values) under the
+# service's pino-pretty. Both advisories landed on 6 October 2026, and each
+# fix is a minor release the parents already accept.
 overrides:
   deepmerge-ts: '>=8.0.0'
   esbuild: '>=0.25.0'
@@ -93,3 +98,5 @@ overrides:
   brace-expansion@2: '>=2.1.6 <3'
   '@grpc/grpc-js@1': '>=1.14.5 <2'
   ip-address@10: '>=10.7.1 <11'
+  source-map-js@1: '>=1.2.2 <2'
+  fast-copy@4: '>=4.1.0 <5'
