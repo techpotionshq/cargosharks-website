@@ -39,11 +39,18 @@
 # Five jobs, ordered by how fast they fail (plus `scope` before and `CI result`
 # after):
 #
-#   quality   formatting, lint, the dependency-direction check, types
-#   unit      the domain engines — no database, no network, ~130ms
+#   checks    formatting, lint, the dependency-direction check, types, and
+#             the unit suites (engines, web, service: no database, no network)
 #   database  migrations, seed, and the RLS policy matrix on real Postgres 18
-#   e2e       every screen, in both languages, on the pilot fixtures
+#   e2e       every screen, in both languages, offline and on a seeded database
 #   build     the production build both apps ship as
+#
+# Sized for a shared machine (docs/CI.md, "Sharing the machine"). The runners
+# are two containers of two CPUs each on a host that also serves the demos, so
+# every job is written to stay inside that: vitest and Playwright run two
+# workers, Node's heap is capped for the builds, Postgres is started without
+# durability it does not need, and caches persist on the runner so a job
+# spends its two CPUs on the change rather than on reinstalling the world.
 #
 # `database` and `e2e` are the two that could not exist before: the first needs
 # Postgres 18 specifically (§6.4 — `uuidv7()` and temporal `WITHOUT OVERLAPS`),
@@ -74,6 +81,12 @@ env:
   # Next writes its telemetry consent under the runner user's home directory,
   # which outlives the job on a self-hosted machine.
   NEXT_TELEMETRY_DISABLED: '1'
+  # Two test workers, not one per core. Node reports the host's eight cores
+  # inside a container limited to two, so vitest's default (cores minus one)
+  # would start seven workers and the scheduler would throttle all of them.
+  # Read by vitest itself (4.x); `playwright.config.ts` does the same for
+  # Playwright when `CI` is set.
+  VITEST_MAX_WORKERS: '2'
 
 jobs:
   # What the change can break. Pushes, the schedule and the manual button
@@ -104,18 +117,27 @@ jobs:
       - id: scope
         run: node scripts/ci-scope.mjs
 
-  quality:
-    name: Format, lint, types
+  # One job for everything that needs an install and no service: formatting,
+  # lint, types and the unit suites. They used to be two jobs, which on two
+  # runners meant two checkouts and two installs for about three minutes of
+  # work, and a second job queued behind the first more often than not.
+  #
+  # Each check runs even when one before it failed (`!cancelled()`), so a
+  # formatting slip does not hide a broken test; none runs when the install
+  # itself failed, because then every one of them would fail for that reason.
+  checks:
+    name: Checks
     needs: scope
     # Always, whatever the scope says: formatting and the repository
     # invariants are the floor every change is held to, docs included.
     if: ${{ !cancelled() }}
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: ./.github/actions/setup
+      - id: setup
+        uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
@@ -133,48 +155,35 @@ jobs:
       - name: Formatting
         run: pnpm format:check
 
-      # oxlint, plus the three checks that encode decisions rather than style:
+      # oxlint, plus the checks that encode decisions rather than style:
       # dependency direction (core <- db <- apps), message-catalogue parity
       # between en and ar, and internal documentation links.
       - name: Lint and repository invariants
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: pnpm lint
 
       # Skipped for a change that holds no code (markdown, docs), which no
       # compiler reads. Runs if `scope` itself failed, since then nobody knows.
       - name: Types
-        if: needs.scope.outputs.typecheck != 'false'
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.scope.outputs.typecheck != 'false' }}
         run: pnpm typecheck
-
-  unit:
-    name: Unit tests
-    needs: scope
-    if: needs.scope.outputs.unit == 'true'
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - uses: ./.github/actions/setup
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
-
-      - name: Configure the environment
-        run: cp .env.ci .env
 
       # The engines: six charge calculations, one clock, one working-calendar
       # duration function. No database is configured here deliberately — if
       # these ever need one, that is the finding.
       - name: Domain engines
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.scope.outputs.unit != 'false' }}
         run: pnpm test:core
 
       - name: Web unit tests
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.scope.outputs.unit != 'false' }}
         run: pnpm --filter @qabandi/web test
 
       # The adapter mapping — carrier event vocabulary to our milestone codes.
       # No provider account, deliberately: the translation is the half that
       # fails quietly, and it has to be checkable on every commit.
       - name: Service unit tests
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.scope.outputs.unit != 'false' }}
         run: pnpm --filter @qabandi/service test
 
   database:
@@ -193,17 +202,51 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: qabandi
+          # Durability off, because this database is thrown away with the job.
+          #
+          # A service container takes `env` and `docker create` options but no
+          # command, so `postgres -c fsync=off` cannot be passed the usual way.
+          # `initdb -c` (Postgres 16 and later) writes the settings into the
+          # generated postgresql.conf, and the image hands POSTGRES_INITDB_ARGS
+          # to initdb: the server, including the temporary one the image runs
+          # during initialisation, starts with them. The alternatives were
+          # worse. Overriding the entrypoint loses the image's initialisation;
+          # a `docker run` step loses the health check, the port read-back
+          # (`job.services.postgres.ports`) and the cleanup the runner does
+          # when a job is cancelled. The step "Durability settings" below
+          # prints what the server actually runs with.
+          #
+          # fsync, synchronous_commit and full_page_writes off: every commit
+          # returns without waiting on a disk. max_wal_size because the data
+          # directory is a tmpfs (below) and WAL would otherwise grow to 1GB
+          # before a checkpoint reclaimed it.
+          POSTGRES_INITDB_ARGS: >-
+            -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+            -c max_wal_size=256MB
         # The container's 5432 on a host port Docker picks. A fixed `5432:5432`
         # is a collision the moment two jobs with a database share the machine,
         # or the machine runs a Postgres of its own; the next step reads the
         # port back.
         ports:
           - 5432
+        # The data directory in memory, and the container held to one CPU and
+        # 2GB with a low CPU weight. It runs beside the runner container, not
+        # inside it, so the runner's limits (infra/ci-runner) do not reach it.
+        #
+        # tmpfs rather than the image's anonymous volume: no disk writes at all
+        # on a disk the demos also use, and no volume left behind per job
+        # (the image declares VOLUME /var/lib/postgresql, and Postgres 18 keeps
+        # PGDATA under it). The suites write tens of megabytes; 1GB is
+        # headroom, and it counts against the 2GB.
         options: >-
           --health-cmd "pg_isready -U postgres -d qabandi"
-          --health-interval 5s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 20
+          --health-retries 60
+          --tmpfs /var/lib/postgresql:rw,size=1g
+          --cpus 1
+          --memory 2g
+          --cpu-shares 256
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -231,6 +274,17 @@ jobs:
             echo "MIGRATION_DATABASE_URL=postgres://app_migrator:ci_migrator@127.0.0.1:$PGPORT/qabandi"
             echo "DATABASE_URL=postgres://app_user:ci_user@127.0.0.1:$PGPORT/qabandi"
           } >> "$GITHUB_ENV"
+
+      # What the server is running with, as one line in the log. If the image
+      # ever stops passing POSTGRES_INITDB_ARGS to initdb, this is where it
+      # shows: the job still passes, only slower. Never fails the job.
+      - name: Durability settings
+        continue-on-error: true
+        run: >-
+          docker exec ${{ job.services.postgres.id }}
+          psql -U postgres -d qabandi -tAc
+          "select string_agg(name || '=' || setting, ' ' order by name) from pg_settings
+          where name in ('fsync','synchronous_commit','full_page_writes','max_wal_size')"
 
       # The same `01-roles.sql` the local container mounts, applied the way a
       # managed instance needs it. The two paths cannot drift, which is the
@@ -392,29 +446,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
+          next-cache: e2e-offline
 
       - name: Configure the environment
         run: cp .env.ci .env
 
-      # `--with-deps` installs Chromium's system libraries through apt-get:
-      # with `sudo` on a GitHub VM, directly when the job runs as root (the
-      # containerised runner, docs/CI.md). After the first run in a container
-      # it is an `apt-get update` and nothing to install. Only a self-hosted
-      # runner that is neither skips it, because it cannot: there, the
-      # libraries are installed once when the machine is set up.
-      #
-      # The browsers live in the runner's tool cache, which outlives the job, so
-      # Chromium is downloaded once per Playwright version rather than per run.
-      # Through `$GITHUB_ENV` so that the suite, later, looks in the same place.
-      - name: Install browsers
-        env:
-          HOSTED: ${{ runner.environment == 'github-hosted' }}
-        run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
-          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
-          deps=''
-          if [ "$HOSTED" = true ] || [ "$(id -u)" = 0 ]; then deps='--with-deps'; fi
-          pnpm --filter @qabandi/web exec playwright install chromium $deps
+      # Chromium into the tool cache, and its system libraries only if the
+      # runner image lacks them (`.github/actions/playwright` says how it
+      # checks).
+      - uses: ./.github/actions/playwright
 
       # A port nothing else on the machine holds, rather than a fixed 3100: a
       # second job on the same runner, or a stale server from a cancelled one,
@@ -444,7 +484,13 @@ jobs:
           "console.log(require('crypto').randomBytes(32).toString('base64'))")"
           >> "$GITHUB_ENV"
 
+      # A ceiling on Node's heap, inside the runner's 4GB. Turbopack's own
+      # memory is native and outside it; this stops the JavaScript half from
+      # growing until the container is killed rather than failing with a
+      # heap error that says what happened.
       - name: Build
+        env:
+          NODE_OPTIONS: --max-old-space-size=3072
         run: pnpm --filter @qabandi/web build
 
       - name: Run
@@ -465,14 +511,15 @@ jobs:
           path: apps/web/playwright-report/
           retention-days: 14
 
-  # After the offline run rather than beside it. Both build the web app and
-  # drive Chromium, the heaviest work in the pipeline, and on one machine two
-  # at once is slower than one after the other. `!cancelled()` so it still runs
-  # when the offline job failed or was skipped by the scope.
+  # Beside the offline run, not after it. It used to wait for the offline job
+  # because one runner ran both anyway and two at once on one machine were
+  # slower than one after the other. With two runners of fixed size each job
+  # gets its own two CPUs, and the number of runners, not this file, decides
+  # how many run at once.
   e2e-full:
     name: End-to-end (seeded database)
-    needs: [scope, e2e-offline]
-    if: ${{ !cancelled() && needs.scope.result == 'success' && needs.scope.outputs.e2e_full == 'true' }}
+    needs: scope
+    if: needs.scope.outputs.e2e_full == 'true'
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 30
 
@@ -483,13 +530,21 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: qabandi
+          # Same settings as the database job; the reasons are there.
+          POSTGRES_INITDB_ARGS: >-
+            -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+            -c max_wal_size=256MB
         ports:
           - 5432
         options: >-
           --health-cmd "pg_isready -U postgres -d qabandi"
-          --health-interval 5s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 20
+          --health-retries 60
+          --tmpfs /var/lib/postgresql:rw,size=1g
+          --cpus 1
+          --memory 2g
+          --cpu-shares 256
 
     env:
       E2E_MODE: full
@@ -510,29 +565,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
+          next-cache: e2e-full
 
       - name: Configure the environment
         run: cp .env.ci .env
 
-      # `--with-deps` installs Chromium's system libraries through apt-get:
-      # with `sudo` on a GitHub VM, directly when the job runs as root (the
-      # containerised runner, docs/CI.md). After the first run in a container
-      # it is an `apt-get update` and nothing to install. Only a self-hosted
-      # runner that is neither skips it, because it cannot: there, the
-      # libraries are installed once when the machine is set up.
-      #
-      # The browsers live in the runner's tool cache, which outlives the job, so
-      # Chromium is downloaded once per Playwright version rather than per run.
-      # Through `$GITHUB_ENV` so that the suite, later, looks in the same place.
-      - name: Install browsers
-        env:
-          HOSTED: ${{ runner.environment == 'github-hosted' }}
-        run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
-          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
-          deps=''
-          if [ "$HOSTED" = true ] || [ "$(id -u)" = 0 ]; then deps='--with-deps'; fi
-          pnpm --filter @qabandi/web exec playwright install chromium $deps
+      # Chromium into the tool cache, and its system libraries only if the
+      # runner image lacks them (`.github/actions/playwright` says how it
+      # checks).
+      - uses: ./.github/actions/playwright
 
       # A port nothing else on the machine holds, rather than a fixed 3100: a
       # second job on the same runner, or a stale server from a cancelled one,
@@ -552,6 +593,17 @@ jobs:
             echo "MIGRATION_DATABASE_URL=postgres://app_migrator:ci_migrator@127.0.0.1:$PGPORT/qabandi"
             echo "DATABASE_URL=postgres://app_user:ci_user@127.0.0.1:$PGPORT/qabandi"
           } >> "$GITHUB_ENV"
+
+      # What the server is running with, as one line in the log. If the image
+      # ever stops passing POSTGRES_INITDB_ARGS to initdb, this is where it
+      # shows: the job still passes, only slower. Never fails the job.
+      - name: Durability settings
+        continue-on-error: true
+        run: >-
+          docker exec ${{ job.services.postgres.id }}
+          psql -U postgres -d qabandi -tAc
+          "select string_agg(name || '=' || setting, ' ' order by name) from pg_settings
+          where name in ('fsync','synchronous_commit','full_page_writes','max_wal_size')"
 
       - name: Provision, migrate and seed
         run: |
@@ -593,7 +645,10 @@ jobs:
           "console.log(require('crypto').randomBytes(32).toString('base64'))")"
           >> "$GITHUB_ENV"
 
+      # Heap ceiling: see the offline job.
       - name: Build
+        env:
+          NODE_OPTIONS: --max-old-space-size=3072
         run: pnpm --filter @qabandi/web build
 
       - name: Run
@@ -646,6 +701,10 @@ jobs:
     if: needs.scope.outputs.build != 'none'
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 20
+    # Heap ceiling for every Node process the builds start; see the offline
+    # end-to-end job.
+    env:
+      NODE_OPTIONS: --max-old-space-size=3072
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -653,6 +712,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
+          next-cache: build
 
       - name: Configure the environment
         run: cp .env.ci .env
@@ -673,7 +733,7 @@ jobs:
   # required keep reporting (a skipped job reports success).
   result:
     name: CI result
-    needs: [scope, quality, unit, database, e2e-offline, e2e-full, build]
+    needs: [scope, checks, database, e2e-offline, e2e-full, build]
     if: always()
     runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 5
@@ -681,7 +741,7 @@ jobs:
       - name: Results
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}
-        run: echo "scope, quality, unit, database, e2e-offline, e2e-full, build -> $RESULTS"
+        run: echo "scope, checks, database, e2e-offline, e2e-full, build -> $RESULTS"
 
       - name: Fail if a needed job did not pass
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

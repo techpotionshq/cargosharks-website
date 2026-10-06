@@ -1,0 +1,70 @@
+# Chromium for the end-to-end suites, and its system libraries only if missing.
+#
+# The browsers live in the runner's tool cache, which outlives the job, so
+# Chromium is downloaded once per Playwright version rather than per run.
+# `PLAYWRIGHT_BROWSERS_PATH` goes through `$GITHUB_ENV` so that the suite, later,
+# looks in the same place.
+#
+# System libraries are detected, not assumed. The runner image
+# (infra/ci-runner/Dockerfile) bakes them in, and then this step installs
+# nothing. It used to pass `--with-deps` on every run as root, which was an
+# `apt-get update` (and on a fresh container a few hundred megabytes of
+# packages) in every e2e job. Now it asks the browser itself: `ldd` over the
+# Chromium binaries Playwright just installed, plus an Arabic-capable font,
+# since half of every screen is Arabic and a missing font is not a missing
+# library `ldd` can see.
+#
+# When something is missing it falls back to `playwright install-deps`, which
+# needs root or passwordless sudo: a GitHub-hosted VM, or the containerised
+# runner (RUN_AS_ROOT). A non-root self-hosted runner without the libraries gets
+# a warning and the suite's own launch error; docs/CI.md has the one command an
+# administrator runs.
+
+name: Playwright browsers
+description: Install Chromium into the tool cache, and its system dependencies only when absent.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Chromium
+      shell: bash
+      run: |
+        echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
+        export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
+        pnpm --filter @qabandi/web exec playwright install chromium
+
+    - name: Chromium's system dependencies
+      shell: bash
+      run: |
+        missing=''
+        # `chrome` and `chrome-headless-shell`, for whichever revisions are on
+        # disk. An unresolved shared library is the failure we are avoiding.
+        bins=$(find "$PLAYWRIGHT_BROWSERS_PATH" -type f \( -name chrome -o -name chrome-headless-shell \) 2>/dev/null)
+        if [ -z "$bins" ]; then
+          missing='no Chromium binary found to inspect'
+        else
+          for bin in $bins; do
+            libs=$(ldd "$bin" 2>/dev/null | awk '/not found/ {print $1}' | sort -u | tr '\n' ' ')
+            [ -n "$libs" ] && missing="$missing $libs"
+          done
+        fi
+        if ! command -v fc-list >/dev/null 2>&1 || [ -z "$(fc-list :lang=ar 2>/dev/null)" ]; then
+          missing="$missing (no Arabic font)"
+        fi
+
+        if [ -z "$missing" ]; then
+          echo "Chromium's libraries and an Arabic font are present; nothing to install."
+          exit 0
+        fi
+
+        echo "Missing: $missing"
+        if [ "$RUNNER_ENVIRONMENT" = github-hosted ] || [ "$(id -u)" = 0 ]; then
+          pnpm --filter @qabandi/web exec playwright install-deps chromium
+          # install-deps carries Playwright's own font list, which is not chosen
+          # for Arabic; Noto is what the runner image installs for that reason.
+          if [ -z "$(fc-list :lang=ar 2>/dev/null)" ]; then
+            if [ "$(id -u)" = 0 ]; then apt-get install -y --no-install-recommends fonts-noto-core; else sudo apt-get install -y --no-install-recommends fonts-noto-core; fi
+          fi
+        else
+          echo "::warning::Chromium's system libraries are missing and this runner cannot install them. Run 'npx playwright@<version> install-deps chromium' on the machine, or use infra/ci-runner/Dockerfile."
+        fi
