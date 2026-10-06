@@ -247,8 +247,14 @@ jobs:
       # `docker run` rather than a job `container:`. A container job runs its
       # steps as root, so the checkout it leaves behind is root-owned, and on a
       # self-hosted runner the next job's checkout of the same workspace then
-      # fails to clean it. Run as the runner's own user, with a named container
+      # fails to clean it. Run as the runner's own user (root in the Coolify
+      # container, where root owns the workspace anyway), with a named container
       # so the step after can remove it if the job is cancelled mid-scan.
+      #
+      # `$PWD` is a path inside the runner, and the daemon that resolves the
+      # bind mount is the host's. They agree only because the runner's work
+      # directory is mounted at the same path on both (infra/ci-runner); the
+      # TruffleHog action's `-v .:/tmp` depends on the same thing.
       - name: Scan
         run: >-
           docker run --rm

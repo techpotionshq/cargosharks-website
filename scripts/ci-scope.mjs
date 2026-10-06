@@ -82,6 +82,10 @@ const RULES = [
   // service-only change cannot move an e2e result.
   [/^apps\/service\//, { typecheck: 1, unit: 1, database: 1, build: 'all' }, 'service'],
 
+  // The runner's own compose file (docs/CI.md). It is deployed by hand on
+  // Coolify, not built or shipped by anything CI checks.
+  [/^infra\/ci-runner\//, lintOnly, 'CI runner deployment'],
+
   // What ships. The runtime image is scanned by security.yml on the same paths.
   [/^(Dockerfile|\.dockerignore|compose\.[\w.-]+\.ya?ml|infra\/)/, { build: 'all' }, 'deployment'],
 

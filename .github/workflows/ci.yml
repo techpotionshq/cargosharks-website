@@ -396,19 +396,25 @@ jobs:
       - name: Configure the environment
         run: cp .env.ci .env
 
-      # `--with-deps` installs Chromium's system libraries through `sudo
-      # apt-get`, which a fresh GitHub VM allows and a self-hosted runner should
-      # not. There, the libraries are installed once when the machine is set up
-      # (docs/CI.md) and this only fetches the browser if the cache lacks it.
+      # `--with-deps` installs Chromium's system libraries through apt-get:
+      # with `sudo` on a GitHub VM, directly when the job runs as root (the
+      # containerised runner, docs/CI.md). After the first run in a container
+      # it is an `apt-get update` and nothing to install. Only a self-hosted
+      # runner that is neither skips it, because it cannot: there, the
+      # libraries are installed once when the machine is set up.
       #
       # The browsers live in the runner's tool cache, which outlives the job, so
       # Chromium is downloaded once per Playwright version rather than per run.
       # Through `$GITHUB_ENV` so that the suite, later, looks in the same place.
       - name: Install browsers
+        env:
+          HOSTED: ${{ runner.environment == 'github-hosted' }}
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
           export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
-          pnpm --filter @qabandi/web exec playwright install chromium ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }}
+          deps=''
+          if [ "$HOSTED" = true ] || [ "$(id -u)" = 0 ]; then deps='--with-deps'; fi
+          pnpm --filter @qabandi/web exec playwright install chromium $deps
 
       # A port nothing else on the machine holds, rather than a fixed 3100: a
       # second job on the same runner, or a stale server from a cancelled one,
@@ -508,19 +514,25 @@ jobs:
       - name: Configure the environment
         run: cp .env.ci .env
 
-      # `--with-deps` installs Chromium's system libraries through `sudo
-      # apt-get`, which a fresh GitHub VM allows and a self-hosted runner should
-      # not. There, the libraries are installed once when the machine is set up
-      # (docs/CI.md) and this only fetches the browser if the cache lacks it.
+      # `--with-deps` installs Chromium's system libraries through apt-get:
+      # with `sudo` on a GitHub VM, directly when the job runs as root (the
+      # containerised runner, docs/CI.md). After the first run in a container
+      # it is an `apt-get update` and nothing to install. Only a self-hosted
+      # runner that is neither skips it, because it cannot: there, the
+      # libraries are installed once when the machine is set up.
       #
       # The browsers live in the runner's tool cache, which outlives the job, so
       # Chromium is downloaded once per Playwright version rather than per run.
       # Through `$GITHUB_ENV` so that the suite, later, looks in the same place.
       - name: Install browsers
+        env:
+          HOSTED: ${{ runner.environment == 'github-hosted' }}
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
           export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TOOL_CACHE/ms-playwright"
-          pnpm --filter @qabandi/web exec playwright install chromium ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }}
+          deps=''
+          if [ "$HOSTED" = true ] || [ "$(id -u)" = 0 ]; then deps='--with-deps'; fi
+          pnpm --filter @qabandi/web exec playwright install chromium $deps
 
       # A port nothing else on the machine holds, rather than a fixed 3100: a
       # second job on the same runner, or a stale server from a cancelled one,

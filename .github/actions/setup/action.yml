@@ -28,7 +28,11 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+    # The commit `v4` points at (v4.3.0). This line used to carry
+    # f40ffcd9..., which is the annotated tag object for `v4` rather than a
+    # commit: `git ls-remote` lists it as `refs/tags/v4`, with this SHA as
+    # `refs/tags/v4^{}`. A pin has to name the commit.
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       with:
         version: ${{ inputs.pnpm-version }}
         dest: ${{ runner.temp }}/setup-pnpm
