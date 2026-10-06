@@ -29,6 +29,14 @@
 #   image        does the runtime image carry a vulnerable OS package
 #   sbom         what, exactly, did we ship — an artifact a customer can ask for
 #
+# What runs when. Secrets and static analysis are cheap and read the code a
+# pull request changes, so they run on every one. The other three can only
+# change answer when the dependency tree or the image changes, or when the
+# world does: on a pull request they run only if it touches the lockfile, a
+# `package.json`, the workspace file or the Dockerfile; every push to main or
+# qabandi and the Monday schedule run all five. Runner selection (`CI_RUNNER`)
+# is explained at the top of ci.yml.
+#
 # NFR-18 (operability) and the handover obligation in Architecture §13: after
 # handover the patching duty is Al-Qabandi's, and a duty with no alarm attached
 # is a sentence in a runbook.
@@ -37,7 +45,7 @@ name: Security
 
 on:
   push:
-    branches: [main]
+    branches: [main, qabandi]
   pull_request:
   schedule:
     # Monday 04:00 UTC — 07:00 in Kuwait, before the working week starts.
@@ -46,9 +54,11 @@ on:
     - cron: '0 4 * * 1'
   workflow_dispatch:
 
+# Pull requests cancel their own stale runs; a push or the schedule never
+# waits on, or is cancelled by, another (see ci.yml).
 concurrency:
-  group: security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: security-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -58,23 +68,42 @@ env:
   PNPM_VERSION: '11.5.2'
 
 jobs:
+  # Whether this pull request changes what is installed or what is shipped.
+  # Anything other than a pull request answers yes.
+  scope:
+    name: Dependency scope
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
+    timeout-minutes: 5
+    outputs:
+      deps: ${{ steps.scope.outputs.deps }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The merge commit and the base branch's tip; see ci.yml's `scope`.
+          fetch-depth: 2
+
+      - id: scope
+        run: |
+          deps=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && files=$(git diff --name-only --no-renames HEAD^1 HEAD); then
+            pattern='^(pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|Dockerfile|\.dockerignore|(.*/)?package\.json|\.github/workflows/security\.yml|\.github/actions/)'
+            printf '%s\n' "$files" | grep -Eq "$pattern" || deps=false
+          fi
+          echo "deps=$deps" | tee -a "$GITHUB_OUTPUT"
+
   audit:
     name: Dependency advisories
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.deps == 'true'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: ./.github/actions/setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       # `high` and above fails the build; `moderate` is reported and does not.
       #
@@ -92,7 +121,7 @@ jobs:
 
   secrets:
     name: Secret scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -117,8 +146,16 @@ jobs:
 
   image:
     name: Runtime image
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.deps == 'true'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 20
+    # Trivy fetches its vulnerability database from mirror.gcr.io by default,
+    # and on 6 October 2026 that mirror answered 404 for the layer, failing
+    # the job before it scanned anything. Trivy tries these in order, so one
+    # registry's outage no longer fails a clean image.
+    env:
+      TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -133,11 +170,16 @@ jobs:
       # larger surface of the two — has never been scanned at all. A control
       # that claims coverage it does not have is worse than one that claims
       # nothing.
+      #
+      # Tagged by run, not `qabandi:scan`: the self-hosted runner's Docker
+      # daemon is shared by every job on the machine, so a fixed tag is one a
+      # concurrent run can retag between this build and the scan below. The
+      # last step removes both whatever happens.
       - name: Build the web runtime image
-        run: docker build -t qabandi:scan .
+        run: docker build -t "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-web" .
 
       - name: Build the service image
-        run: docker build --target service -t qabandi:service-scan .
+        run: docker build --target service -t "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-service" .
 
       - name: Scan
         # v0.28.0 is permanently broken, which is why this job has never run: it
@@ -148,7 +190,7 @@ jobs:
         # the fix for the class as well as the instance.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: qabandi:scan
+          image-ref: qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-web
           format: table
           # OS packages and language dependencies both, CRITICAL and HIGH.
           #
@@ -171,19 +213,28 @@ jobs:
       - name: Scan the service image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: qabandi:service-scan
+          image-ref: qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-service
           format: table
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: os,library
 
+      # The layers stay in the build cache, which is what makes the next build
+      # fast; only the two tags go. Pruning the cache is the machine's job
+      # (docs/CI.md), not a job's.
+      - name: Remove the scanned images
+        if: always()
+        run: >-
+          docker image rm -f
+          "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-web"
+          "qabandi-scan:${{ github.run_id }}-${{ github.run_attempt }}-service"
+          || true
+
   sast:
     name: Static analysis
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 20
-    container:
-      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -198,8 +249,26 @@ jobs:
       # If this repository is ever made public, or GHAS is bought for another
       # reason, replace this job with `github/codeql-action` and delete the
       # note. Until then, an engine that runs beats a better one that does not.
+      #
+      # `docker run` rather than a job `container:`. A container job runs its
+      # steps as root, so the checkout it leaves behind is root-owned, and on a
+      # self-hosted runner the next job's checkout of the same workspace then
+      # fails to clean it. Run as the runner's own user (root in the Coolify
+      # container, where root owns the workspace anyway), with a named container
+      # so the step after can remove it if the job is cancelled mid-scan.
+      #
+      # `$PWD` is a path inside the runner, and the daemon that resolves the
+      # bind mount is the host's. They agree only because the runner's work
+      # directory is mounted at the same path on both (infra/ci-runner); the
+      # TruffleHog action's `-v .:/tmp` depends on the same thing.
       - name: Scan
         run: >-
+          docker run --rm
+          --name "semgrep-${{ github.run_id }}-${{ github.run_attempt }}"
+          --user "$(id -u):$(id -g)"
+          -e HOME=/tmp
+          -v "$PWD:/src" -w /src
+          semgrep/semgrep
           semgrep scan
           --config p/typescript
           --config p/react
@@ -213,9 +282,15 @@ jobs:
           --exclude '**/dist/**'
           --exclude '**/.next/**'
 
+      - name: Remove the scanner container
+        if: always()
+        run: docker rm -f "semgrep-${{ github.run_id }}-${{ github.run_attempt }}" >/dev/null 2>&1 || true
+
   sbom:
     name: Bill of materials
-    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.deps == 'true'
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -238,3 +313,21 @@ jobs:
           name: sbom
           path: qabandi-sbom.cyclonedx.json
           retention-days: 90
+
+  # The check to require, if any of these is to gate a merge: it always runs,
+  # and a job the scope skipped counts as a pass.
+  result:
+    name: Security result
+    needs: [scope, audit, secrets, image, sast, sbom]
+    if: always()
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || fromJSON('["self-hosted","linux","x64","qabandi-ci"]') }}
+    timeout-minutes: 5
+    steps:
+      - name: Results
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: echo "scope, audit, secrets, image, sast, sbom -> $RESULTS"
+
+      - name: Fail if a needed job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
