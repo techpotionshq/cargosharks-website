@@ -14,8 +14,7 @@
  * demo issues. Where a line differs from the English it is because the Arabic
  * question is a different question — see `bilingual.body` and `faqNote`.
  *
- * Claims are load-bearing. `docs/marketing/README.md` sets the rule the whole
- * document set is written under — nothing is claimed that the working tree
+ * Claims are load-bearing. The sales set is written under one rule — nothing is claimed that the working tree
  * does not do — and the figures below are the ones `apps/landing/README.md`
  * records a way to re-check.
  */
@@ -710,8 +709,8 @@ export const capabilities = {
  *
  * **It does not claim a saving, and that is deliberate.** Every calculator in
  * this category ends with "you would save 23% with us", a figure nobody can
- * check and which this product has no pilot data to support. `docs/marketing`
- * sets the rule the whole document set is written under — nothing is claimed
+ * check and which this product has no pilot data to support. The sales set
+ * is written under one rule — nothing is claimed
  * that the working tree does not do — so the output here is the reader's own
  * exposure, full stop, and `note` says plainly that the software does not make
  * it smaller. What it does is make it arrive as a charge you raised on the day

@@ -200,8 +200,8 @@ nobody can check and which this product has no pilot data to support. This one
 returns the reader's own exposure and then says in as many words that CargoSharks
 does not make the number smaller; what it does is make it arrive on the day the
 clock starts rather than six weeks later on a supplier invoice. That is a claim
-about the code and it is true, which is the rule `docs/marketing/README.md` sets
-for the whole document set.
+about the code and it is true, which is the rule the sales set is written
+under.
 
 **Colour lives in `src/app/palette.css`, and only there.** This site used to
 derive every value from `@qabandi/brand`'s `--qb-*` ramps, so that an operator
@@ -250,7 +250,7 @@ nothing else moves.
 ## Where the content came from
 
 Nothing was invented. The home page copy is
-[`docs/marketing/sales/website-copy.md`](../../docs/marketing/sales/website-copy.md),
+the website copy in the sales set (kept outside the repository),
 and the Arabic is carried over from the previous site's `ar.html`, which took
 its vocabulary from `apps/web/messages/ar.json` so that a prospect reads
 «بوليصة الشحن الفرعية» here and sees the same string on the document the demo

@@ -447,7 +447,7 @@ export function CompareContent() {
         The site has offered a fifteen-day pilot in four places and has never
         once shown what the fifteen days are.
 
-        That plan exists — `docs/Qabandi_Pilot_15_Day.md` §4 — it is specific,
+        That plan exists (the fifteen-day pilot plan in the sales set), it is specific,
         and it is dull in the way a real plan is dull. Printing it is worth more
         than another sentence promising that it exists, and it belongs on this
         page rather than on `/what-we-do/`: a reader comparing three systems is

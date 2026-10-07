@@ -30,7 +30,7 @@ import { solutionNav, solutionPath, type SolutionNav } from '@/content/solution-
  *     are how a search engine learns the site is one argument rather than ten.
  *
  * **Claims are the same claims the sales set makes**, and no more:
- * `docs/marketing/sales/website-copy.md` and its "What is not in it" section
+ * the website copy in the sales set and its "What is not in it" section
  * are the source, re-checked against the tree (`pnpm q find whatsapp`,
  * `apps/service/src/adapters/einvoice.ts`, `packages/core/src/notifications.ts`,
  * `apps/web/src/features/tracking/queries.ts`). When one of those changes, the

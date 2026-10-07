@@ -1189,7 +1189,7 @@ export function ScopeSpan({ lang }: { lang: Lang }) {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * `docs/Qabandi_Pilot_15_Day.md` §4, drawn.
+ * The fifteen-day pilot plan from the sales set, drawn.
  *
  * The site offers a fifteen-day pilot in four places and has never once shown
  * what the fifteen days are. That plan exists, it is specific, and it is dull
