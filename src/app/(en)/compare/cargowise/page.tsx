@@ -24,6 +24,7 @@ export const metadata: Metadata = {
     description:
       'What CargoWise says about itself, where it is the better answer, where a Kuwait-built bilingual system is, and the five questions worth asking both vendors. No tick-and-cross grid.',
     url: '/compare/cargowise/',
+    images: [{ url: '/pic/screens/app-dashboard.webp', width: 2360, height: 1476 }],
   },
 }
 

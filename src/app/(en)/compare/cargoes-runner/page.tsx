@@ -24,6 +24,7 @@ export const metadata: Metadata = {
     description:
       'What CARGOES Runner is, when the backing of a group that size is the reason to choose it, and where a smaller independent system built in Kuwait fits instead.',
     url: '/compare/cargoes-runner/',
+    images: [{ url: '/pic/screens/app-dashboard.webp', width: 2360, height: 1476 }],
   },
 }
 

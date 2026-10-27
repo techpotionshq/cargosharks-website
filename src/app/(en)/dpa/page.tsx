@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { pageOpenGraph } from '@/lib/og'
 import { DocPage } from '@/components/DocPage'
 import { DpaContent } from '@/content/pages/dpa'
 
@@ -10,11 +11,15 @@ import { DpaContent } from '@/content/pages/dpa'
  * decisions in front of somebody who arrived looking for the finished one. Take
  * this off the day it is signed off, and not before.
  */
+const title = 'Data-processing addendum — CargoSharks'
+const description =
+  'Roles, instructions, sub-processors, transfers, deletion and audit. An unreviewed draft, written from the source code, with every open decision marked.'
+
 export const metadata: Metadata = {
-  title: 'Data-processing addendum — CargoSharks',
-  description:
-    'Roles, instructions, sub-processors, transfers, deletion and audit. An unreviewed draft, written from the source code, with every open decision marked.',
+  title,
+  description,
   alternates: { canonical: '/dpa/' },
+  openGraph: pageOpenGraph({ path: '/dpa/', title, description }),
   robots: { index: false, follow: true },
 }
 

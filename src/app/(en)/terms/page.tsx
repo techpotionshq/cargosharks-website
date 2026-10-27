@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { pageOpenGraph } from '@/lib/og'
 import { DocPage } from '@/components/DocPage'
 import { TermsContent } from '@/content/pages/terms'
 
@@ -10,11 +11,15 @@ import { TermsContent } from '@/content/pages/terms'
  * decisions in front of somebody who arrived looking for the finished one. Take
  * this off the day it is signed off, and not before.
  */
+const title = 'Terms of service — CargoSharks'
+const description =
+  'The terms the pilot and the service run under. An unreviewed draft, written from the source code, with every open decision marked.'
+
 export const metadata: Metadata = {
-  title: 'Terms of service — CargoSharks',
-  description:
-    'The terms the pilot and the service run under. An unreviewed draft, written from the source code, with every open decision marked.',
+  title,
+  description,
   alternates: { canonical: '/terms/' },
+  openGraph: pageOpenGraph({ path: '/terms/', title, description }),
   robots: { index: false, follow: true },
 }
 

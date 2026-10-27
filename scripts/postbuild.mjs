@@ -13,7 +13,7 @@
  * giving up either the two-language document attributes or the 404.
  */
 
-import { copyFileSync, existsSync } from 'node:fs'
+import { copyFileSync, existsSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -61,4 +61,18 @@ for (const alias of ALIASES) {
   if (!existsSync(target)) continue
   copyFileSync(notFound, target)
   console.log(`postbuild: out/${alias} ← out/not-found/index.html`)
+}
+
+/**
+ * The stand-in a blog post route builds while a language has no posts yet
+ * (`NO_POSTS_SLUG` in `src/lib/blog.ts`). It is a 404 page sitting at a URL
+ * that answers 200, so it goes.
+ */
+for (const blog of ['blog', 'ar/blog']) {
+  for (const path of ['_no-posts', '_no-posts.txt']) {
+    const target = join(out, blog, path)
+    if (!existsSync(target)) continue
+    rmSync(target, { recursive: true })
+    console.log(`postbuild: removed out/${blog}/${path}`)
+  }
 }

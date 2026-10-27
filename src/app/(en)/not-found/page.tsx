@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Wordmark } from '@/components/Wordmark'
-import { CONTACT_EMAIL, navLinks } from '@/content/copy'
+import { navLinks } from '@/content/copy'
+import { EmailLink } from '@/components/Email'
 
 /**
  * `noindex` and no canonical: the group layout's metadata would otherwise give
@@ -107,9 +108,7 @@ export default function NotFound() {
       <div className="shell">
         <p className="text-[0.8125rem] text-ink-faint">
           Certain the address was right?{' '}
-          <a href={`mailto:${CONTACT_EMAIL}`} className="font-mono text-blue-ink hover:underline">
-            {CONTACT_EMAIL}
-          </a>
+          <EmailLink className="font-mono text-blue-ink hover:underline" />
         </p>
       </div>
     </main>

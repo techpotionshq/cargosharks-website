@@ -17,6 +17,8 @@
  * Its styling is `src/app/pages.css`, scoped under `.doc-page`, which
  * `src/components/DocPage.tsx` puts on the `<main>` around it.
  */
+
+import { EmailLink } from '@/components/Email'
 export function TermsContent() {
   return (
     <>
@@ -705,8 +707,7 @@ export function TermsContent() {
                   <span className="doc__n">20</span>Contact
                 </h2>
                 <p>
-                  Notices, questions and anything that needs a person:{' '}
-                  <a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a>.
+                  Notices, questions and anything that needs a person: <EmailLink />.
                 </p>
                 <p>
                   Formal notice may be given by email to the address each side names in the

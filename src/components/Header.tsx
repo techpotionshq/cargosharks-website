@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowRight, CaretDown, List, X } from '@phosphor-icons/react/dist/ssr'
-import { DEMO_URL, type Lang, languageSwitch, nav } from '@/content/copy'
+import { DEMO_URL, hrefFor, type Lang, languageSwitch, nav } from '@/content/copy'
 
 /**
  * The pill that slides between nav items.
@@ -155,6 +155,10 @@ export function Header({
     return trim(pathname ?? '') === trim(href)
   }
 
+  /** A plain nav link's address in this page's language; a group has none. */
+  const linkOf = (item: (typeof nav)[number]) =>
+    item.href ? hrefFor({ href: item.href, hrefAr: item.hrefAr }, lang) : undefined
+
   // The pill follows the cursor while the reader is in the bar, and falls back
   // to the current page when they leave it. One `layoutId` across both states is
   // what makes it slide rather than cross-fade.
@@ -170,7 +174,7 @@ export function Header({
    * which is also what a reader would expect it to mean.
    */
   const lit =
-    hovered ?? panel ?? nav.find((item) => (item.href ? here(item.href) : false))?.id ?? null
+    hovered ?? panel ?? nav.find((item) => (item.href ? here(linkOf(item)!) : false))?.id ?? null
 
   const panelItem = nav.find((item) => item.id === panel && item.columns) ?? null
 
@@ -244,7 +248,8 @@ export function Header({
           >
             {nav.map((item) => {
               const isOpen = panel === item.id
-              const active = item.href ? here(item.href) : isOpen
+              const href = linkOf(item)
+              const active = href ? here(href) : isOpen
 
               /*
                 Hover opens it and a click toggles it.
@@ -263,11 +268,11 @@ export function Header({
                     if (item.columns) holdPanel(item.id)
                   }}
                 >
-                  {item.href ? (
+                  {href ? (
                     <a
-                      href={item.href}
-                      aria-current={here(item.href) ? 'page' : undefined}
-                      className={`relative isolate block rounded-lg px-3.5 py-2 text-[0.875rem] ${
+                      href={href}
+                      aria-current={here(href) ? 'page' : undefined}
+                      className={`relative isolate block whitespace-nowrap rounded-lg px-2.5 py-2 text-[0.875rem] xl:px-3.5 ${
                         lit === item.id || active ? 'text-on-void' : 'text-on-void-dim'
                       }`}
                     >
@@ -279,7 +284,7 @@ export function Header({
                       type="button"
                       onClick={() => (isOpen ? setPanel(null) : holdPanel(item.id))}
                       aria-expanded={isOpen}
-                      className={`relative isolate flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[0.875rem] ${
+                      className={`relative isolate flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-[0.875rem] xl:px-3.5 ${
                         lit === item.id || isOpen ? 'text-on-void' : 'text-on-void-dim'
                       }`}
                     >
@@ -456,7 +461,7 @@ export function Header({
                         {column.links.map((link) => (
                           <li key={link.href}>
                             <a
-                              href={lang === 'ar' && link.hrefAr ? link.hrefAr : link.href}
+                              href={hrefFor(link, lang)}
                               onClick={() => setPanel(null)}
                               className="bar-hover -mx-3 block rounded-lg px-3 py-2.5 transition-colors duration-150"
                             >
@@ -509,26 +514,35 @@ export function Header({
                     transition={{ duration: 0.25, delay: 0.05 + groupIndex * 0.06 }}
                     className={groupIndex > 0 ? 'mt-4 border-t border-void-line pt-4' : ''}
                   >
-                    <p className="tracked px-3 text-on-void-dim text-[0.55rem] opacity-70">
-                      {group.label[lang]}
-                    </p>
+                    {/* A plain link (Blog) has no panel to list, so it is the
+                        row itself rather than a heading over nothing. */}
+                    {linkOf(group) ? (
+                      <a
+                        href={linkOf(group)}
+                        onClick={() => setOpen(false)}
+                        aria-current={here(linkOf(group)!) ? 'page' : undefined}
+                        className={`block rounded-lg px-3 py-2.5 text-on-void text-[0.95rem] font-medium ${
+                          here(linkOf(group)!) ? 'bar-pill' : ''
+                        }`}
+                      >
+                        {group.label[lang]}
+                      </a>
+                    ) : (
+                      <p className="tracked px-3 text-on-void-dim text-[0.55rem] opacity-70">
+                        {group.label[lang]}
+                      </p>
+                    )}
 
                     {(group.columns ?? [])
                       .flatMap((column) => column.links)
                       .map((link) => (
                         <a
                           key={link.href}
-                          href={lang === 'ar' && link.hrefAr ? link.hrefAr : link.href}
+                          href={hrefFor(link, lang)}
                           onClick={() => setOpen(false)}
-                          aria-current={
-                            here(lang === 'ar' && link.hrefAr ? link.hrefAr : link.href)
-                              ? 'page'
-                              : undefined
-                          }
+                          aria-current={here(hrefFor(link, lang)) ? 'page' : undefined}
                           className={`mt-1 block rounded-lg px-3 py-2.5 ${
-                            here(lang === 'ar' && link.hrefAr ? link.hrefAr : link.href)
-                              ? 'bar-pill'
-                              : ''
+                            here(hrefFor(link, lang)) ? 'bar-pill' : ''
                           }`}
                         >
                           <span className="block text-on-void text-[0.95rem] font-medium">

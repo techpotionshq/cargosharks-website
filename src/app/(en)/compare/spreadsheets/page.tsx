@@ -24,6 +24,7 @@ export const metadata: Metadata = {
     description:
       'The real incumbent in Gulf freight forwarding. When a spreadsheet is still the right answer, and the three specific places it stops being one: the clock nobody starts, overlapping rate cards, and no history.',
     url: '/compare/spreadsheets/',
+    images: [{ url: '/pic/screens/app-dashboard.webp', width: 2360, height: 1476 }],
   },
 }
 

@@ -12,12 +12,13 @@ export const metadata: Metadata = {
   title: 'CargoSharks — نظام لشركات الشحن والتخليص في الخليج',
   description:
     'من الاستفسار إلى الفاتورة المسدَّدة في سجل واحد، لشركات الشحن والتخليص في الكويت والخليج. بحري وجوي وبري وسككي وبريد سريع، بالعربية والإنجليزية.',
-  alternates: { canonical: '/ar/', languages: { en: '/' } },
+  alternates: { canonical: '/ar/', languages: { en: '/', 'x-default': '/' } },
   openGraph: {
     type: 'website',
     locale: 'ar',
     alternateLocale: 'en',
     siteName: 'CargoSharks',
+    url: '/ar/',
     title: 'CargoSharks — نظام لشركات الشحن والتخليص في الخليج',
     description:
       'عرض السعر والترسية والمراحل والتخليص والمستندات والتكاليف والفاتورة على سجل واحد.',

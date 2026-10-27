@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next'
 import { comparisons } from '@/content/comparisons'
 import { solutionNav, solutionPath } from '@/content/solution-nav'
 import { SITE_URL } from '@/components/StructuredData'
+import { allPosts, blogIndexAlternates, blogPath, postsIn } from '@/lib/blog'
 
 /**
  * The sitemap, generated from the same lists the pages are.
@@ -60,7 +61,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // The one page with an Arabic twin. `languages` emits `hreflang`
     // alternates, which is what stops a search engine treating `/` and `/ar/`
     // as two pages competing for the same query.
-    alternates: { languages: { en: `${SITE_URL}/`, ar: `${SITE_URL}/ar/` } },
+    alternates: {
+      languages: { en: `${SITE_URL}/`, ar: `${SITE_URL}/ar/`, 'x-default': `${SITE_URL}/` },
+    },
   }
 
   const pages = ['/what-we-do/', '/compare/', '/privacy/', '/terms/', '/dpa/'].map((path) => ({
@@ -92,9 +95,39 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: BUILT,
       changeFrequency: 'monthly' as const,
       priority: 0.7,
-      alternates: { languages },
+      alternates: { languages: { ...languages, 'x-default': languages.en } },
     }))
   })
 
-  return [home, ...pages, ...compare, ...landing]
+  // The blog: the two indexes, then each post in every language it is written
+  // in. A post in one language only gets no alternates — an hreflang pointing
+  // at a page that does not exist is worse than none. Each index waits for its
+  // language's first post: an empty listing is a thin page, and it is noindex
+  // until then (`blogIndexMetadata`).
+  const blogIndex = (['en', 'ar'] as const)
+    .filter((lang) => postsIn(lang).length)
+    .map((lang) => ({
+      url: `${SITE_URL}${blogPath(lang)}`,
+      lastModified: postsIn(lang)[0]?.publishedAt ?? BUILT,
+      changeFrequency: 'weekly' as const,
+      priority: 0.6,
+      alternates: { languages: blogIndexAlternates(SITE_URL) },
+    }))
+
+  const posts = allPosts().flatMap((post) => {
+    const langs = (['en', 'ar'] as const).filter((lang) => post[lang])
+    const url = (lang: 'en' | 'ar') => `${SITE_URL}${blogPath(lang, post.slug)}`
+    const languages = Object.fromEntries(langs.map((lang) => [lang, url(lang)]))
+    return langs.map((lang) => ({
+      url: url(lang),
+      lastModified: post.updatedAt ?? post.publishedAt,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+      ...(langs.length > 1
+        ? { alternates: { languages: { ...languages, 'x-default': url('en') } } }
+        : {}),
+    }))
+  })
+
+  return [home, ...pages, ...compare, ...landing, ...blogIndex, ...posts]
 }

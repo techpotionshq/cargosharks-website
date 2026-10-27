@@ -6,7 +6,8 @@ import { ChainPosition, OverlapSets, ScaleRuler } from '@/content/pages/comparis
 import { AccrualStair, AllocationSplit, MinorUnits } from '@/content/pages/figures'
 import { OwnDatabase } from '@/content/pages/illustrations'
 import { leads } from '@/content/comparison-leads'
-import { CONTACT_EMAIL, DEMO_URL, type Lang } from '@/content/copy'
+import { DEMO_URL, type Lang } from '@/content/copy'
+import { EmailLink } from '@/components/Email'
 
 /**
  * One comparison page, rendered from a row in `comparisons.ts`.
@@ -390,7 +391,7 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
             </p>
             <p className="lead">
               {lang === 'ar' ? 'اسألونا مباشرة على ' : 'Ask us directly at '}
-              <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              <EmailLink />
               {lang === 'ar'
                 ? '. ستحصلون على جواب مكتوب يستشهد بما ينشره كل مورّد عن نفسه، وحيث لا نعرف ستحصلون على «لا نعرف».'
                 : '. You will get a written answer that cites what each vendor publishes itself, and where we do not know, you will get “we do not know”.'}

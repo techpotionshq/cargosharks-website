@@ -1,5 +1,5 @@
 import { resolveBrand } from '@qabandi/brand'
-import { CONTACT_EMAIL, DEMO_URL } from '@/content/copy'
+import { DEMO_URL } from '@/content/copy'
 
 /**
  * JSON-LD, and why it is worth the bytes on a nine-page site.
@@ -17,9 +17,12 @@ import { CONTACT_EMAIL, DEMO_URL } from '@/content/copy'
  * second place for a rebrand to be forgotten, and it is the *machine-readable*
  * copy, so nobody would notice for a year.
  *
- * `dangerouslySetInnerHTML` is the documented way to emit a JSON-LD script and
- * is not dangerous here: nothing in it comes from a user, a query string or a
- * request. `JSON.stringify` also escapes the one character that matters.
+ * `dangerouslySetInnerHTML` is the documented way to emit a JSON-LD script.
+ * Nothing in it comes from a visitor, but blog headlines and FAQ answers come
+ * from a model, and `JSON.stringify` leaves `<` alone: an answer containing
+ * `</script>` would close the block and run whatever followed on every post
+ * page. `Ld` writes every `<` as the JSON escape `\u003c`, which is the same
+ * string to a JSON parser and no tag to an HTML one.
  */
 
 export const SITE_URL = 'https://cargosharks.com'
@@ -29,9 +32,30 @@ function Ld({ data }: { data: Record<string, unknown> }) {
     <script
       type="application/ld+json"
       // Not indented: this is machine-read, and the whitespace is pure payload.
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, '\\u003c') }}
     />
   )
+}
+
+/**
+ * The company, for a node that names it as publisher.
+ *
+ * Inline rather than `{ '@id': '/#organization' }`: that node is only on the
+ * home pages, and a rich-results parser resolves `@id` within the page, so a
+ * post's publisher would have no name and no logo.
+ */
+function publisher() {
+  const brand = resolveBrand()
+  return {
+    '@type': 'Organization',
+    '@id': `${SITE_URL}/#organization`,
+    name: brand.identity.nameEn,
+    url: SITE_URL,
+    logo: {
+      '@type': 'ImageObject',
+      url: `${SITE_URL}/cargosharks-logo/png/cargosharks-mark-light-512.png`,
+    },
+  }
 }
 
 /**
@@ -58,7 +82,8 @@ export function SiteSchema({ lang }: { lang: 'en' | 'ar' }) {
           url: SITE_URL,
           logo: `${SITE_URL}/cargosharks-logo/png/cargosharks-mark-light-512.png`,
           foundingDate: brand.identity.established,
-          email: CONTACT_EMAIL,
+          // No `email`. It would be the one whole address in the HTML, and no
+          // search feature uses it; see components/Email.tsx.
           address: {
             '@type': 'PostalAddress',
             addressCountry: 'KW',
@@ -112,13 +137,21 @@ export function SiteSchema({ lang }: { lang: 'en' | 'ar' }) {
  * are actually nested want one — a breadcrumb on a top-level page is a trail of
  * length one, which is noise a search engine has to discard.
  */
-export function Breadcrumbs({ trail }: { trail: { name: string; path: string }[] }) {
+export function Breadcrumbs({
+  trail,
+  lang = 'en',
+}: {
+  trail: { name: string; path: string }[]
+  /** An Arabic page's trail starts at the Arabic home page, named in Arabic. */
+  lang?: 'en' | 'ar'
+}) {
+  const home = lang === 'ar' ? { name: 'الرئيسية', path: '/ar/' } : { name: 'Home', path: '/' }
   return (
     <Ld
       data={{
         '@context': 'https://schema.org',
         '@type': 'BreadcrumbList',
-        itemListElement: [{ name: 'Home', path: '/' }, ...trail].map((step, index) => ({
+        itemListElement: [home, ...trail].map((step, index) => ({
           '@type': 'ListItem',
           position: index + 1,
           name: step.name,
@@ -149,6 +182,53 @@ export function FaqSchema({ items }: { items: { question: string; answer: string
           name: item.question,
           acceptedAnswer: { '@type': 'Answer', text: item.answer },
         })),
+      }}
+    />
+  )
+}
+
+/**
+ * One blog post. `publisher` points at the home page's `Organization` node by
+ * `@id` rather than repeating it, so the company is described once on the site
+ * and every article attaches to that one entity.
+ */
+export function ArticleSchema({
+  path,
+  lang,
+  title,
+  description,
+  image,
+  publishedAt,
+  updatedAt,
+  author,
+  tags,
+}: {
+  path: string
+  lang: 'en' | 'ar'
+  title: string
+  description: string
+  image?: string
+  publishedAt: string
+  updatedAt?: string
+  author: string
+  tags: string[]
+}) {
+  return (
+    <Ld
+      data={{
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        '@id': `${SITE_URL}${path}#article`,
+        mainEntityOfPage: `${SITE_URL}${path}`,
+        headline: title,
+        description,
+        inLanguage: lang,
+        datePublished: publishedAt,
+        dateModified: updatedAt ?? publishedAt,
+        ...(image ? { image: `${SITE_URL}${image}` } : {}),
+        author: { '@type': 'Organization', name: author, url: SITE_URL },
+        publisher: publisher(),
+        ...(tags.length ? { keywords: tags.join(', ') } : {}),
       }}
     />
   )

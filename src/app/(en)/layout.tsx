@@ -15,12 +15,15 @@ export const metadata: Metadata = {
   title: 'CargoSharks — freight software for Gulf forwarders',
   description:
     'One system from enquiry to paid invoice for freight forwarders and customs brokers in Kuwait and the Gulf. Sea, air, road, rail and courier, in Arabic and English.',
-  alternates: { canonical: '/', languages: { ar: '/ar/' } },
+  alternates: { canonical: '/', languages: { ar: '/ar/', 'x-default': '/' } },
   openGraph: {
     type: 'website',
     locale: 'en',
     alternateLocale: 'ar',
     siteName: 'CargoSharks',
+    // The home page's own URL. Every other page sets its own `openGraph`
+    // (`src/lib/og.ts`), so none of them inherits this one.
+    url: '/',
     title: 'CargoSharks — freight software for Gulf forwarders',
     description:
       'Quote, award, milestones, customs, documents, costs and invoice on one file. Built bilingual, not translated.',

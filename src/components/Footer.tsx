@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { resolveBrand } from '@qabandi/brand'
-import { CONTACT_EMAIL, footer, type Lang, languageSwitch } from '@/content/copy'
+import { footer, hrefFor, type Lang, languageSwitch } from '@/content/copy'
+import { EmailLink } from './Email'
 
 /**
  * The footer.
@@ -38,12 +39,7 @@ export function Footer({
           <p className="mt-6 max-w-[34ch] text-[0.9375rem] leading-[1.7] text-on-void-faint">
             {footer.note[lang]}
           </p>
-          <a
-            href={`mailto:${CONTACT_EMAIL}`}
-            className="mt-5 inline-block font-mono text-[0.85rem] text-blue-lit hover:underline"
-          >
-            {CONTACT_EMAIL}
-          </a>
+          <EmailLink className="mt-5 inline-block font-mono text-[0.85rem] text-blue-lit hover:underline" />
         </div>
 
         {footer.columns.map((column) => (
@@ -51,9 +47,9 @@ export function Footer({
             <p className="tracked text-[0.58rem] text-on-void-faint">{column.heading[lang]}</p>
             <ul className="mt-5 space-y-3">
               {column.links.map((link) => (
-                <li key={link.href}>
+                <li key={link.label.en}>
                   <a
-                    href={link.href}
+                    href={hrefFor(link, lang)}
                     className="text-[0.9375rem] text-on-void-dim transition-colors hover:text-on-void"
                   >
                     {link.label[lang]}

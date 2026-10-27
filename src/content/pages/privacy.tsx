@@ -17,6 +17,8 @@
  * Its styling is `src/app/pages.css`, scoped under `.doc-page`, which
  * `src/components/DocPage.tsx` puts on the `<main>` around it.
  */
+
+import { EmailLink } from '@/components/Email'
 export function PrivacyContent() {
   return (
     <>
@@ -220,16 +222,14 @@ export function PrivacyContent() {
                   <li>
                     <strong>It runs no analytics.</strong> There is no Google Analytics, no
                     Plausible, no Matomo, no Meta pixel, no LinkedIn tag and no heatmap script. Its
-                    one script file, <code>assets/site.js</code>, does scroll effects and one form
-                    handler, makes no network request of any kind, and stores nothing in the
-                    browser.
+                    scripts, served from this site under <code>/_next/static/</code>, run the menus,
+                    the scroll effects and the free time calculator. They send nothing to any other
+                    host, and they store nothing in the browser.
                   </li>
                   <li>
-                    <strong>The pilot form does not post anywhere.</strong> It composes a{' '}
-                    <code>mailto:</code> message in your own mail client with your answers already
-                    in it, and you press send. Nothing reaches a server unless you choose to send an
-                    email, and the address is printed on the page so you can send it yourself
-                    instead.
+                    <strong>There is no form.</strong> To ask for a pilot you write to us from your
+                    own mail client, at the address printed on the page. Nothing you do on this site
+                    is sent anywhere unless you choose to send that email.
                   </li>
                 </ul>
                 <h3>The one third party</h3>
@@ -259,11 +259,10 @@ export function PrivacyContent() {
                   <span className="doc__n">04</span>What you send when you enquire
                 </h2>
                 <p>
-                  If you use the pilot form or write to{' '}
-                  <a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a>, we receive what
-                  you typed: your name, company, email address, phone number if you gave one, how
-                  many branches you run, and what you use today. We use it to reply to you and to
-                  have the conversation you started.
+                  If you write to <EmailLink />, we receive what you send: usually your name,
+                  company, email address, and your phone number if you include it, along with
+                  whatever you tell us about your operation. We use it to reply to you and to have
+                  the conversation you started.
                 </p>
                 <p>We do not sell it, share it or add it to a list you did not ask to be on.</p>
               </section>
@@ -957,13 +956,11 @@ export function PrivacyContent() {
                   <span className="doc__n">17</span>Contact
                 </h2>
                 <p>
-                  Write to <a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a>. A named
-                  person replies, not a ticket queue.
+                  Write to <EmailLink />. A named person replies, not a ticket queue.
                 </p>
                 <p>
-                  Write to <a href="mailto:privacy@cargosharks.com">privacy@cargosharks.com</a> with
-                  any question about this notice or to exercise a right. To report a vulnerability,
-                  write to <a href="mailto:security@cargosharks.com">security@cargosharks.com</a>{' '}
+                  Write to <EmailLink box="privacy" /> with any question about this notice or to
+                  exercise a right. To report a vulnerability, write to <EmailLink box="security" />{' '}
                   &mdash; the terms are at{' '}
                   <a href="/.well-known/security.txt">/.well-known/security.txt</a>.
                 </p>

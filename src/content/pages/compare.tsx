@@ -1,5 +1,6 @@
 import { ChargeWaffle, PilotGantt } from '@/content/pages/figures'
 import { QuayLine } from '@/content/pages/illustrations'
+import { EmailLink } from '@/components/Email'
 
 /**
  * Converted, not written — and now the source.
@@ -485,9 +486,7 @@ export function CompareContent() {
             <a className="btn btn--primary" href="https://demo.cargosharks.com">
               Open the live demo<span className="btn__hint">no sign-up</span>
             </a>
-            <a className="btn btn--ghost" href="mailto:hello@cargosharks.com">
-              hello@cargosharks.com
-            </a>
+            <EmailLink className="btn btn--ghost" />
           </div>
         </div>
       </section>

@@ -17,6 +17,8 @@
  * Its styling is `src/app/pages.css`, scoped under `.doc-page`, which
  * `src/components/DocPage.tsx` puts on the `<main>` around it.
  */
+
+import { EmailLink } from '@/components/Email'
 export function DpaContent() {
   return (
     <>
@@ -837,13 +839,11 @@ export function DpaContent() {
                   <span className="doc__n">18</span>Contact
                 </h2>
                 <p>
-                  <a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a> reaches a person.
+                  <EmailLink /> reaches a person.
                 </p>
                 <p>
-                  Data-protection notices under this addendum go to{' '}
-                  <a href="mailto:privacy@cargosharks.com">privacy@cargosharks.com</a>. Breach
-                  notifications and security reports go to{' '}
-                  <a href="mailto:security@cargosharks.com">security@cargosharks.com</a>.
+                  Data-protection notices under this addendum go to <EmailLink box="privacy" />.
+                  Breach notifications and security reports go to <EmailLink box="security" />.
                 </p>
               </section>
 

@@ -24,6 +24,7 @@ export const metadata: Metadata = {
     description:
       'Two cloud freight systems sold to forwarders the same size in the same region. Where Logistaas is the better answer, where we are, and the questions to put to both.',
     url: '/compare/logistaas/',
+    images: [{ url: '/pic/screens/app-dashboard.webp', width: 2360, height: 1476 }],
   },
 }
 

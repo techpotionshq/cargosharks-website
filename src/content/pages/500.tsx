@@ -17,6 +17,9 @@
  * Its styling is `src/app/pages.css`, scoped under `.doc-page`, which
  * `src/components/DocPage.tsx` puts on the `<main>` around it.
  */
+
+import { EmailAddress, EmailLink } from '@/components/Email'
+
 export function ServerErrorContent() {
   return (
     <>
@@ -92,16 +95,18 @@ export function ServerErrorContent() {
                   </a>
                 </li>
                 <li>
-                  <a href="mailto:hello@cargosharks.com?subject=Server%20error%20on%20cargosharks.com">
+                  <EmailLink subject="Server error on cargosharks.com">
                     <span>
-                      <b>hello@cargosharks.com</b>
+                      <b>
+                        <EmailAddress />
+                      </b>
                       <small>
                         Tell us the address and the time. A named person replies, not a ticket
                         queue.
                       </small>
                     </span>
                     <span className="err__tag">Email</span>
-                  </a>
+                  </EmailLink>
                 </li>
               </ul>
             </div>

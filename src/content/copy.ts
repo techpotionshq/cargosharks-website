@@ -26,6 +26,15 @@ export type Lang = 'en' | 'ar'
 /** One string per language. The type is the parity check. */
 export type Bi = { en: string; ar: string }
 
+/**
+ * A link's address for a reader of `lang`. Every link in `nav` and `footer` is
+ * `href`, plus `hrefAr` where the page has an Arabic twin; this is the one
+ * place that chooses between them.
+ */
+export function hrefFor(link: { href: string; hrefAr?: string }, lang: Lang): string {
+  return lang === 'ar' && link.hrefAr ? link.hrefAr : link.href
+}
+
 function solutionLinks(group: 'market' | 'job') {
   return solutionNav
     .filter((entry) => entry.group === group)
@@ -38,7 +47,13 @@ function solutionLinks(group: 'market' | 'job') {
 }
 
 export const DEMO_URL = 'https://demo.cargosharks.com'
-export const CONTACT_EMAIL = 'hello@cargosharks.com'
+/**
+ * The mail domain and the mailboxes on it, never joined here: a whole address
+ * in the source ends up whole in the HTML. `components/Email.tsx` joins them in
+ * the browser.
+ */
+export const CONTACT_DOMAIN = 'cargosharks.com'
+export type Mailbox = 'hello' | 'privacy' | 'security'
 
 /**
  * The header's navigation, as two groups and a link.
@@ -58,6 +73,8 @@ export const nav: {
   label: Bi
   /** A group opens a panel; a plain `href` is a link and opens nothing. */
   href?: string
+  /** The plain link's Arabic twin, where the page has one. */
+  hrefAr?: string
   intro?: Bi
   /**
    * The panel's left column.
@@ -309,6 +326,8 @@ export const nav: {
       },
     ],
   },
+  // A plain link, not a panel: one destination, so nothing to choose between.
+  { id: 'blog', label: { en: 'Blog', ar: 'المدونة' }, href: '/blog/', hrefAr: '/ar/blog/' },
   {
     id: 'trust',
     label: { en: 'Trust', ar: 'الثقة' },
@@ -896,6 +915,8 @@ export const footer = {
       links: [
         { href: '/what-we-do/', label: { en: 'What we do', ar: 'ماذا نفعل' } },
         { href: '/compare/', label: { en: 'How we compare', ar: 'كيف نقارن' } },
+        // The one link with an Arabic twin: the same `hrefAr` shape as `nav`.
+        { href: '/blog/', hrefAr: '/ar/blog/', label: { en: 'Blog', ar: 'المدونة' } },
         { href: '#demo', label: { en: 'Demo', ar: 'النسخة التجريبية' } },
       ],
     },

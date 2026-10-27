@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 import { ArrowUpRight } from '@phosphor-icons/react/dist/ssr'
-import { FaqSchema } from '@/components/StructuredData'
+import { Breadcrumbs, FaqSchema } from '@/components/StructuredData'
 import { comparisons } from '@/content/comparisons'
-import { CONTACT_EMAIL, DEMO_URL, type Bi, type Lang } from '@/content/copy'
+import { DEMO_URL, type Bi, type Lang } from '@/content/copy'
 import {
   AccrualStair,
   ChargeableColumns,
@@ -14,6 +14,7 @@ import {
 } from '@/content/pages/figures'
 import { LayeredRecord, OwnDatabase } from '@/content/pages/illustrations'
 import { solution, solutionPath, type Solution, type SolutionFigure } from '@/content/solutions'
+import { EmailLink } from '@/components/Email'
 
 /**
  * One landing page, rendered from a row in `solutions.ts`.
@@ -139,6 +140,17 @@ export function SolutionContent({ item, lang }: { item: Solution; lang: Lang }) 
 
   return (
     <div dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      {/* Home → this page. The name is the search title without the brand
+          suffix, which is the short form a results page shows. */}
+      <Breadcrumbs
+        lang={lang}
+        trail={[
+          {
+            name: item.meta.title[lang].replace(/\s*[|—–-]\s*CargoSharks\s*$/, ''),
+            path: solutionPath(item.slug, lang),
+          },
+        ]}
+      />
       {/* The masthead, the same markup `comparison.tsx` and `what-we-do.tsx` use. */}
       <section className="hero hero--page">
         <div className="hero__field" aria-hidden="true">
@@ -316,7 +328,7 @@ export function SolutionContent({ item, lang }: { item: Solution; lang: Lang }) 
             <h2 className="h2">{T.faqHeading[lang]}</h2>
             <p className="lead">
               {T.faqLead[lang]}
-              <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+              <EmailLink />.
             </p>
           </div>
           <div className="faq">
@@ -404,7 +416,11 @@ export function solutionMetadata(slug: string, lang: Lang): Metadata {
     description: item.meta.description[lang],
     alternates: {
       canonical: path,
-      languages: { en: solutionPath(slug, 'en'), ar: solutionPath(slug, 'ar') },
+      languages: {
+        en: solutionPath(slug, 'en'),
+        ar: solutionPath(slug, 'ar'),
+        'x-default': solutionPath(slug, 'en'),
+      },
     },
     openGraph: {
       type: 'article',
