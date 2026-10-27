@@ -42,6 +42,9 @@ import {
   readBacklog,
   searxng,
   skipped,
+  ensureFaqs,
+  MIN_FAQS,
+  usableFaqs,
   writeBacklog,
 } from './lib.mjs'
 
@@ -142,6 +145,17 @@ const EN_SCHEMA = {
       },
       ...copyProps,
     },
+  },
+}
+
+const FAQ_SCHEMA = {
+  name: 'blog_post_faqs',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['faqs'],
+    properties: { faqs: copyProps.faqs },
   },
 }
 
@@ -274,7 +288,7 @@ const brief = [
   .filter(Boolean)
   .join('\n')
 
-const en = await complete({
+let en = await complete({
   model: MODEL,
   schema: EN_SCHEMA,
   user: brief,
@@ -288,17 +302,45 @@ SEO rules:
 - 900-1500 words. Tables and lists where they help a reader scan.`,
 })
 
-const ar = await complete({
-  model: MODEL,
-  schema: AR_SCHEMA,
-  user: `Target query (English): ${topic.targetQuery}\n\nTHE ENGLISH ARTICLE:\n\nTitle: ${en.title}\n\n${en.markdown}\n\nFAQ:\n${(en.faqs ?? []).map((f) => `- ${f.question}\n  ${f.answer}`).join('\n')}`,
-  system: `${VOICE}
+/*
+  Every draft carries an FAQ in both languages, and nothing upstream enforces
+  that. The schema's "2-4" is a description, not a minimum, and `complete`
+  drops to plain JSON when a provider refuses the schema. The first draft came
+  back with five Arabic answers and an empty English list, so the English page
+  had no FAQ section and no FAQPage schema.
+
+  A short answer is topped up with a call for the FAQ alone, with the finished
+  article as its context: seconds, where regenerating the article is minutes.
+  Still short after that, the run fails; `blog.ts` refuses the same post at
+  build time, so a hand edit cannot ship it either.
+*/
+const askForFaqs = (system) => (copy) =>
+  complete({
+    model: MODEL,
+    schema: FAQ_SCHEMA,
+    system,
+    user: `THE ARTICLE:\n\nTitle: ${copy.title}\n\n${copy.markdown}\n\nWrite its FAQ in the article's language: ${MIN_FAQS}-4 real questions a reader would search, each answered in 1-3 sentences from what the article says. Return them in "faqs".`,
+  }).then((reply) => reply.faqs)
+
+en = await ensureFaqs('en', en, askForFaqs(VOICE))
+
+const AR_SYSTEM = `${VOICE}
 
 You are now writing the ARABIC edition of an article already written in English. Write it for Arabic-speaking freight professionals in the Gulf, in clear Modern Standard Arabic, addressing the reader in the plural (أنتم) as the rest of the CargoSharks site does.
 Adapt rather than translate: keep every fact, heading and table from the English, but phrase it the way an Arabic trade article would. Use the trade's Arabic terms (وقت السماح for free time, الأرضيات for demurrage, التخليص for clearance), keep company names, codes and units in Latin script, and use Western digits.
 Internal links must point to the /ar/ twin of a page where one exists (see PRODUCT FACTS); pages marked English only keep their English path. Keep external links unchanged.
-The Arabic search phrase goes in focusKeyword; the title is at most 60 characters.`,
+The Arabic search phrase goes in focusKeyword; the title is at most 60 characters.`
+
+const enFaq = usableFaqs(en)
+  .map((f) => `- ${f.question}\n  ${f.answer}`)
+  .join('\n')
+let ar = await complete({
+  model: MODEL,
+  schema: AR_SCHEMA,
+  user: `Target query (English): ${topic.targetQuery}\n\nTHE ENGLISH ARTICLE:\n\nTitle: ${en.title}\n\n${en.markdown}\n\nFAQ:\n${enFaq}`,
+  system: AR_SYSTEM,
 })
+ar = await ensureFaqs('ar', ar, askForFaqs(AR_SYSTEM))
 
 let slug = slugify(en.slug || en.title)
 for (let n = 2; existsSync(join(CONTENT, slug)); n++) slug = `${slugify(en.slug || en.title)}-${n}`
@@ -308,7 +350,7 @@ const pick = (c) => ({
   excerpt: String(c.excerpt).trim(),
   metaDescription: String(c.metaDescription).trim(),
   focusKeyword: String(c.focusKeyword).trim(),
-  faqs: (c.faqs ?? []).filter((f) => f?.question && f?.answer),
+  faqs: usableFaqs(c),
 })
 const enBody = clean(en.markdown)
 const arBody = clean(ar.markdown)

@@ -90,6 +90,19 @@ function readMeta(slug: string): PostMeta {
       fail(slug, `${lang} copy in post.json but no ${lang}.md`)
   }
   if (!meta.en && !meta.ar) fail(slug, 'post.json has neither en nor ar copy')
+  // A hand-written post may skip the FAQ. A generated one always asks for it,
+  // so an empty list there is a dropped answer, and the page would ship with
+  // no FAQ section and no FAQPage schema. Twins match either way: one language
+  // with an FAQ and the other without is the same defect.
+  const withFaqs = (['en', 'ar'] as const).filter((l) => meta[l]?.faqs.length)
+  const present = (['en', 'ar'] as const).filter((l) => meta[l])
+  if (meta.source === 'ai' && withFaqs.length < present.length)
+    fail(
+      slug,
+      `generated post with no FAQ in ${present.filter((l) => !withFaqs.includes(l)).join(' and ')}`,
+    )
+  if (withFaqs.length && withFaqs.length < present.length)
+    fail(slug, `${withFaqs[0]} has an FAQ and its twin does not`)
   return meta
 }
 

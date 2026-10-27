@@ -72,6 +72,33 @@ export async function complete({ system, user, schema, model }) {
   return extractJson(content)
 }
 
+/** The FAQ entries a page can render: both halves present and not blank. */
+export const usableFaqs = (copy) =>
+  (copy?.faqs ?? []).filter((f) => f?.question?.trim() && f?.answer?.trim())
+
+export const MIN_FAQS = 2
+
+/**
+ * `copy` with at least `MIN_FAQS` usable FAQ entries, or an error.
+ *
+ * A short list is topped up by `ask(copy)`, which returns a fresh `faqs`
+ * array for the finished article: a call for the FAQ alone takes seconds,
+ * where regenerating the article takes minutes. `attempts` such calls, then
+ * the run fails rather than ship a page with no FAQ section.
+ */
+export async function ensureFaqs(lang, copy, ask, attempts = 2) {
+  for (let attempt = 1; usableFaqs(copy).length < MIN_FAQS; attempt++) {
+    const have = usableFaqs(copy).length
+    if (attempt > attempts)
+      throw new Error(
+        `${lang}: ${have} usable FAQ(s) after ${attempts} requests for them; a post needs at least ${MIN_FAQS}`,
+      )
+    console.warn(`${lang}: ${have} usable FAQ(s), asking for them alone (${attempt}/${attempts})`)
+    copy = { ...copy, faqs: (await ask(copy)) ?? [] }
+  }
+  return copy
+}
+
 /** SearXNG results, or nothing. Never throws: grounding is a bonus, not a dependency. */
 export async function searxng(query, limit = 6) {
   const base = process.env.SEARXNG_URL?.replace(/\/$/, '')
