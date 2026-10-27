@@ -183,6 +183,48 @@ export function arabicTwins(markdown, known) {
 }
 
 /** Models still add an H1, frontmatter, a FAQ or a trailing sources list now and then. */
+/**
+ * Internal links to pages or anchors that do not exist, turned back into their
+ * text. The second run's draft linked `/blog/<its own slug>/`, a page that
+ * would not exist until it merged; failing four minutes of drafting for one
+ * link costs more than the link is worth, while shipping it is a 404. The
+ * text reads the same without the link, and `removed` goes into the pull
+ * request so a reviewer sees what was taken out.
+ */
+export function unlinkMissing(markdown, known) {
+  const removed = []
+  const text = markdown.replace(
+    /\[([^\]]*)\]\((\/[^)\s#]*)(?:#([^)\s]*))?\)/g,
+    (link, label, path, anchor) => {
+      if (anchor ? KNOWN_ANCHORS.get(path)?.has(anchor) : known.has(path)) return link
+      removed.push(anchor ? `${path}#${anchor}` : path)
+      return label
+    },
+  )
+  return { markdown: text, removed }
+}
+
+/**
+ * The posts already on the site, as the prompt's list of what it may link.
+ * product-facts.md can only say "earlier posts" in general; without the real
+ * list the model writes a plausible slug, which is how the second run's draft
+ * came to link a post that does not exist.
+ */
+export function earlierPosts() {
+  if (!existsSync(CONTENT)) return []
+  return readdirSync(CONTENT).flatMap((slug) => {
+    try {
+      const meta = JSON.parse(readFileSync(join(CONTENT, slug, 'post.json'), 'utf8'))
+      return [
+        meta.en && `- \`/blog/${slug}/\` — ${meta.en.title}`,
+        meta.ar && `- \`/ar/blog/${slug}/\` — ${meta.ar.title}`,
+      ].filter(Boolean)
+    } catch {
+      return []
+    }
+  })
+}
+
 /** Titles already published or in the backlog, so ideation does not propose them twice. */
 export function existingTitles(backlog) {
   const posts = existsSync(CONTENT)

@@ -44,4 +44,4 @@ Use only these paths for internal links, and only the `#` anchors written here. 
 - `/customs-clearance-software/`, `/freight-quotation-software/`, `/freight-invoicing-software/`
 - `/shipment-tracking-portal/`, `/whatsapp-for-freight-forwarders/`, `/arabic-freight-documents/`, `/uae-e-invoicing-freight-forwarders/`
 - Each of the ten pages above has an Arabic twin at `/ar/<same-path>`.
-- `/blog/<slug>/` and `/ar/blog/<slug>/` for earlier posts.
+- Earlier posts: only those listed under "Earlier posts" below, which the generator writes from the site itself. Never a post's own address, and never a slug that is not listed.

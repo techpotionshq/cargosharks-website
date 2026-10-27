@@ -44,13 +44,20 @@ import {
   skipped,
   arabicTwins,
   checkLinks,
+  earlierPosts,
   ensureFaqs,
   MIN_FAQS,
+  unlinkMissing,
   usableFaqs,
   writeBacklog,
 } from './lib.mjs'
 
-const FACTS = readFileSync(join(HERE, 'product-facts.md'), 'utf8')
+const POSTS = earlierPosts()
+const FACTS = `${readFileSync(join(HERE, 'product-facts.md'), 'utf8')}
+## Earlier posts
+
+${POSTS.length ? `Link only these; any other /blog/ path does not exist.\n\n${POSTS.join('\n')}` : 'None yet. Do not link to /blog/ at all.'}
+`
 
 const args = process.argv.slice(2)
 const DRY = args.includes('--dry')
@@ -345,8 +352,13 @@ const pick = (c) => ({
   focusKeyword: String(c.focusKeyword).trim(),
   faqs: usableFaqs(c),
 })
-const enBody = clean(en.markdown)
-const arBody = arabicTwins(clean(ar.markdown), known)
+const enLinks = unlinkMissing(clean(en.markdown), known)
+const arLinks = unlinkMissing(arabicTwins(clean(ar.markdown), known), known)
+const enBody = enLinks.markdown
+const arBody = arLinks.markdown
+const unlinked = [...new Set([...enLinks.removed, ...arLinks.removed])]
+if (unlinked.length) console.warn(`unlinked, no such page: ${unlinked.join(', ')}`)
+// After the unlinking, so this can only fail on a bug in it.
 checkLinks(enBody, 'en', known)
 checkLinks(arBody, 'ar', known)
 
@@ -383,4 +395,5 @@ output({
   slug,
   title: meta.en.title,
   cover: coverPath ? 'yes' : 'no',
+  unlinked: unlinked.join(' '),
 })
