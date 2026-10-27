@@ -1,31 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allPosts, getPost, postsIn, renderMarkdown } from '@/lib/blog'
-
-/**
- * Every post in `content/blog/` loads, in every language it claims.
- *
- * `allPosts()` throws on a malformed `post.json`, so this is the same gate the
- * build applies, run in a second rather than a minute — useful on a draft PR
- * whose author is a model.
- */
-describe('blog content', () => {
-  it('loads every post', () => {
-    // Zero is valid: the blog launches empty and the pipeline writes the first.
-    expect(() => allPosts()).not.toThrow()
-  })
-
-  it('renders each post in each of its languages', () => {
-    for (const lang of ['en', 'ar'] as const) {
-      for (const meta of postsIn(lang)) {
-        const post = getPost(meta.slug, lang)
-        expect(post, `${meta.slug} (${lang})`).not.toBeNull()
-        expect(post!.html).toContain('<h2')
-        // Raw HTML in the Markdown is escaped, never passed through.
-        expect(post!.html).not.toMatch(/<script/i)
-      }
-    }
-  })
-})
+import { renderMarkdown } from '@/lib/markdown'
 
 /**
  * What a model-written body can and cannot put on the page. Fixed inputs, so

@@ -66,8 +66,17 @@ describe('unlinkMissing', () => {
 
 describe('earlierPosts', () => {
   it('lists every published post in each of its languages, for the prompt', () => {
-    const list = earlierPosts().join('\n')
+    const list = earlierPosts([
+      {
+        slug: 'demurrage-vs-detention',
+        en: { title: 'Demurrage vs detention' },
+        ar: { title: 'الأرضيات' },
+      },
+      { slug: 'english-only', en: { title: 'English only' } },
+    ]).join('\n')
     expect(list).toContain('`/blog/demurrage-vs-detention/`')
     expect(list).toContain('`/ar/blog/demurrage-vs-detention/`')
+    expect(list).toContain('`/blog/english-only/`')
+    expect(list).not.toContain('/ar/blog/english-only/')
   })
 })

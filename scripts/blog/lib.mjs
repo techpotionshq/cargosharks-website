@@ -1,30 +1,13 @@
 /**
- * What `generate.mjs` and `ideate.mjs` share: the OpenRouter call, SearXNG,
- * the backlog file and the list of paths a post may link to.
+ * What the blog generator shares: the OpenRouter and SearXNG calls, and the
+ * guards every draft passes through (FAQ count, links, Arabic twins).
+ *
+ * Pure: the CMS reads and writes happen in `src/app/cron/blog/route.ts`, and
+ * the lists these check against are passed in.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-export const HERE = dirname(fileURLToPath(import.meta.url))
-export const APP = join(HERE, '..', '..')
-export const CONTENT = join(APP, 'content', 'blog')
-const TOPICS = join(HERE, 'topics.json')
-
-export const readBacklog = () => JSON.parse(readFileSync(TOPICS, 'utf8'))
-export const writeBacklog = (backlog) =>
-  writeFileSync(TOPICS, `${JSON.stringify(backlog, null, 2)}\n`)
-
-/**
- * Topic ids that already have an open pull request, passed by the workflow as
- * `--skip a,b`. Without this a draft waiting for review would be drafted again
- * the next morning, because `main` still lists its topic as `ready`.
- */
-export function skipped(args) {
-  const i = args.indexOf('--skip')
-  return new Set(i === -1 ? [] : (args[i + 1] ?? '').split(',').filter(Boolean))
-}
+import { comparisons } from '../../src/content/comparisons'
+import { solutionNav } from '../../src/content/solution-nav'
 
 export function headers() {
   const key = process.env.OPENROUTER_API_KEY
@@ -123,13 +106,11 @@ export const formatSources = (results) =>
     .join('\n')
 
 /** Every internal path a post may link to, read from the same lists the site is built from. */
-export function knownPaths() {
-  const read = (file) => readFileSync(join(APP, 'src', 'content', file), 'utf8')
-  const solutions = [...read('solution-nav.ts').matchAll(/slug: '([a-z0-9-]+)'/g)].map((m) => m[1])
-  const compares = [...read('comparisons.ts').matchAll(/^\s{4}slug: '([a-z0-9-]+)'/gm)].map(
-    (m) => m[1],
-  )
-  const posts = existsSync(CONTENT) ? readdirSync(CONTENT) : []
+/**
+ * Every path a post may link to: the site's pages, from the same lists the
+ * menus and the sitemap use, plus the published posts' own addresses.
+ */
+export function knownPaths(postSlugs = []) {
   return new Set([
     '/',
     '/ar/',
@@ -139,9 +120,9 @@ export function knownPaths() {
     '/ar/blog/',
     '/privacy/',
     '/terms/',
-    ...solutions.flatMap((s) => [`/${s}/`, `/ar/${s}/`]),
-    ...compares.map((s) => `/compare/${s}/`),
-    ...posts.flatMap((s) => [`/blog/${s}/`, `/ar/blog/${s}/`]),
+    ...solutionNav.flatMap(({ slug }) => [`/${slug}/`, `/ar/${slug}/`]),
+    ...comparisons.map(({ slug }) => `/compare/${slug}/`),
+    ...postSlugs.flatMap((slug) => [`/blog/${slug}/`, `/ar/blog/${slug}/`]),
   ])
 }
 
@@ -207,43 +188,18 @@ export function unlinkMissing(markdown, known) {
 /**
  * The posts already on the site, as the prompt's list of what it may link.
  * product-facts.md can only say "earlier posts" in general; without the real
- * list the model writes a plausible slug, which is how the second run's draft
- * came to link a post that does not exist.
+ * list the model writes a plausible slug, which is how an early draft came to
+ * link a post that did not exist.
+ *
+ * @param {{ slug: string, en?: { title: string }, ar?: { title: string } }[]} posts
+ * @returns {string[]}
  */
-export function earlierPosts() {
-  if (!existsSync(CONTENT)) return []
-  return readdirSync(CONTENT).flatMap((slug) => {
-    try {
-      const meta = JSON.parse(readFileSync(join(CONTENT, slug, 'post.json'), 'utf8'))
-      return [
-        meta.en && `- \`/blog/${slug}/\` — ${meta.en.title}`,
-        meta.ar && `- \`/ar/blog/${slug}/\` — ${meta.ar.title}`,
-      ].filter(Boolean)
-    } catch {
-      return []
-    }
-  })
-}
-
-/** Titles already published or in the backlog, so ideation does not propose them twice. */
-export function existingTitles(backlog) {
-  const posts = existsSync(CONTENT)
-    ? readdirSync(CONTENT).flatMap((slug) => {
-        try {
-          const meta = JSON.parse(readFileSync(join(CONTENT, slug, 'post.json'), 'utf8'))
-          return [meta.en?.title, meta.ar?.title].filter(Boolean)
-        } catch {
-          return []
-        }
-      })
-    : []
-  return [...posts, ...backlog.topics.flatMap((t) => [t.title, t.targetQuery])]
-}
-
-/** One line for the workflow to read back (`steps.<id>.outputs.<key>`). */
-export function output(values) {
-  const file = process.env.GITHUB_OUTPUT
-  if (!file) return
-  const lines = Object.entries(values).map(([k, v]) => `${k}=${String(v).replace(/\n/g, ' ')}`)
-  writeFileSync(file, `${lines.join('\n')}\n`, { flag: 'a' })
+export function earlierPosts(posts) {
+  return posts.flatMap((post) =>
+    /** @type {string[]} */
+    [
+      post.en && `- \`/blog/${post.slug}/\` — ${post.en.title}`,
+      post.ar && `- \`/ar/blog/${post.slug}/\` — ${post.ar.title}`,
+    ].filter(Boolean),
+  )
 }

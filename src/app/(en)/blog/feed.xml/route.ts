@@ -1,17 +1,14 @@
 import { SITE_URL } from '@/components/StructuredData'
 import { blogPath, postsIn } from '@/lib/blog'
 
-/**
- * `/blog/feed.xml`, RSS 2.0 for the English posts. Written at build time like
- * the sitemap — `force-static` is required under `output: 'export'`.
- */
-export const dynamic = 'force-static'
+/** `/blog/feed.xml`, RSS 2.0 for the English posts, from the CMS's cached reads. */
+export const dynamic = 'force-dynamic'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-export function GET() {
-  const items = postsIn('en')
+export async function GET() {
+  const items = (await postsIn('en'))
     .map((post) => {
       const url = `${SITE_URL}${blogPath('en', post.slug)}`
       return `<item><title>${esc(post.en!.title)}</title><link>${url}</link><guid>${url}</guid><pubDate>${new Date(`${post.publishedAt}T00:00:00Z`).toUTCString()}</pubDate><description>${esc(post.en!.excerpt)}</description></item>`

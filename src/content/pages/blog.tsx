@@ -63,18 +63,19 @@ function date(iso: string, lang: Lang): string {
   }).format(new Date(`${iso}T00:00:00Z`))
 }
 
-export function blogIndexMetadata(lang: Lang): Metadata {
+export async function blogIndexMetadata(lang: Lang): Promise<Metadata> {
   const path = blogPath(lang)
+  const [posts, languages] = await Promise.all([postsIn(lang), blogIndexAlternates()])
   return {
     title: T.metaTitle[lang],
     description: T.metaDescription[lang],
     // Until this language has a post the listing is empty, and an empty page
     // indexed now is a thin page Google remembers. Per language: posts may be
     // written in one only.
-    ...(postsIn(lang).length ? {} : { robots: { index: false, follow: true } }),
+    ...(posts.length ? {} : { robots: { index: false, follow: true } }),
     alternates: {
       canonical: path,
-      languages: blogIndexAlternates(),
+      languages,
       types: { 'application/rss+xml': '/blog/feed.xml' },
     },
     openGraph: pageOpenGraph({
@@ -96,7 +97,7 @@ export function postMetadata(post: PostMeta, lang: Lang): Metadata {
   if (post.ar) languages.ar = blogPath('ar', post.slug)
   languages['x-default'] = blogPath(post.en ? 'en' : 'ar', post.slug)
   const og = pageOpenGraph({ path, title: copy.title, description, lang, type: 'article' })
-  // generate.mjs writes covers at 1280×720.
+  // The generator makes covers at 1280×720.
   const images = post.cover ? [{ url: post.cover, width: 1280, height: 720 }] : og.images
 
   return {

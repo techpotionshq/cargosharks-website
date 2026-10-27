@@ -1,29 +1,28 @@
 import type { Metadata } from 'next'
+import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { DocPage } from '@/components/DocPage'
 import { PostContent, postMetadata } from '@/content/pages/blog'
-import { blogPath, getMeta, getPost, postParams } from '@/lib/blog'
+import { blogPath, getMeta, getPost } from '@/lib/blog'
 
 /**
- * `/blog/<slug>/`, one file per post at build time. `dynamicParams = false`
- * because a static export has nothing to render an unknown slug with — it is a
- * 404, the same as any other path that is not a file.
+ * `/blog/<slug>/`. An unknown slug is a real 404. With preview on (`/preview`, admins
+ * only) the latest draft renders instead of the published version.
  */
-export const dynamicParams = false
-
-export function generateStaticParams() {
-  return postParams('en')
-}
+export const dynamic = 'force-dynamic'
 
 type Props = { params: Promise<{ slug: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const meta = getMeta((await params).slug)
-  return meta?.en ? postMetadata(meta, 'en') : {}
+  const draft = (await draftMode()).isEnabled
+  const meta = await getMeta((await params).slug, { draft })
+  if (!meta?.en) notFound()
+  return postMetadata(meta, 'en')
 }
 
 export default async function Page({ params }: Props) {
-  const post = getPost((await params).slug, 'en')
+  const draft = (await draftMode()).isEnabled
+  const post = await getPost((await params).slug, 'en', { draft })
   if (!post) notFound()
   return (
     <DocPage lang="en" alternate={post.ar ? blogPath('ar', post.slug) : blogPath('ar')}>
