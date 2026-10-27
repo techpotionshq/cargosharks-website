@@ -1,0 +1,64 @@
+{
+  "slug": "demurrage-vs-detention",
+  "publishedAt": "2026-10-27",
+  "author": "CargoSharks",
+  "tags": ["demurrage", "detention", "free time", "ocean freight"],
+  "cover": "/blog/demurrage-vs-detention.webp",
+  "source": "ai",
+  "en": {
+    "title": "Demurrage vs detention: what each charge means and when the clock runs",
+    "excerpt": "Demurrage is the charge for a container inside the terminal past its free days. Detention is the charge for a container outside the terminal past its free days. Here is how each clock starts, ends and gets billed in Kuwait, the UAE and Saudi Arabia.",
+    "metaDescription": "Demurrage vs detention explained for freight forwarders in Kuwait, the UAE and Saudi Arabia. Learn where each charge applies, when the clock starts, and how to track both.",
+    "focusKeyword": "demurrage vs detention",
+    "faqs": [
+      {
+        "question": "What is the difference between demurrage and detention?",
+        "answer": "Demurrage is the daily charge for a container that stays inside the port or terminal after its free days run out. Detention is the daily charge for a container that stays outside the terminal, with the consignee, forwarder or transporter, after its free days run out. The difference is where the container sits and who bills for the delay."
+      },
+      {
+        "question": "When does demurrage start on an import?",
+        "answer": "On an import, the demurrage clock starts at discharge from the vessel. The container gets its free days from that point, and if it stays in the terminal beyond them, demurrage accrues for each extra day until it is gated out."
+      },
+      {
+        "question": "When does detention start on an export?",
+        "answer": "On an export, detention usually starts when the empty container is collected from the depot. It runs until the laden container is gated in at the port."
+      },
+      {
+        "question": "Can one container be charged both demurrage and detention?",
+        "answer": "Yes. On an import, demurrage can build up while the container sits in the terminal after discharge, and detention can start after gate-out if the empty is returned late. One shipment then shows two separate debit notes."
+      },
+      {
+        "question": "Do demurrage and detention share the same free time?",
+        "answer": "No. In most Gulf tariffs the line sets detention free time separately from terminal demurrage free time, unless the contract explicitly offers a combined pool."
+      }
+    ]
+  },
+  "ar": {
+    "title": "الأرضيات مقابل غرامة التأخير: معنى كل رسم ومتى يبدأ احتسابه",
+    "excerpt": "الأرضيات هي الرسم اليومي على الحاوية التي تبقى داخل الميناء بعد انتهاء فترة السماح، وغرامة التأخير هي الرسم اليومي على الحاوية التي تبقى خارج الميناء بعد انتهاء فترة السماح. إليكم الفرق بينهما ومتى يبدأ احتساب كل منهما في الكويت والإمارات والسعودية.",
+    "metaDescription": "تعرفوا على الفرق بين الأرضيات وغرامة التأخير في الشحن البحري، ومتى يبدأ احتساب كل رسم، وكيف تتجنبونها في موانئ الكويت والإمارات والسعودية.",
+    "focusKeyword": "الفرق بين الأرضيات وغرامة التأخير",
+    "faqs": [
+      {
+        "question": "ما الفرق بين الأرضيات وغرامة التأخير؟",
+        "answer": "الأرضيات هي الرسم اليومي على الحاوية التي تبقى داخل الميناء أو المحطة بعد انتهاء أيام السماح. وغرامة التأخير هي الرسم اليومي على الحاوية التي تبقى خارج المحطة لدى المخلص أو الناقل أو المرسل إليه بعد انتهاء أيام السماح. الفرق الأساسي هو مكان وجود الحاوية ومن يحرر الفاتورة."
+      },
+      {
+        "question": "متى يبدأ احتساب الأرضيات في الاستيراد؟",
+        "answer": "في الاستيراد، يبدأ احتساب الأرضيات عند تفريغ الحاوية من السفينة. تحصل الحاوية على أيام السماح من تلك النقطة، وإذا بقيت في المحطة بعدها تتراكم الأرضيات عن كل يوم إضافي."
+      },
+      {
+        "question": "متى تبدأ غرامة التأخير في التصدير؟",
+        "answer": "في التصدير، تبدأ غرامة التأخير عادة عند استلام الحاوية الفارغة من المستودع، وتستمر حتى دخول الحاوية المشحونة إلى الميناء عبر البوابة."
+      },
+      {
+        "question": "هل يمكن أن تتحمل الحاوية الواحدة الرسمين معاً؟",
+        "answer": "نعم. في الاستيراد، قد تتراكم الأرضيات أثناء وجود الحاوية في المحطة بعد التفريغ، ثم تبدأ غرامة التأخير بعد الخروج من البوابة إذا تأخرت إعادة الحاوية الفارغة. وهكذا تظهر شحنة واحدة بإشعاري خصم منفصلين."
+      },
+      {
+        "question": "هل أيام السماح موحدة بين الأرضيات وغرامة التأخير؟",
+        "answer": "لا. في معظم تعرفات الخليج، يحدد الخط الملاحي فترة سماح غرامة التأخير بشكل منفصل عن فترة سماح أرضيات المحطة، إلا إذا نص العقد صراحة على رصيد مشترك."
+      }
+    ]
+  }
+}

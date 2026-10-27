@@ -3,10 +3,11 @@
   "topics": [
     {
       "id": "demurrage-vs-detention",
-      "status": "ready",
+      "status": "written",
       "title": "Demurrage vs detention",
       "targetQuery": "demurrage vs detention",
-      "archetype": "explainer"
+      "archetype": "explainer",
+      "post": "demurrage-vs-detention"
     },
     {
       "id": "kuwait-customs-clearance-steps",
