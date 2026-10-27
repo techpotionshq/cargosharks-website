@@ -35,8 +35,8 @@ export const metadata: Metadata = {
  * and the static export kept writing Next's built-in black-and-white 404 to
  * `out/404.html` instead.
  *
- * So it is an ordinary page, and `scripts/postbuild.mjs` copies its output over
- * `out/404.html`, the filename every static host looks for. The route is
+ * So it is an ordinary page, which `src/app/global-not-found.tsx` renders for
+ * every URL that matches nothing. The route is
  * `/not-found/` rather than `/404/` because Next reserves the latter: a folder
  * named `404` is silently dropped from the route table and the built-in page
  * is emitted in its place, which looks exactly like this working until you

@@ -20,10 +20,17 @@ const config: NextConfig = {
   images: { unoptimized: true },
   // `/ar/` rather than `/ar`, as the static site always answered.
   trailingSlash: true,
+  // The 404 for unmatched URLs (`src/app/global-not-found.tsx`): this app has
+  // two root layouts and no `app/layout.tsx` to put a `not-found.tsx` under.
+  experimental: { globalNotFound: true },
+  // Read with `fs` at runtime, so invisible to the build's file tracer: the
+  // generator's product facts, and the two covers the seed migration uploads.
+  outputFileTracingIncludes: {
+    '/**': ['./scripts/blog/product-facts.md', './public/blog/*.webp'],
+  },
   async redirects() {
-    // The legacy `.html` addresses the site had before it was a Next app,
-    // which `scripts/preview.mjs` used to 301. `/privacy.html` and the other
-    // hand-written pages in `public/` are real files and are served as such.
+    // `/privacy.html` and the other hand-written pages in `public/` are real
+    // files and are served as such; only the old index address redirects.
     return [{ source: '/index.html', destination: '/', permanent: true }]
   },
 }

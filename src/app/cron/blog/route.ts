@@ -36,7 +36,11 @@ export async function POST(request: Request) {
 
   const payload = await getPayload({ config })
   const posts = await allPosts()
-  const { docs: topics } = await payload.find({ collection: 'topics', limit: 1000, sort: 'createdAt' })
+  const { docs: topics } = await payload.find({
+    collection: 'topics',
+    limit: 1000,
+    sort: 'createdAt',
+  })
   const { docs: drafts } = await payload.find({
     collection: 'posts',
     draft: true,
@@ -56,7 +60,9 @@ export async function POST(request: Request) {
           ...posts.flatMap((post) => [post.en?.title, post.ar?.title]),
           ...topics.flatMap((t) => [t.title, t.targetQuery]),
         ].filter((title): title is string => Boolean(title)),
-        existingKeys: new Set(topics.map((t) => t.key).filter((key): key is string => Boolean(key))),
+        existingKeys: new Set(
+          topics.map((t) => t.key).filter((key): key is string => Boolean(key)),
+        ),
       })
       for (const t of fresh) {
         await payload.create({

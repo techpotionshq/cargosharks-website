@@ -12,8 +12,8 @@ import { SITE_URL } from '@/components/StructuredData'
  *
  * **The error routes are the one exclusion.** `/not-found/` and
  * `/server-error/` exist as real routes because Next reserves a folder called
- * `404` and drops it from the route table silently; `postbuild.mjs` copies
- * their output over `404.html` and `500.html`. That leaves the originals
+ * `404` and drops it from the route table silently; `global-not-found.tsx`
+ * renders the first for unmatched URLs. That leaves the originals
  * addressable, and a crawler that indexes `/not-found/` puts a page reading
  * "This page is not here" into results under the site's name. They are also
  * `noindex` in their own metadata — this is the belt to that pair of braces,

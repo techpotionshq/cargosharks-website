@@ -54,7 +54,7 @@ export type Post = PostMeta & { lang: Lang; copy: PostCopy; html: string; readin
 type Localised<T> = Partial<Record<Lang, T | null>> | null | undefined
 
 function copyIn(doc: PostDoc, lang: Lang): PostCopy | undefined {
-  const pick = <T,>(field: unknown) => (field as Localised<T>)?.[lang] ?? undefined
+  const pick = <T>(field: unknown) => (field as Localised<T>)?.[lang] ?? undefined
   const title = pick<string>(doc.title)?.trim()
   const body = pick<string>(doc.body)?.trim()
   // A language exists on the site once it has a title and a body; an excerpt

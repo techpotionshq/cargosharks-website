@@ -17,7 +17,10 @@ export async function slack(text: string): Promise<void> {
   try {
     const res = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=utf-8' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json; charset=utf-8',
+      },
       body: JSON.stringify({
         channel: process.env.SLACK_BLOG_CHANNEL ?? '#blog-automation',
         text,
