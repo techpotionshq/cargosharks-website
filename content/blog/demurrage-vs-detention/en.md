@@ -100,4 +100,4 @@ Put the responsibility in writing at the quote stage. If the consignee owns the 
 
 [CargoSharks](/what-we-do/) records the milestone that starts each free time clock, such as discharge or gate-out, and writes the demurrage or detention charge line into the job as the clock runs. That gives operations and finance one place to see the charge forming before the supplier invoice arrives.
 
-For a quick manual check before quoting, the [free time calculator](/) on the CargoSharks home page is a simple starting point.
+To size the problem for your own desk, the [free time cost calculator](/#calculator) on the CargoSharks home page estimates what overruns cost a month from your container volume, the share that overrun, the days over and the daily charge.

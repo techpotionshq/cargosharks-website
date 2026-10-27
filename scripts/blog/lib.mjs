@@ -145,6 +145,44 @@ export function knownPaths() {
   ])
 }
 
+/**
+ * The `#` anchors a post may link to, by page. A link to `/#anything-else`
+ * resolves to the top of the page, which reads to a visitor as a link to a
+ * thing that does not exist; that is how the first draft sent readers to a
+ * "free time calculator" at the top of the home page.
+ */
+export const KNOWN_ANCHORS = new Map([
+  ['/', new Set(['calculator'])],
+  ['/ar/', new Set(['calculator'])],
+])
+
+const INTERNAL_LINK = /\]\((\/[^)\s#]*)(?:#([^)\s]*))?\)/g
+
+export function checkLinks(markdown, lang, known) {
+  const bad = [...markdown.matchAll(INTERNAL_LINK)]
+    .filter(([, path, anchor]) =>
+      anchor ? !KNOWN_ANCHORS.get(path)?.has(anchor) : !known.has(path),
+    )
+    .map(([, path, anchor]) => (anchor ? `${path}#${anchor}` : path))
+  if (bad.length)
+    throw new Error(`${lang}.md links to paths that do not exist: ${[...new Set(bad)].join(', ')}`)
+}
+
+/*
+  The Arabic prompt asks for the /ar/ twin of every page that has one, and the
+  first draft still sent Arabic readers to the English home page. Where a twin
+  exists the right link is not a judgement, so it is rewritten rather than
+  failed: the anchor text is already Arabic, only the path was wrong.
+*/
+export function arabicTwins(markdown, known) {
+  return markdown.replace(INTERNAL_LINK, (link, path, anchor) => {
+    const twin = path === '/' ? '/ar/' : `/ar${path}`
+    if (path.startsWith('/ar/') || !known.has(twin)) return link
+    return `](${twin}${anchor ? `#${anchor}` : ''})`
+  })
+}
+
+/** Models still add an H1, frontmatter, a FAQ or a trailing sources list now and then. */
 /** Titles already published or in the backlog, so ideation does not propose them twice. */
 export function existingTitles(backlog) {
   const posts = existsSync(CONTENT)

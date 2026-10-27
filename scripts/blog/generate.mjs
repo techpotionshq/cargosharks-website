@@ -42,6 +42,8 @@ import {
   readBacklog,
   searxng,
   skipped,
+  arabicTwins,
+  checkLinks,
   ensureFaqs,
   MIN_FAQS,
   usableFaqs,
@@ -223,15 +225,6 @@ async function cover(slug, concept) {
 
 // --- checks ----------------------------------------------------------------
 
-function checkLinks(markdown, lang, known) {
-  const bad = [...markdown.matchAll(/\]\((\/[^)\s#]*)(#[^)\s]*)?\)/g)]
-    .map((m) => m[1])
-    .filter((p) => !known.has(p))
-  if (bad.length)
-    throw new Error(`${lang}.md links to paths that do not exist: ${[...new Set(bad)].join(', ')}`)
-}
-
-/** Models still add an H1, frontmatter, a FAQ or a trailing sources list now and then. */
 function clean(markdown) {
   return markdown
     .replace(/^﻿?\s*---\n[\s\S]*?\n---\s*/, '')
@@ -353,7 +346,7 @@ const pick = (c) => ({
   faqs: usableFaqs(c),
 })
 const enBody = clean(en.markdown)
-const arBody = clean(ar.markdown)
+const arBody = arabicTwins(clean(ar.markdown), known)
 checkLinks(enBody, 'en', known)
 checkLinks(arBody, 'ar', known)
 

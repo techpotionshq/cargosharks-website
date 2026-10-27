@@ -67,7 +67,12 @@ export function Calculator({ lang }: { lang: Lang }) {
         : 'text-[clamp(2.1rem,4.4vw,3rem)]'
 
   return (
-    <section className="border-t border-line bg-paper-sunk py-band-sm lg:py-band">
+    // `#calculator` is linked from blog posts (scripts/blog/product-facts.md),
+    // so it is part of the site's address space: renaming it breaks them.
+    <section
+      id="calculator"
+      className="scroll-mt-28 border-t border-line bg-paper-sunk py-band-sm lg:py-band"
+    >
       <Reveal className="shell flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-ink-faint">{calculator.eyebrow[lang]}</p>
         <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">

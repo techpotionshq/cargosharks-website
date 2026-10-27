@@ -19,6 +19,7 @@ here first.
 - Rate cards by lane, mode and carrier; partner rate requests; quotations.
 - Milestones with planned, revised and actual times.
 - Free time and demurrage: the clock starts from the milestone that starts it, and the charge line is written to the job as it runs.
+- On the website, a free time cost calculator: from containers a month, the share that overrun free time, the average days over and the daily rate, it estimates what overruns cost a month. It is an estimate of the size of the problem, not a tool for one shipment: it does not work out a container's free time, last free day or charge.
 - Customs status and document issue, in Arabic and English.
 - Costs, supplier invoice matching and receivables; each invoice line carries its tax treatment and rate.
 - A customer portal, an agent portal for overseas partners, and public shipment tracking.
@@ -33,9 +34,10 @@ here first.
 
 ## Pages worth linking
 
-Use only these paths for internal links. Arabic twins exist only where listed.
+Use only these paths for internal links, and only the `#` anchors written here. Arabic twins exist only where listed.
 
-- `/` and `/ar/` — home, with the free time calculator
+- `/` and `/ar/` — home
+- `/#calculator` and `/ar/#calculator` — the free time cost calculator described above. Link it only as that monthly estimate.
 - `/what-we-do/` — full scope (English only)
 - `/compare/`, `/compare/cargowise/`, `/compare/logistaas/`, `/compare/cargoes-runner/`, `/compare/spreadsheets/` (English only)
 - `/freight-forwarding-software-kuwait/`, `/freight-forwarding-software-uae/`, `/freight-forwarding-software-saudi-arabia/`
