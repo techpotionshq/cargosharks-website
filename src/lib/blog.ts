@@ -72,7 +72,10 @@ function copyIn(doc: PostDoc, lang: Lang): PostCopy | undefined {
 }
 
 function toMeta(doc: PostDoc): PostMeta {
-  const cover = typeof doc.cover === 'object' ? (doc.cover as Media | null)?.url : undefined
+  // Payload hands back the file URL with the site's trailing slash, which
+  // Next then 308s to the bare file name: one wasted round trip per image.
+  const cover =
+    typeof doc.cover === 'object' ? (doc.cover as Media | null)?.url?.replace(/\/$/, '') : undefined
   return {
     slug: doc.slug,
     publishedAt: (doc.publishedAt ?? doc.updatedAt).slice(0, 10),
