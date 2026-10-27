@@ -4,3 +4,15 @@
 # `no-downgrade` refuses a release published with weaker supply-chain evidence
 # (provenance, trusted publisher) than the release before it.
 trustPolicy: no-downgrade
+
+# Install scripts pnpm may run. esbuild's fetches its platform binary; it
+# arrives under payload's tooling (drizzle-kit, tsx) and under next.
+allowBuilds:
+  esbuild: true
+
+# `pino@9.14.0` is pinned exactly by payload, and it is the one 9.x release
+# published without the provenance attestation that 9.10 to 9.13.1 all carry,
+# so `no-downgrade` refuses it. 9.13.1 is attested and has the same API; this
+# points payload at it rather than loosening the trust policy.
+overrides:
+  pino@9.14.0: 9.13.1

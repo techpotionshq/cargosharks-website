@@ -1,9 +1,13 @@
 # cargosharks.com
 
-The CargoSharks website and blog. See `CLAUDE.md` for commands and rules.
+The CargoSharks website and blog. See `CLAUDE.md` for commands and rules, and
+`scripts/blog/README.md` for how posts are drafted and published.
 
 Moved out of the product repository (majwadalam/cargosharks, where it was
-`apps/landing`) with its history. What follows is the site's original README.
+`apps/landing`) with its history. It was a static export until the blog moved
+into Payload CMS; it is now one Next.js server (`output: 'standalone'`) with
+the admin at `/admin` and PostgreSQL behind it. What follows is the site's
+original README, from the static days, kept for the reasoning about the pages.
 
 # CargoSharks marketing site
 

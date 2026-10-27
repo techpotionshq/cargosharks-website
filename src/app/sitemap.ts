@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next'
 import { comparisons } from '@/content/comparisons'
 import { solutionNav, solutionPath } from '@/content/solution-nav'
 import { SITE_URL } from '@/components/StructuredData'
-import { allPosts, blogIndexAlternates, blogPath, postsIn } from '@/lib/blog'
+import { allPosts, blogIndexAlternates, blogPath } from '@/lib/blog'
 
 /**
  * The sitemap, generated from the same lists the pages are.
@@ -25,24 +25,19 @@ import { allPosts, blogIndexAlternates, blogPath, postsIn } from '@/lib/blog'
  * here, and inventing a filesystem walk to avoid seven strings would be more
  * machinery than the strings.
  *
- * `/not-found/` and `/server-error/` are deliberately absent: `postbuild.mjs`
- * copies them to `404.html` and `500.html`, and a sitemap that submits an error
- * page is asking a crawler to index a dead end.
+ * `/not-found/` and `/server-error/` are deliberately absent: a sitemap that
+ * submits an error page is asking a crawler to index a dead end.
  */
 
 /**
- * `force-static`, and it is required rather than an optimisation.
- *
- * A metadata route is a Route Handler, and Next treats one as dynamic unless it
- * is told otherwise — so under `output: 'export'` the build stops with "export
- * const dynamic = force-static not configured". It is also simply true here:
- * nothing in this file reads a request, and the one value that is not a literal
- * is the build date.
+ * Per request, from the CMS's cached reads, so a published post is in the
+ * sitemap at once. Next's own route-level revalidate is not used here: a
+ * cached sitemap is how techpotions.com ended up submitting a stale one.
  */
-export const dynamic = 'force-static'
+export const dynamic = 'force-dynamic'
 
 /**
- * The build date, to the day.
+ * The server's start date, to the day (it was the build date).
  *
  * `lastModified` is a hint rather than a fact, and a per-page git timestamp
  * would be a better one — but it would need the build to shell out to git,
@@ -52,7 +47,10 @@ export const dynamic = 'force-static'
  */
 const BUILT = new Date().toISOString().slice(0, 10)
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const all = await allPosts()
+  const blogLanguages = await blogIndexAlternates(SITE_URL)
+  const postsIn = (lang: 'en' | 'ar') => all.filter((post) => post[lang])
   const home = {
     url: `${SITE_URL}/`,
     lastModified: BUILT,
@@ -111,10 +109,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: postsIn(lang)[0]?.publishedAt ?? BUILT,
       changeFrequency: 'weekly' as const,
       priority: 0.6,
-      alternates: { languages: blogIndexAlternates(SITE_URL) },
+      alternates: { languages: blogLanguages },
     }))
 
-  const posts = allPosts().flatMap((post) => {
+  const posts = all.flatMap((post) => {
     const langs = (['en', 'ar'] as const).filter((lang) => post[lang])
     const url = (lang: 'en' | 'ar') => `${SITE_URL}${blogPath(lang, post.slug)}`
     const languages = Object.fromEntries(langs.map((lang) => [lang, url(lang)]))

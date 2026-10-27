@@ -11,11 +11,12 @@ import { blogPath, postsIn } from '@/lib/blog'
  *
  * Built from the same lists as the sitemap and the menus, so a new landing
  * page, comparison or post appears here without anyone remembering to add it.
- * `force-static` for the same reason `sitemap.ts` needs it under export.
+ * Per request, so a post appears as soon as it is published.
  */
-export const dynamic = 'force-static'
+export const dynamic = 'force-dynamic'
 
-export function GET() {
+export async function GET() {
+  const englishPosts = await postsIn('en')
   const line = (path: string, title: string, note: string) =>
     `- [${title}](${SITE_URL}${path}): ${note}`
 
@@ -50,7 +51,7 @@ export function GET() {
     ),
     '',
     '## Blog',
-    ...postsIn('en').map((post) =>
+    ...englishPosts.map((post) =>
       line(blogPath('en', post.slug), post.en!.title, post.en!.excerpt),
     ),
     '',

@@ -2,12 +2,21 @@ import { DocPage } from '@/components/DocPage'
 import { BlogIndexContent, blogIndexMetadata } from '@/content/pages/blog'
 import { blogPath, postsIn } from '@/lib/blog'
 
-export const metadata = blogIndexMetadata('en')
+/**
+ * Rendered per request from the CMS's cached reads (`src/lib/blog.ts`): a
+ * publish shows up on the next view, with no build. Not prerendered, because
+ * the image is built with no database to read.
+ */
+export const dynamic = 'force-dynamic'
 
-export default function Page() {
+export function generateMetadata() {
+  return blogIndexMetadata('en')
+}
+
+export default async function Page() {
   return (
     <DocPage lang="en" alternate={blogPath('ar')}>
-      <BlogIndexContent posts={postsIn('en')} lang="en" />
+      <BlogIndexContent posts={await postsIn('en')} lang="en" />
     </DocPage>
   )
 }

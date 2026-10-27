@@ -1,38 +1,25 @@
 /**
  * Refill the topic backlog from what people actually search for.
  *
- *   pnpm --filter @qabandi/landing blog:ideate               # add topics to topics.json
- *   pnpm --filter @qabandi/landing blog:ideate -- --signals  # print the inputs, call nothing
- *   pnpm --filter @qabandi/landing blog:ideate -- --dry      # run the model, write nothing
- *   pnpm --filter @qabandi/landing blog:ideate -- --count 7
+ * Called by `src/app/cron/blog/route.ts` when fewer than three topics are
+ * ready. It returns proposals; the route saves them to the CMS as `ready`
+ * topics, which an admin can reject before the generator reaches them.
  *
  * The signals are chosen for this audience. Developer forums say nothing about
- * a Kuwaiti customs desk, so the signal here is Google autocomplete — in English and in Arabic,
- * localised to the Gulf — plus SearXNG for what already ranks when it is set.
- * Every source is best-effort; if all come back empty, nothing is written.
+ * a Kuwaiti customs desk, so the signal here is Google autocomplete, in English
+ * and in Arabic, localised to the Gulf, plus SearXNG for what already ranks
+ * when it is set. Every source is best effort; if all come back empty, nothing
+ * is proposed.
  *
  * Only the non-commercial archetypes are proposed. Comparison, alternatives
  * and use-case posts need a human `expertNote`, which a model must not invent,
- * so those stay hand-seeded — the same gate `generate.mjs` enforces.
+ * so those stay hand-seeded: the same gate `pickTopic` enforces.
  *
  * Needs `OPENROUTER_API_KEY`. Optional: `OPENROUTER_IDEATE_MODEL`, `SEARXNG_URL`.
  */
 
-import {
-  complete,
-  existingTitles,
-  formatSources,
-  knownPaths,
-  output,
-  readBacklog,
-  searxng,
-  writeBacklog,
-} from './lib.mjs'
+import { complete, formatSources, searxng } from './lib.mjs'
 
-const args = process.argv.slice(2)
-const SIGNALS_ONLY = args.includes('--signals')
-const DRY = args.includes('--dry')
-const COUNT = Number(args.includes('--count') ? args[args.indexOf('--count') + 1] : 7) || 7
 const MODEL = process.env.OPENROUTER_IDEATE_MODEL || 'deepseek/deepseek-v4.1-flash'
 
 /**
@@ -170,27 +157,26 @@ const SCHEMA = {
   },
 }
 
-const backlog = readBacklog()
-const signals = await gatherSignals()
+/**
+ * @param {{ known: Set<string>, taken: string[], existingKeys: Set<string>, count?: number }} input
+ *   `taken`: titles and target queries already published or in the backlog.
+ * @returns {Promise<any[]>} new topics, keyed and de-duplicated
+ */
+export async function proposeTopics({ known, taken, existingKeys, count = 7 }) {
+  const COUNT = count
+  const signals = await gatherSignals()
 
-if (SIGNALS_ONLY) {
-  console.log(JSON.stringify(signals, null, 2))
-  process.exit(0)
-}
-if (!signals.searches.length && !signals.ranking.length) {
-  console.log('ideate: every signal source came back empty; nothing to propose')
-  output({ ideated: '0' })
-  process.exit(0)
-}
+  if (!signals.searches.length && !signals.ranking.length) {
+    console.log('ideate: every signal source came back empty; nothing to propose')
+    return []
+  }
 
-const known = knownPaths()
-const linkable = [...known].filter((p) => !p.startsWith('/ar/') && !p.startsWith('/blog/'))
-const taken = existingTitles(backlog)
+  const linkable = [...known].filter((p) => !p.startsWith('/ar/') && !p.startsWith('/blog/'))
 
-const { topics = [] } = await complete({
-  model: MODEL,
-  schema: SCHEMA,
-  system: `You plan the blog for CargoSharks, freight forwarding and customs brokerage software for Kuwait and the Gulf.
+  const { topics = [] } = await complete({
+    model: MODEL,
+    schema: SCHEMA,
+    system: `You plan the blog for CargoSharks, freight forwarding and customs brokerage software for Kuwait and the Gulf.
 Readers are owners, operations, pricing, customs and finance staff at forwarders and customs brokers in Kuwait, the UAE and Saudi Arabia.
 Propose exactly ${COUNT} topics. Each must:
 - target a search phrase that is visibly in, or a close variant of, the SEARCH SIGNALS (Arabic signals count: translate the intent to an English targetQuery; every post is also published in Arabic);
@@ -198,53 +184,45 @@ Propose exactly ${COUNT} topics. Each must:
 - not repeat or closely overlap an EXISTING topic;
 - use only these internal links: ${linkable.join(', ')}.
 Prefer evergreen questions over news. Regulation topics only where an official source exists.`,
-  user: `SEARCH SIGNALS (Google autocomplete, Gulf):\n${signals.searches.join('\n')}\n\nWHAT ALREADY RANKS:\n${formatSources(signals.ranking) || '(none)'}\n\nEXISTING TOPICS AND POSTS:\n${taken.join('\n')}`,
-})
-
-const ids = new Set(backlog.topics.map((t) => t.id))
-const normal = (s) =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-const seen = new Set(taken.map(normal))
-const fresh = topics
-  .filter((t) => t?.id && t.title && t.targetQuery)
-  // The id becomes a branch name (`blog/draft-<id>`), so it is held to kebab-case.
-  .map((t) => ({
-    ...t,
-    id: String(t.id)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 60),
-  }))
-  // Each accepted topic is added to `ids` and `seen` as it passes, so two
-  // proposals in one response that normalise to the same id or query are not
-  // both kept. The id is a branch name and the key for `--topic` and `--skip`;
-  // a duplicate would be hidden behind the first one's draft.
-  .filter((t) => {
-    if (!t.id || ids.has(t.id)) return false
-    if (seen.has(normal(t.title)) || seen.has(normal(t.targetQuery))) return false
-    ids.add(t.id)
-    seen.add(normal(t.title))
-    seen.add(normal(t.targetQuery))
-    return true
+    user: `SEARCH SIGNALS (Google autocomplete, Gulf):\n${signals.searches.join('\n')}\n\nWHAT ALREADY RANKS:\n${formatSources(signals.ranking) || '(none)'}\n\nEXISTING TOPICS AND POSTS:\n${taken.join('\n')}`,
   })
-  .map((t) => ({
-    ...t,
-    status: 'ready',
-    source: 'ideate',
-    internalLinks: (t.internalLinks ?? []).filter((p) => known.has(p)),
-  }))
-  .slice(0, COUNT)
 
-if (DRY) {
-  console.log(JSON.stringify(fresh, null, 2))
-  process.exit(0)
+  const ids = new Set(existingKeys)
+  const normal = (s) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+  const seen = new Set(taken.map(normal))
+  const fresh = topics
+    .filter((t) => t?.id && t.title && t.targetQuery)
+    // The id becomes the topic's key, so it is held to kebab-case.
+    .map((t) => ({
+      ...t,
+      id: String(t.id)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60),
+    }))
+    // Each accepted topic is added to `ids` and `seen` as it passes, so two
+    // proposals in one response that normalise to the same id or query are not
+    // both kept. The id is a branch name and the key for `--topic` and `--skip`;
+    // a duplicate would be hidden behind the first one's draft.
+    .filter((t) => {
+      if (!t.id || ids.has(t.id)) return false
+      if (seen.has(normal(t.title)) || seen.has(normal(t.targetQuery))) return false
+      ids.add(t.id)
+      seen.add(normal(t.title))
+      seen.add(normal(t.targetQuery))
+      return true
+    })
+    .map((t) => ({
+      ...t,
+      status: 'ready',
+      internalLinks: (t.internalLinks ?? []).filter((p) => known.has(p)),
+    }))
+    .slice(0, COUNT)
+
+  return fresh
 }
-
-backlog.topics.push(...fresh)
-writeBacklog(backlog)
-console.log(`ideate: added ${fresh.length} topics to topics.json`)
-output({ ideated: String(fresh.length), titles: fresh.map((t) => t.title).join(' · ') })

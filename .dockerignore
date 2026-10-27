@@ -4,3 +4,6 @@ out
 .git
 *.tsbuildinfo
 .env
+.env.*
+!.env.example
+media
