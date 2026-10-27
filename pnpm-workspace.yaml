@@ -1,0 +1,6 @@
+# Package-manager settings only; this repository is a single package.
+#
+# Carried over from the product repository, where these were decided:
+# `no-downgrade` refuses a release published with weaker supply-chain evidence
+# (provenance, trusted publisher) than the release before it.
+trustPolicy: no-downgrade

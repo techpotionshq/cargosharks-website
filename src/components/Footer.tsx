@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { resolveBrand } from '@qabandi/brand'
+import { resolveBrand } from '@/brand'
 import { footer, hrefFor, type Lang, languageSwitch } from '@/content/copy'
 import { EmailLink } from './Email'
 

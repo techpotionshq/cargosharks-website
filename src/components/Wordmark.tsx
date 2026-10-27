@@ -1,4 +1,4 @@
-import { resolveBrand } from '@qabandi/brand'
+import { resolveBrand } from '@/brand'
 
 /**
  * The supplied lockup, as supplied.

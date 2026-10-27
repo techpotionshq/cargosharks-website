@@ -20,7 +20,6 @@ const config: NextConfig = {
   output: 'export',
   reactStrictMode: true,
   poweredByHeader: false,
-  transpilePackages: ['@qabandi/brand'],
   images: { unoptimized: true },
   // `/ar` rather than `/ar.html` — a directory index per route keeps the two
   // languages symmetrical and matches what the old static pair did with

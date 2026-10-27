@@ -14,7 +14,13 @@ import { describe, expect, it } from 'vitest'
 
 const landing = join(__dirname, '..')
 const scanned = ['src', 'content']
-const allowed = new Set(['src/components/Email.tsx'])
+const allowed = new Set([
+  'src/components/Email.tsx',
+  // The brand, vendored from the product repository's packages/brand, which
+  // this test never scanned there. It is data; no page renders `supportEmail`.
+  'src/brand/types.ts',
+  'src/brand/brands/cargosharks.ts',
+])
 const ADDRESS = /[\w.+-]+@[\w-]+\.[a-z]{2,}/i
 
 function files(dir: string): string[] {

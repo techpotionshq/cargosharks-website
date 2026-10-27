@@ -1,3 +1,10 @@
+# cargosharks.com
+
+The CargoSharks website and blog. See `CLAUDE.md` for commands and rules.
+
+Moved out of the product repository (majwadalam/cargosharks, where it was
+`apps/landing`) with its history. What follows is the site's original README.
+
 # CargoSharks marketing site
 
 A Next.js app that builds to static files. Nine pages, two languages, no server.
@@ -68,14 +75,14 @@ public/pic/photos/           stock photography (Unsplash licence, commercial use
 
 `public/` holds nothing but assets now. Every page is a route.
 
-| Route | What it is |
-|---|---|
-| `/` and `/ar/` | the home page, eight blocks, ~9,200px |
-| `/what-we-do/` | the product explained standalone, for arrivals from search |
-| `/compare/` | how we are different, and who we are not for |
-| `/<slug>/` and `/ar/<slug>/` | ten landing pages for search, by market and by job, each with an Arabic twin, `hreflang`, an FAQ marked up as `FAQPage` and a limits section (`solutions.ts`) |
-| `/privacy/` `/terms/` `/dpa/` | **unreviewed drafts** — see below |
-| `/not-found/` `/server-error/` | copied to `404.html` and `500.html` at build |
+| Route                          | What it is                                                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/` and `/ar/`                 | the home page, eight blocks, ~9,200px                                                                                                                         |
+| `/what-we-do/`                 | the product explained standalone, for arrivals from search                                                                                                    |
+| `/compare/`                    | how we are different, and who we are not for                                                                                                                  |
+| `/<slug>/` and `/ar/<slug>/`   | ten landing pages for search, by market and by job, each with an Arabic twin, `hreflang`, an FAQ marked up as `FAQPage` and a limits section (`solutions.ts`) |
+| `/privacy/` `/terms/` `/dpa/`  | **unreviewed drafts** — see below                                                                                                                             |
+| `/not-found/` `/server-error/` | copied to `404.html` and `500.html` at build                                                                                                                  |
 
 The two error routes are named that way because Next silently drops a folder
 called `404` from the route table: the build passes, the copy runs, and the file
@@ -112,7 +119,7 @@ holds everything the two documents share, so neither gets a chance to drift.
 Everything Arabic-specific is the `[dir='rtl']` block in `globals.css`: the font
 stack, the heading leading, and the label tracking that would otherwise prise
 Arabic joins apart. **Add to that block rather than starting a second
-stylesheet.** Arabic set *inside* an English document — the 404, the language
+stylesheet.** Arabic set _inside_ an English document — the 404, the language
 switch, the bilingual toggle — takes `.arabic`, and if it is a block, an
 `.arabic-block` wrapper around it. That wrapper is not decoration: a `dir="rtl"`
 block narrower than its parent resolves its auto margins in its own direction
@@ -171,15 +178,15 @@ It was rebuilt against four sites in or near this market: **CargoWise**,
 **tentrucks**, **Terminal** and **Stripe**. The overlap between them turned out
 to be specific and almost entirely about restraint:
 
-| They do | We now do | We used to do |
-|---|---|---|
-| Light ground, dark bands as punctuation | paper, three dark bands | near-black throughout |
-| Display weight ~400–500 | `font-medium`, `-0.02em` | `font-extrabold`, `-0.04em` |
-| Photography carries the colour | three full-bleed photographs | a `radial-gradient` glow |
-| Hairline-divided cells | `gap-px` over `bg-line` | floating `rounded-2xl` cards |
-| Small radii, mono micro-labels | `rounded-lg`, `.tracked` | pill buttons, sentence case |
-| One oddly specific live number | the accruing figure, in a caption | a stat bar of five |
-| Something the reader operates | the free-time calculator | — |
+| They do                                 | We now do                         | We used to do                |
+| --------------------------------------- | --------------------------------- | ---------------------------- |
+| Light ground, dark bands as punctuation | paper, three dark bands           | near-black throughout        |
+| Display weight ~400–500                 | `font-medium`, `-0.02em`          | `font-extrabold`, `-0.04em`  |
+| Photography carries the colour          | three full-bleed photographs      | a `radial-gradient` glow     |
+| Hairline-divided cells                  | `gap-px` over `bg-line`           | floating `rounded-2xl` cards |
+| Small radii, mono micro-labels          | `rounded-lg`, `.tracked`          | pill buttons, sentence case  |
+| One oddly specific live number          | the accruing figure, in a caption | a stat bar of five           |
+| Something the reader operates           | the free-time calculator          | —                            |
 
 Not one of those is fashion. A light page with a saturated photograph on it has
 somewhere for the eye to rest; a dark page with a glow behind every heading does
@@ -217,7 +224,7 @@ tune.
 in a component still fails the build. The trade is written at the top of
 `palette.css`: if the product is ever re-skinned, that file is the work.
 
-Typefaces did *not* move. They are still `@qabandi/brand`, because the supplied
+Typefaces did _not_ move. They are still `@qabandi/brand`, because the supplied
 wordmark is Manrope ExtraBold converted to outlines and `apps/web` sets Arabic
 in the same IBM Plex Sans Arabic — a palette is a look, a typeface here is a
 fact about an asset that ships.
@@ -258,13 +265,13 @@ issues.
 
 ### The figures quoted, and how to re-check them
 
-| Figure | Where | Verify with |
-|---|---|---|
-| **2,727 interface strings**, EN and AR in sync | proof strip | `node -e "const c=o=>Object.values(o).reduce((n,v)=>n+(typeof v==='object'&&v?c(v):1),0);for(const f of ['en','ar'])console.log(f,c(require('./apps/web/messages/'+f+'.json')))"` |
-| **197 row-level policies, 80 audit triggers** | proof strip | `README.md` §Status — verified against a live PostgreSQL 18.6 |
-| **Four transport modes** (sea, air, road, courier) | hero, proof strip, `/what-we-do/` §03 | `packages/db/src/schema/enums.ts` → `modeEnum` (five values: sea is FCL + LCL). No rail — there is no rail rating rule or milestone template. |
-| **Three decimals on every dinar** | proof strip | `CLAUDE.md` §Non-negotiables; `packages/core` money tests |
-| Every divisor, increment and minimum | `/what-we-do/` §03 | `packages/core/src/chargeable.ts` — they are seed rows, not numbers written for a website |
+| Figure                                             | Where                                 | Verify with                                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **2,727 interface strings**, EN and AR in sync     | proof strip                           | `node -e "const c=o=>Object.values(o).reduce((n,v)=>n+(typeof v==='object'&&v?c(v):1),0);for(const f of ['en','ar'])console.log(f,c(require('./apps/web/messages/'+f+'.json')))"` |
+| **197 row-level policies, 80 audit triggers**      | proof strip                           | `README.md` §Status — verified against a live PostgreSQL 18.6                                                                                                                     |
+| **Four transport modes** (sea, air, road, courier) | hero, proof strip, `/what-we-do/` §03 | `packages/db/src/schema/enums.ts` → `modeEnum` (five values: sea is FCL + LCL). No rail — there is no rail rating rule or milestone template.                                     |
+| **Three decimals on every dinar**                  | proof strip                           | `CLAUDE.md` §Non-negotiables; `packages/core` money tests                                                                                                                         |
+| Every divisor, increment and minimum               | `/what-we-do/` §03                    | `packages/core/src/chargeable.ts` — they are seed rows, not numbers written for a website                                                                                         |
 
 ## Before this goes live
 
@@ -289,10 +296,11 @@ issues.
 
    No certification is claimed on any page — no SOC 2, no ISO 27001, no "GDPR
    compliant". Keep it that way until one exists.
+
 3. **The Arabic has not been read by a native reviewer.** It was written, not
    translated. What a reviewer still has to settle: «مُشغِّل» for a database
-   *trigger* is a coinage the deck invented and `ar.json` does not fix,
-   «الترسية» for *award* is Gulf tender vocabulary, and «ماذا نفعل» and
+   _trigger_ is a coinage the deck invented and `ar.json` does not fix,
+   «الترسية» for _award_ is Gulf tender vocabulary, and «ماذا نفعل» and
    «كيف نقارن» in the navigation are new here.
 4. **`hello@cargosharks.com` and the domain** are placeholders until the domain
    is held. So is `demo.cargosharks.com`. The three demo addresses are

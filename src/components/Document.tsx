@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { brandCss, faviconDataUri, resolveBrand } from '@qabandi/brand'
+import { brandCss, faviconDataUri, resolveBrand } from '@/brand'
 import { fontStylesheet } from '@/lib/fonts'
 import type { Lang } from '@/content/copy'
 import '@/app/globals.css'
