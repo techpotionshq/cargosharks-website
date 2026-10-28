@@ -933,6 +933,89 @@ export const leak = {
 }
 
 /**
+ * The pilot request form (`components/Pilot.tsx`). It replaced a mailto link
+ * that did nothing for a reader with no mail client set up.
+ */
+export const pilot = {
+  eyebrow: { en: 'Fifteen-day pilot', ar: 'تجربة لخمسة عشر يوماً' },
+  title: {
+    en: 'Try it on your own shipments.',
+    ar: 'جرّبوه على شحناتكم أنتم.',
+  },
+  body: {
+    en: 'Tell us a little about your desk. A person reads every request and replies with what a pilot on your data would involve, in English or Arabic.',
+    ar: 'أخبرونا قليلاً عن مكتبكم. يقرأ شخصٌ كل طلب ويرد عليكم بما تتضمنه تجربة على بياناتكم، بالعربية أو الإنجليزية.',
+  },
+  points: [
+    {
+      en: 'Your own rate cards, customers and lanes loaded in',
+      ar: 'أسعاركم وعملاؤكم وخطوطكم محمّلة فيه',
+    },
+    {
+      en: 'Your team on it from the first week, in both languages',
+      ar: 'فريقكم يعمل عليه من الأسبوع الأول، باللغتين',
+    },
+    {
+      en: 'Nothing to install, and your data stays yours',
+      ar: 'لا شيء لتثبيته، وبياناتكم تبقى ملككم',
+    },
+  ],
+  fields: {
+    name: { en: 'Your name', ar: 'الاسم' },
+    company: { en: 'Company', ar: 'الشركة' },
+    email: { en: 'Work email', ar: 'البريد الإلكتروني للعمل' },
+    phone: { en: 'Phone or WhatsApp', ar: 'الهاتف أو واتساب' },
+    country: { en: 'Country', ar: 'الدولة' },
+    volume: { en: 'Shipments a month', ar: 'الشحنات شهرياً' },
+    message: { en: 'Anything we should know (optional)', ar: 'أي شيء يجب أن نعرفه (اختياري)' },
+    optional: { en: 'optional', ar: 'اختياري' },
+    choose: { en: 'Choose', ar: 'اختاروا' },
+  },
+  countries: [
+    { value: 'Kuwait', en: 'Kuwait', ar: 'الكويت' },
+    { value: 'UAE', en: 'UAE', ar: 'الإمارات' },
+    { value: 'Saudi Arabia', en: 'Saudi Arabia', ar: 'السعودية' },
+    { value: 'Bahrain', en: 'Bahrain', ar: 'البحرين' },
+    { value: 'Oman', en: 'Oman', ar: 'عُمان' },
+    { value: 'Qatar', en: 'Qatar', ar: 'قطر' },
+    { value: 'Other', en: 'Elsewhere', ar: 'دولة أخرى' },
+  ],
+  volumes: [
+    { value: 'Under 50', en: 'Under 50', ar: 'أقل من 50' },
+    { value: '50-200', en: '50 to 200', ar: 'من 50 إلى 200' },
+    { value: '200-1,000', en: '200 to 1,000', ar: 'من 200 إلى 1,000' },
+    { value: 'Over 1,000', en: 'Over 1,000', ar: 'أكثر من 1,000' },
+  ],
+  submit: { en: 'Ask for a pilot', ar: 'اطلبوا التجربة' },
+  sending: { en: 'Sending…', ar: 'جارٍ الإرسال…' },
+  done: {
+    title: { en: 'Thank you. We have it.', ar: 'شكراً لكم، وصلنا طلبكم.' },
+    body: {
+      en: 'Someone from CargoSharks will be in touch. In the meantime the live demo is open, with no sign-up.',
+      ar: 'سيتواصل معكم أحد من CargoSharks. وإلى ذلك الحين النسخة التجريبية مفتوحة، بلا تسجيل.',
+    },
+  },
+  error: {
+    missing: {
+      en: 'Please fill in your name, company and a work email.',
+      ar: 'يرجى إدخال الاسم والشركة وبريد العمل.',
+    },
+    busy: {
+      en: 'Too many requests from here. Please try again in an hour, or email us.',
+      ar: 'طلبات كثيرة من هذا العنوان. يرجى المحاولة بعد ساعة، أو مراسلتنا بالبريد.',
+    },
+    failed: {
+      en: 'That did not go through. Please try again, or email us.',
+      ar: 'لم يُرسَل الطلب. يرجى المحاولة مرة أخرى، أو مراسلتنا بالبريد.',
+    },
+  },
+  privacy: {
+    en: 'Used only to answer this request. See the privacy policy.',
+    ar: 'تُستخدم فقط للرد على هذا الطلب. راجعوا سياسة الخصوصية.',
+  },
+}
+
+/**
  * The close.
  *
  * It used to be a headline beside a card printing three email addresses and a

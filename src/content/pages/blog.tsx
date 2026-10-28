@@ -291,7 +291,7 @@ export function PostContent({ post }: { post: Post }) {
           <h2 className="h2">{T.tail[lang]}</h2>
           <p className="hero__ways">
             <a href={DEMO_URL}>{T.demo[lang]}</a>
-            <a href={`${home}#demo`}>{T.pilot[lang]}</a>
+            <a href={`${home}#pilot`}>{T.pilot[lang]}</a>
             <a href={blogPath(lang)}>{T.all[lang]}</a>
           </p>
         </div>

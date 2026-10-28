@@ -2,6 +2,7 @@ import { Bilingual } from '@/components/Bilingual'
 import { Calculator } from '@/components/Calculator'
 import { Capabilities } from '@/components/Capabilities'
 import { Cta } from '@/components/Cta'
+import { Pilot } from '@/components/Pilot'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { SiteSchema } from '@/components/StructuredData'
@@ -62,6 +63,7 @@ export function Site({ lang }: { lang: Lang }) {
         <Leak lang={lang} />
         <Bilingual lang={lang} />
         <Cta lang={lang} />
+        <Pilot lang={lang} />
       </main>
       <Footer lang={lang} mark={<Wordmark tone="onDark" height={26} />} />
     </>

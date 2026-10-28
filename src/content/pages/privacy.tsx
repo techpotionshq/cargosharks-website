@@ -190,26 +190,26 @@ export function PrivacyContent() {
                   <span className="doc__n">03</span>This website
                 </h2>
                 <p>
-                  The site you are reading is static HTML. It has no backend, no database and no
-                  accounts. What follows is not a promise about a system that could change &mdash;
-                  it is a description of files.
+                  The site runs on a server we operate. It has a database, which holds the blog and
+                  the pilot requests sent through its form, and no visitor accounts.
                 </p>
                 <ul className="bullets">
                   <li>
-                    <strong>It sets no cookies.</strong> None: not a session cookie, not a
-                    preference cookie, not a consent cookie. There is nothing to consent to.
+                    <strong>It sets no cookies for visitors.</strong> Not a session cookie, not a
+                    preference cookie, not a consent cookie. The only cookie it ever sets is the
+                    sign-in cookie of our own staff when they edit the blog.
                   </li>
                   <li>
                     <strong>It runs no analytics.</strong> There is no Google Analytics, no
                     Plausible, no Matomo, no Meta pixel, no LinkedIn tag and no heatmap script. Its
                     scripts, served from this site under <code>/_next/static/</code>, run the menus,
-                    the scroll effects and the free time calculator. They send nothing to any other
-                    host, and they store nothing in the browser.
+                    the scroll effects, the free time calculator and the pilot form. They send
+                    nothing to any other host, and they store nothing in the browser.
                   </li>
                   <li>
-                    <strong>There is no form.</strong> To ask for a pilot you write to us from your
-                    own mail client, at the address printed on the page. Nothing you do on this site
-                    is sent anywhere unless you choose to send that email.
+                    <strong>One form, the pilot request.</strong> Nothing you do on this site is
+                    sent anywhere unless you send that form or write to us. Section&nbsp;04 says
+                    what the form collects.
                   </li>
                 </ul>
                 <h3>The one third party</h3>
@@ -239,10 +239,17 @@ export function PrivacyContent() {
                   <span className="doc__n">04</span>What you send when you enquire
                 </h2>
                 <p>
-                  If you write to <EmailLink />, we receive what you send: usually your name,
-                  company, email address, and your phone number if you include it, along with
-                  whatever you tell us about your operation. We use it to reply to you and to have
-                  the conversation you started.
+                  The pilot form asks for your name, company and work email, and optionally a phone
+                  or WhatsApp number, your country, roughly how many shipments you handle a month
+                  and a message. With it we record the language of the page and its address. It is
+                  stored in this site&rsquo;s database, and a notification with the same details
+                  is posted to our team&rsquo;s <strong>Slack</strong> workspace so that somebody
+                  answers it. Nothing is emailed to you automatically; a person replies.
+                </p>
+                <p>
+                  If you write to <EmailLink /> instead, we receive what you send: usually the same
+                  details and whatever you tell us about your operation. Either way we use it to
+                  reply to you and to have the conversation you started.
                 </p>
                 <p>We do not sell it, share it or add it to a list you did not ask to be on.</p>
               </section>

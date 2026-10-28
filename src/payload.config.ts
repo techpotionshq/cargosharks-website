@@ -5,6 +5,7 @@ import { ar } from '@payloadcms/translations/languages/ar'
 import { en } from '@payloadcms/translations/languages/en'
 import { buildConfig } from 'payload'
 import sharp from 'sharp'
+import { Leads } from '@/cms/collections/Leads'
 import { Media } from '@/cms/collections/Media'
 import { Posts } from '@/cms/collections/Posts'
 import { Topics } from '@/cms/collections/Topics'
@@ -57,7 +58,7 @@ export default buildConfig({
     defaultLocale: 'en',
     fallback: false,
   },
-  collections: [Posts, Topics, Media, Users],
+  collections: [Posts, Topics, Media, Leads, Users],
   db: postgresAdapter({
     pool: { connectionString: process.env.DATABASE_URL ?? '' },
     migrationDir: resolve(here, 'migrations'),

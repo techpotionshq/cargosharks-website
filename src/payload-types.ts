@@ -70,6 +70,7 @@ export interface Config {
     posts: Post
     topics: Topic
     media: Media
+    leads: Lead
     users: User
     'payload-kv': PayloadKv
     'payload-locked-documents': PayloadLockedDocument
@@ -81,6 +82,7 @@ export interface Config {
     posts: PostsSelect<false> | PostsSelect<true>
     topics: TopicsSelect<false> | TopicsSelect<true>
     media: MediaSelect<false> | MediaSelect<true>
+    leads: LeadsSelect<false> | LeadsSelect<true>
     users: UsersSelect<false> | UsersSelect<true>
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>
     'payload-locked-documents':
@@ -223,6 +225,35 @@ export interface Topic {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads".
+ */
+export interface Lead {
+  id: number
+  name: string
+  company: string
+  email: string
+  /**
+   * Phone or WhatsApp, as typed.
+   */
+  phone?: string | null
+  country?: ('Kuwait' | 'UAE' | 'Saudi Arabia' | 'Bahrain' | 'Oman' | 'Qatar' | 'Other') | null
+  volume?: ('Under 50' | '50-200' | '200-1,000' | 'Over 1,000') | null
+  message?: string | null
+  status: 'new' | 'contacted' | 'pilot' | 'won' | 'lost'
+  lang?: string | null
+  /**
+   * Where the form was sent from.
+   */
+  page?: string | null
+  /**
+   * Internal, never shown to the lead.
+   */
+  notes?: string | null
+  updatedAt: string
+  createdAt: string
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users".
  */
 export interface User {
@@ -283,6 +314,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media'
         value: number | Media
+      } | null)
+    | ({
+        relationTo: 'leads'
+        value: number | Lead
       } | null)
     | ({
         relationTo: 'users'
@@ -397,6 +432,25 @@ export interface MediaSelect<T extends boolean = true> {
   height?: T
   focalX?: T
   focalY?: T
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads_select".
+ */
+export interface LeadsSelect<T extends boolean = true> {
+  name?: T
+  company?: T
+  email?: T
+  phone?: T
+  country?: T
+  volume?: T
+  message?: T
+  status?: T
+  lang?: T
+  page?: T
+  notes?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

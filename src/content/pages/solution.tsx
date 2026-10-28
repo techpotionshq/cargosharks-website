@@ -165,7 +165,7 @@ export function SolutionContent({ item, lang }: { item: Solution; lang: Lang }) 
           <p className="hero__sub">{item.lede[lang]}</p>
           <p className="hero__ways">
             <a href={DEMO_URL}>{T.demo[lang]}</a>
-            <a href={`${home}#demo`}>{T.pilot[lang]}</a>
+            <a href={`${home}#pilot`}>{T.pilot[lang]}</a>
             <a href="/what-we-do/">{T.whatWeDo[lang]}</a>
             <a href="/compare/">{T.compare[lang]}</a>
           </p>
@@ -378,7 +378,7 @@ export function SolutionContent({ item, lang }: { item: Solution; lang: Lang }) 
             <a className="btn btn--primary" href={DEMO_URL}>
               {T.demo[lang]}
             </a>
-            <a className="btn btn--ghost" href={`${home}#demo`}>
+            <a className="btn btn--ghost" href={`${home}#pilot`}>
               {T.pilot[lang]}
             </a>
           </div>
