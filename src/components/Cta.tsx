@@ -1,5 +1,6 @@
 import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
 import { Reveal } from '@/components/Reveal'
+import { arrow, button, SectionHead } from '@/components/Section'
 import { cta, DEMO_URL, type Lang } from '@/content/copy'
 
 /**
@@ -14,6 +15,9 @@ import { cta, DEMO_URL, type Lang } from '@/content/copy'
  * the only piece of symmetry the page allows itself. A horizon is what a page
  * stops on — the same reason a film's last shot pulls back — and both bands are
  * dark for the same reason a printed brochure has a cover and a back cover.
+ *
+ * It is the last section now, under the questions, so the page ends on the
+ * two things a reader can do rather than on a form they have already passed.
  *
  * The check-marked list of three reassurances that used to sit under the buttons
  * is gone: "No sign-up · Three roles · Arabic and English" was three ticks in a
@@ -37,36 +41,24 @@ export function Cta({ lang }: { lang: Lang }) {
       <div className="absolute inset-0 -z-10 bg-void/80" />
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-void via-transparent to-void" />
 
-      <Reveal className="shell relative flex flex-col items-center text-center">
-        <p className="tracked text-[0.62rem] text-blue-lit">{cta.eyebrow[lang]}</p>
+      <div className="shell relative">
+        <SectionHead
+          dark
+          eyebrow={cta.eyebrow[lang]}
+          title={cta.title[lang]}
+          sub={cta.body[lang]}
+        />
 
-        <h2 className="mt-6 max-w-[18ch] text-balance font-display text-[clamp(2.1rem,4.8vw,3.4rem)] font-medium leading-[1.08] tracking-[-0.02em] text-on-void">
-          {cta.title[lang]}
-        </h2>
-
-        <p className="mt-7 max-w-[54ch] text-balance text-[1.0625rem] leading-[1.7] text-on-void-dim">
-          {cta.body[lang]}
-        </p>
-
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href={DEMO_URL}
-            className="tracked group flex items-center gap-2.5 rounded-lg bg-blue px-7 py-4 text-[0.66rem] leading-none text-on-brand transition-opacity hover:opacity-90"
-          >
+        <Reveal className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <a href={DEMO_URL} className={button.primary}>
             {cta.primary[lang]}
-            <ArrowRight
-              weight="bold"
-              className="size-3.5 transition-transform group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5"
-            />
+            <ArrowRight weight="bold" className={arrow} />
           </a>
-          <a
-            href="#pilot"
-            className="tracked rounded-lg border border-on-void-faint/40 px-7 py-4 text-[0.66rem] leading-none text-on-void transition-colors hover:bg-void-lift"
-          >
+          <a href="#pilot" className={button.secondaryDark}>
             {cta.secondary[lang]}
           </a>
-        </div>
-      </Reveal>
+        </Reveal>
+      </div>
     </section>
   )
 }

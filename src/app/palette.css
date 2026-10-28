@@ -80,4 +80,14 @@
   --pg-amber: #e3a52f;
 
   --pg-positive: #2f9e6b;
+
+  /* ── Washes ─────────────────────────────────────────────────────────────── */
+
+  /* Pale tints of the accents, for the surface behind an icon or a highlighted
+     column. Amber keeps its meaning here too: its wash only ever sits behind
+     something that costs money, and `amber-ink` is the same amber made
+     readable as text on paper. */
+  --pg-blue-wash: #edf2ff;
+  --pg-amber-wash: #fdf4e3;
+  --pg-amber-ink: #8a5a06;
 }

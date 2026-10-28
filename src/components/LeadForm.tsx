@@ -61,7 +61,7 @@ export function LeadForm({ lang }: { lang: Lang }) {
         <p className="mt-3 text-[0.95rem] leading-[1.7] text-ink-dim">{pilot.done.body[lang]}</p>
         <a
           href={DEMO_URL}
-          className="tracked group mt-6 inline-flex items-center gap-2.5 rounded-lg bg-blue px-6 py-3.5 text-[0.62rem] leading-none text-on-brand transition-opacity hover:opacity-90"
+          className="group mt-6 inline-flex items-center gap-2 rounded-xl bg-blue px-6 py-3.5 text-[0.98rem] font-semibold leading-none text-on-brand transition-opacity hover:opacity-90"
         >
           {lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}
           <ArrowRight weight="bold" className="size-3.5 rtl:-scale-x-100" />
@@ -160,7 +160,7 @@ export function LeadForm({ lang }: { lang: Lang }) {
         <button
           type="submit"
           disabled={state === 'sending'}
-          className="tracked group inline-flex items-center gap-2.5 rounded-lg bg-blue px-7 py-4 text-[0.66rem] leading-none text-on-brand transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="group inline-flex items-center gap-2 rounded-xl bg-blue px-7 py-4 text-[0.98rem] font-semibold leading-none text-on-brand transition-opacity hover:opacity-90 disabled:opacity-60"
         >
           {state === 'sending' ? pilot.sending[lang] : pilot.submit[lang]}
           <ArrowRight

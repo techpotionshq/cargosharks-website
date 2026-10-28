@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { SectionHead } from '@/components/Section'
 import { bilingual, type Lang } from '@/content/copy'
 
 /**
@@ -37,18 +38,14 @@ export function Bilingual({ lang }: { lang: Lang }) {
   return (
     <section className="border-t border-line bg-paper-sunk py-band-sm lg:py-band">
       <div className="shell flex flex-col items-center text-center">
-        <p className="tracked text-[0.62rem] text-ink-faint">{bilingual.eyebrow[lang]}</p>
-
-        <h2 className="mt-5 max-w-[22ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
-          {bilingual.title[lang]}
-        </h2>
-
-        <p className="mt-6 max-w-[60ch] text-balance text-[1.0625rem] leading-[1.7] text-ink-dim">
-          {bilingual.body[lang]}
-        </p>
+        <SectionHead
+          eyebrow={bilingual.eyebrow[lang]}
+          title={bilingual.title[lang]}
+          sub={bilingual.body[lang]}
+        />
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
-          <span className="tracked text-[0.58rem] text-ink-faint">
+          <span className="text-[0.9rem] font-medium text-ink-faint">
             {bilingual.toggleHint[lang]}
           </span>
           <div
@@ -125,10 +122,6 @@ export function Bilingual({ lang }: { lang: Lang }) {
             </div>
           </div>
         </div>
-
-        <p className="mx-auto mt-10 max-w-[56ch] border-t border-line pt-7 text-center text-[0.9375rem] leading-[1.7] text-ink-dim">
-          {bilingual.aside[lang]}
-        </p>
       </div>
     </section>
   )
