@@ -1,7 +1,7 @@
 import config from '@payload-config'
-import { getPayload } from 'payload'
-import { cover } from '../../../../scripts/blog/generate.mjs'
-import type { Media } from '@/payload-types'
+import { getPayload, type Payload } from 'payload'
+import { cover, coverById } from '../../../../scripts/blog/generate.mjs'
+import type { Media, Post } from '@/payload-types'
 
 /**
  * `POST /cron/covers/`: give every post whose cover is not a stock photo a
@@ -11,6 +11,10 @@ import type { Media } from '@/payload-types'
  * Run once by hand after that change, and safe to run again: a post whose
  * cover already has a `sourceId` is left alone, and a photo already on the
  * site is never picked twice.
+ *
+ * With a body of `{ "slug": "…", "photo": "pexels:<id>" }` it instead gives that
+ * one post that one photo, stock cover or not: how a person replaces a photo
+ * the search chose badly.
  *
  * `context.silent` keeps the publish hook from announcing an "update" to
  * Slack and IndexNow for a changed image; the blog cache is still refreshed.
@@ -26,6 +30,22 @@ export async function POST(request: Request) {
     return Response.json({ error: 'unauthorised' }, { status: 401 })
 
   const payload = await getPayload({ config })
+  const pick = (await request.json().catch(() => null)) as { slug?: string; photo?: string } | null
+  if (pick?.slug || pick?.photo) {
+    const id = /^pexels:(\d+)$/.exec(pick.photo ?? '')?.[1]
+    if (!pick.slug || !id)
+      return Response.json({ error: 'need "slug" and "photo": "pexels:<id>"' }, { status: 400 })
+    const { docs } = await payload.find({
+      collection: 'posts',
+      draft: true,
+      locale: 'en',
+      where: { slug: { equals: pick.slug } },
+      limit: 1,
+    })
+    const post = docs[0]
+    if (!post) return Response.json({ error: 'no such post' }, { status: 404 })
+    return Response.json({ results: [await swap(payload, post, await coverById(id))] })
+  }
   const stock = await payload.find({
     collection: 'media',
     where: { sourceId: { exists: true } },
@@ -52,30 +72,37 @@ export async function POST(request: Request) {
       continue
     }
     used.add(photo.sourceId)
-    const media = await payload.create({
-      collection: 'media',
-      data: {
-        alt: post.title,
-        sourceId: photo.sourceId,
-        credit: photo.credit,
-        creditUrl: photo.creditUrl,
-      },
-      file: {
-        data: photo.data,
-        mimetype: 'image/webp',
-        name: `${post.slug}-${photo.sourceId.replace(':', '-')}.webp`,
-        size: photo.data.length,
-      },
-    })
-    // A published post stays published; a draft gets a new draft version.
-    await payload.update({
-      collection: 'posts',
-      id: post.id,
-      draft: post._status !== 'published',
-      data: { cover: media.id },
-      context: { silent: true },
-    })
-    results.push({ slug: post.slug, replaced: true, photo: photo.sourceId, by: photo.credit })
+    results.push(await swap(payload, post, photo))
   }
   return Response.json({ results })
+}
+
+type Photo = { data: Buffer; sourceId: string; credit: string; creditUrl: string }
+
+/** Upload `photo` and make it `post`'s cover, quietly (see the header). */
+async function swap(payload: Payload, post: Post, photo: Photo) {
+  const media = await payload.create({
+    collection: 'media',
+    data: {
+      alt: post.title,
+      sourceId: photo.sourceId,
+      credit: photo.credit,
+      creditUrl: photo.creditUrl,
+    },
+    file: {
+      data: photo.data,
+      mimetype: 'image/webp',
+      name: `${post.slug}-${photo.sourceId.replace(':', '-')}.webp`,
+      size: photo.data.length,
+    },
+  })
+  // A published post stays published; a draft gets a new draft version.
+  await payload.update({
+    collection: 'posts',
+    id: post.id,
+    draft: post._status !== 'published',
+    data: { cover: media.id },
+    context: { silent: true },
+  })
+  return { slug: post.slug, replaced: true, photo: photo.sourceId, by: photo.credit }
 }
