@@ -283,6 +283,14 @@ const META_MIN = 120
 const META_MAX = 160
 const ARABIC = /[\u0600-\u06FF]/
 
+const containsInOrder = (text, phrase) => {
+  const words = String(phrase).toLowerCase().split(/\s+/).filter(Boolean)
+  const pattern = words
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('(?:\\s+\\S+){0,2}?\\s+')
+  return new RegExp(pattern, 'iu').test(String(text))
+}
+
 /** Why `c`'s title, description or keyword would cost it in search, if they would. */
 function searchProblems(lang, c) {
   const problems = []
@@ -292,8 +300,14 @@ function searchProblems(lang, c) {
   if (!keyword) problems.push('focusKeyword is empty')
   else if (lang === 'ar' && !ARABIC.test(keyword))
     problems.push('focusKeyword must be the Arabic search phrase, in Arabic')
-  else if (!title.toLowerCase().includes(keyword.toLowerCase()))
-    problems.push(`the title must contain the focusKeyword "${keyword}", near the start`)
+  // Every word of the keyword, in order, with room for the small words that
+  // make it a sentence: "chargeable weight in air freight" carries the
+  // keyword "chargeable weight air freight". Demanding the exact phrase gave
+  // "Calculate Chargeable Weight Air Freight Correctly".
+  else if (!containsInOrder(title, keyword))
+    problems.push(
+      `the title must carry the words of the focusKeyword "${keyword}" in order, near the start, reading as natural ${lang === 'ar' ? 'Arabic' : 'English'}`,
+    )
   if (title.length > TITLE_MAX)
     problems.push(`the title is ${title.length} characters; at most ${TITLE_MAX}`)
   if (meta.length < META_MIN || meta.length > META_MAX)
@@ -414,7 +428,8 @@ ARCHETYPE: ${ARCHETYPE[topic.archetype] ?? ARCHETYPE.guide}
 SEO rules:
 - The target query "${topic.targetQuery}" appears in the first sentence, in at least one ## heading, and naturally after that. No stuffing.
 - ## headings phrased the way people search. Lead every section with the answer.
-- 900-1500 words. Tables and lists where they help a reader scan.${
+- 900-1500 words. Tables and lists where they help a reader scan.
+- At least two internal links to the site's own pages listed in PRODUCT FACTS, where the reader would want them. Posts with none leave the landing pages without the links that help them rank.${
       WANTS_ARTIFACT.test(topic.targetQuery)
         ? `\n- "${topic.targetQuery}" asks for the thing itself: include it, as a Markdown table a reader can copy, in the first third of the article.`
         : ''
