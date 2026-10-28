@@ -290,6 +290,9 @@ const slugify = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+    // Every post already lives under /blog/; the model once prefixed its
+    // slug with "blog-" anyway.
+    .replace(/^(?:blog|post)-/, '')
     .slice(0, 80)
 
 // --- titles and meta --------------------------------------------------------
