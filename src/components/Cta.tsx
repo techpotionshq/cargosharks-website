@@ -1,7 +1,6 @@
 import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
 import { Reveal } from '@/components/Reveal'
 import { cta, DEMO_URL, type Lang } from '@/content/copy'
-import { EmailLink } from './Email'
 
 /**
  * The close, and the page's second and last photograph of the sea.
@@ -60,9 +59,12 @@ export function Cta({ lang }: { lang: Lang }) {
               className="size-3.5 transition-transform group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5"
             />
           </a>
-          <EmailLink className="tracked rounded-lg border border-on-void-faint/40 px-7 py-4 text-[0.66rem] leading-none text-on-void transition-colors hover:bg-void-lift">
+          <a
+            href="#pilot"
+            className="tracked rounded-lg border border-on-void-faint/40 px-7 py-4 text-[0.66rem] leading-none text-on-void transition-colors hover:bg-void-lift"
+          >
             {cta.secondary[lang]}
-          </EmailLink>
+          </a>
         </div>
       </Reveal>
     </section>

@@ -15,6 +15,13 @@ import { useEffect, useRef, useState } from 'react'
  * rendered money to two would be wrong in exactly the way `CLAUDE.md` says a
  * global `toFixed(2)` is wrong in the product.
  */
+/**
+ * Three decimals and a thousands separator, as the calculator and the product
+ * print a dinar amount. `toFixed(3)` alone gave "4187.267" beside "16,588.800".
+ */
+const kwd = (value: number) =>
+  value.toLocaleString('en-KW', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+
 export function Accrue({
   from,
   perDay,
@@ -24,7 +31,7 @@ export function Accrue({
   perDay: number
   className?: string
 }) {
-  const [text, setText] = useState(from.toFixed(3))
+  const [text, setText] = useState(kwd(from))
   const frame = useRef<number | null>(null)
 
   useEffect(() => {
@@ -44,7 +51,7 @@ export function Accrue({
 
     const paint = (now: number) => {
       const value = from + ((elapsed + (now - origin)) / 1000) * perSecond
-      const next = value.toFixed(3)
+      const next = kwd(value)
       // Writing the same string every frame is layout thrash for nothing.
       if (next !== last) {
         last = next

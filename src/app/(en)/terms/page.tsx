@@ -4,16 +4,13 @@ import { DocPage } from '@/components/DocPage'
 import { TermsContent } from '@/content/pages/terms'
 
 /**
- * `noindex` while it is a draft.
- *
- * The page says three times over that it has not been reviewed by counsel, and
- * a search engine that indexes it puts a page carrying fifty-three open
- * decisions in front of somebody who arrived looking for the finished one. Take
- * this off the day it is signed off, and not before.
+ * `noindex` until counsel has signed the document off. The text no longer
+ * carries draft warnings, but a legal page that search sends people to should
+ * be one a lawyer has read. Take this off the day it is signed off.
  */
 const title = 'Terms of service — CargoSharks'
 const description =
-  'The terms the pilot and the service run under. An unreviewed draft, written from the source code, with every open decision marked.'
+  'The terms CargoSharks is supplied under: what is supplied, your data, accounts and access, support, and exit.'
 
 export const metadata: Metadata = {
   title,

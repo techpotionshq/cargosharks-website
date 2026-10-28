@@ -93,7 +93,12 @@ export const nav: {
    * A photograph also has no language, which is why there is no `-ar` variant
    * to reach for here the way the captures need one.
    */
-  image?: { src: string; alt: Bi }
+  image?: {
+    src: string
+    alt: Bi
+    /** CSS `object-position` for the crop; the panel crops to the top by default. */
+    position?: string
+  }
   /**
    * `hrefAr` is the Arabic twin of a link, where the page has one. The
    * header sends an Arabic reader there and an English reader to `href`.
@@ -338,12 +343,17 @@ export const nav: {
     id: 'blog',
     label: { en: 'Blog', ar: 'المدونة' },
     section: '/blog/',
+    // Shown only until a post with a cover is published: the panel uses the
+    // newest post's cover in its place. A portrait shot with the containers in
+    // its lower half, so the crop is anchored low; anchored at the top, as the
+    // other panels are, it was a rectangle of sky.
     image: {
       src: '/pic/photos/containers-stack.webp',
       alt: {
         en: 'Shipping containers stacked high in a yard',
         ar: 'حاويات شحن مرصوفة عالياً في ساحة',
       },
+      position: '50% 78%',
     },
     intro: {
       en: 'Quoting, customs, free time, documents and getting paid, written for the people who do the work.',
@@ -513,17 +523,15 @@ export const hero = {
 /**
  * The proof strip.
  *
- * Every figure here is checkable, and `apps/landing/README.md` records how.
- * That is the difference between this band and the "10x faster" band on every
- * other site in the category: these are counts of things in the repository, so
- * they can only be wrong by going stale, and going stale is a thing a person
- * can be asked to check.
+ * Facts about the product a buyer can check in the demo, not outcomes: there
+ * is no pilot data yet, so nothing here is a saving or a speed-up. It used to
+ * count row-level policies, audit triggers and interface strings, which are
+ * true and mean nothing to the owner of a forwarding desk.
  */
 export const proof: { value: string; label: Bi }[] = [
-  { value: '4', label: { en: 'transport modes', ar: 'وسائل شحن' } },
-  { value: '197', label: { en: 'row-level policies', ar: 'سياسة أمان على مستوى الصف' } },
-  { value: '80', label: { en: 'audit triggers', ar: 'مُشغِّل تدقيق' } },
-  { value: '2,727', label: { en: 'strings, EN + AR', ar: 'نص واجهة بالعربية والإنجليزية' } },
+  { value: '1', label: { en: 'file from enquiry to paid invoice', ar: 'سجل من الاستفسار إلى الفاتورة المسدَّدة' } },
+  { value: '0', label: { en: 'times a shipment is keyed in twice', ar: 'مرات إدخال الشحنة مرتين' } },
+  { value: '2', label: { en: 'languages on every screen and document', ar: 'لغتان في كل شاشة ومستند' } },
   { value: '3', label: { en: 'decimals on every dinar', ar: 'خانات عشرية لكل دينار' } },
 ]
 
@@ -697,7 +705,9 @@ export const modesNote = {
  * which is a page nobody reaches before they have decided the product is
  * plausible.
  *
- * Five cards, each one a mechanism rather than a benefit. `icon` is a key, not
+ * Five cards. Each opens with what the desk gets and follows with how the
+ * product makes it hold: a buyer reads the first sentence and an evaluator the
+ * second, and they used to open with the database. `icon` is a key, not
  * a component — the mapping to Phosphor lives in `Capabilities.tsx`, so this
  * file stays a data file and swapping icon sets is one edit rather than five.
  */
@@ -708,8 +718,8 @@ export const capabilities = {
     ar: 'الأجزاء التي يفتحها الوكيل كل يوم.',
   },
   sub: {
-    en: 'Not a feature list. Five mechanisms, each one a thing the database enforces rather than a thing the interface asks nicely for.',
-    ar: 'ليست قائمة مزايا. خمس آليات، كل واحدة تفرضها قاعدة البيانات لا واجهة تطلبها بلطف.',
+    en: 'Five things a desk relies on, built so they still hold on the day everyone is in a hurry.',
+    ar: 'خمسة أمور يعتمد عليها المكتب، مبنية لتصمد حتى في اليوم الذي يستعجل فيه الجميع.',
   },
   cards: [
     {
@@ -718,8 +728,8 @@ export const capabilities = {
       icon: 'route',
       title: { en: 'Every leg on one timeline', ar: 'كل مرحلة على خط زمني واحد' },
       body: {
-        en: 'Pickup, gate-in, sailing, discharge, customs and delivery sit on the same file with planned, revised and actual times kept side by side. Nothing overwrites anything, so the question of when a date moved and who moved it always has an answer.',
-        ar: 'الاستلام والدخول والإبحار والتفريغ والتخليص والتسليم على السجل نفسه، والوقت المخطط والمعدّل والفعلي محفوظة جنباً إلى جنب. لا يُكتب شيء فوق شيء، فسؤال متى تغيّر التاريخ ومن غيّره له جواب دائماً.',
+        en: 'See where every shipment is, and what changed. Pickup, gate-in, sailing, discharge, customs and delivery sit on one file, with planned, revised and actual times side by side. Nothing is overwritten, so when a customer asks when a date moved and who moved it, there is an answer.',
+        ar: 'اعرفوا أين كل شحنة، وما الذي تغيّر. الاستلام والدخول والإبحار والتفريغ والتخليص والتسليم على سجل واحد، والوقت المخطط والمعدّل والفعلي جنباً إلى جنب. لا يُكتب شيء فوق شيء، فحين يسأل العميل متى تغيّر التاريخ ومن غيّره، يوجد جواب.',
       },
     },
     {
@@ -728,38 +738,38 @@ export const capabilities = {
       icon: 'money',
       title: { en: 'Three decimals, all the way down', ar: 'ثلاث خانات عشرية، من الطرف إلى الطرف' },
       body: {
-        en: 'The dinar has three decimal places. Every amount is kept and calculated in full and never rounded to two on its way to a screen — so the third decimal, which is real money in Kuwait, is never quietly dropped.',
-        ar: 'للدينار ثلاث خانات عشرية. كل مبلغ يُحفَظ ويُحسَب بالكامل، ولا يُقرَّب إلى خانتين في طريقه إلى الشاشة — فلا تضيع الخانة الثالثة بهدوء، وهي مالٌ حقيقي في الكويت.',
+        en: 'Dinar invoices that add up to the fils. The dinar has three decimal places, and every amount is kept and calculated to all three, never rounded to two on its way to a screen, so the third decimal is never quietly dropped.',
+        ar: 'فواتير بالدينار صحيحة حتى الفلس. للدينار ثلاث خانات عشرية، وكل مبلغ يُحفَظ ويُحسَب بها كاملة، ولا يُقرَّب إلى خانتين في طريقه إلى الشاشة، فلا تضيع الخانة الثالثة بهدوء.',
       },
     },
     {
       key: 'rates',
       span: 'half',
       icon: 'rates',
-      title: { en: 'Rate cards that cannot collide', ar: 'بطاقات أسعار لا تتصادم' },
+      title: { en: 'Quotes from the right rate, every time', ar: 'عروض من السعر الصحيح، في كل مرة' },
       body: {
-        en: 'Priced by lane, mode and carrier, with validity dates. Two cards cannot cover one route at one time — the database itself refuses it, so it is not a rule somebody has to remember.',
-        ar: 'التسعير حسب المسار والوسيلة والناقل، بتواريخ صلاحية. ولا يمكن لبطاقتين أن تغطّيا مساراً واحداً في وقت واحد — قاعدة البيانات نفسها ترفض ذلك، فليست قاعدة يتذكّرها أحد.',
+        en: 'Your team prices from the card that is actually current. Cards are set by lane, mode and carrier with validity dates, and two can never cover the same route at the same time, so nobody has to remember which one applies.',
+        ar: 'يسعّر فريقكم من البطاقة السارية فعلاً. البطاقات حسب المسار والوسيلة والناقل بتواريخ صلاحية، ولا يمكن لبطاقتين أن تغطّيا المسار نفسه في الوقت نفسه، فلا يحتاج أحد أن يتذكّر أيّها ينطبق.',
       },
     },
     {
       key: 'docs',
       span: 'half',
       icon: 'docs',
-      title: { en: 'Documents from the shipment’s own data', ar: 'مستندات من بيانات الشحنة نفسها' },
+      title: { en: 'Documents without the retyping', ar: 'مستندات بلا إعادة كتابة' },
       body: {
-        en: 'House bill, air waybill, delivery order, packing list, manifest and the customs pack — issued in Arabic or English from the file, not retyped into a template.',
-        ar: 'بوليصة الشحن الفرعية وبوليصة الشحن الجوي وأمر التسليم وقائمة التعبئة والبيان وحزمة التخليص — تصدر بالعربية أو الإنجليزية من السجل، لا تُكتب من جديد في قالب.',
+        en: 'House bill, air waybill, delivery order, packing list, manifest and the customs pack come straight from the shipment file, in Arabic or English. Nothing is retyped into a template, so nothing is mistyped on the way.',
+        ar: 'بوليصة الشحن الفرعية وبوليصة الشحن الجوي وأمر التسليم وقائمة التعبئة والبيان وحزمة التخليص تصدر مباشرة من سجل الشحنة، بالعربية أو الإنجليزية. لا يُعاد كتابة شيء في قالب، فلا يُخطأ في شيء على الطريق.',
       },
     },
     {
       key: 'tenancy',
       span: 'half',
       icon: 'tenancy',
-      title: { en: 'Your rows, and only your rows', ar: 'صفوفكم، وصفوفكم وحدها' },
+      title: { en: 'Each branch sees its own work', ar: 'كل فرع يرى عمله فقط' },
       body: {
-        en: 'Branch and entity separation is a row-level policy in the database, not a filter in the application. A query written wrong returns nothing rather than somebody else’s shipments.',
-        ar: 'الفصل بين الفروع والكيانات سياسة على مستوى الصف في قاعدة البيانات، لا مرشّح في التطبيق. والاستعلام المكتوب خطأً يعيد لا شيء، لا شحنات غيركم.',
+        en: 'Staff see the branches and entities they work for, and nothing else. The separation is enforced by the database itself rather than by a filter on the screen, so even a faulty report cannot show one branch another branch’s shipments.',
+        ar: 'يرى الموظفون الفروع والكيانات التي يعملون لها، ولا شيء غيرها. الفصل تفرضه قاعدة البيانات نفسها لا مرشّح على الشاشة، فحتى التقرير الخاطئ لا يُظهر لفرع شحنات فرع آخر.',
       },
     },
   ],
@@ -919,6 +929,89 @@ export const leak = {
     daysValue: { en: '131 and counting', ar: '131 ويزيد' },
     totalLabel: { en: 'Accrued to now', ar: 'المستحق حتى الآن' },
     written: { en: 'Charge line written automatically', ar: 'يُكتب بند التكلفة تلقائياً' },
+  },
+}
+
+/**
+ * The pilot request form (`components/Pilot.tsx`). It replaced a mailto link
+ * that did nothing for a reader with no mail client set up.
+ */
+export const pilot = {
+  eyebrow: { en: 'Fifteen-day pilot', ar: 'تجربة لخمسة عشر يوماً' },
+  title: {
+    en: 'Try it on your own shipments.',
+    ar: 'جرّبوه على شحناتكم أنتم.',
+  },
+  body: {
+    en: 'Tell us a little about your desk. A person reads every request and replies with what a pilot on your data would involve, in English or Arabic.',
+    ar: 'أخبرونا قليلاً عن مكتبكم. يقرأ شخصٌ كل طلب ويرد عليكم بما تتضمنه تجربة على بياناتكم، بالعربية أو الإنجليزية.',
+  },
+  points: [
+    {
+      en: 'Your own rate cards, customers and lanes loaded in',
+      ar: 'أسعاركم وعملاؤكم وخطوطكم محمّلة فيه',
+    },
+    {
+      en: 'Your team on it from the first week, in both languages',
+      ar: 'فريقكم يعمل عليه من الأسبوع الأول، باللغتين',
+    },
+    {
+      en: 'Nothing to install, and your data stays yours',
+      ar: 'لا شيء لتثبيته، وبياناتكم تبقى ملككم',
+    },
+  ],
+  fields: {
+    name: { en: 'Your name', ar: 'الاسم' },
+    company: { en: 'Company', ar: 'الشركة' },
+    email: { en: 'Work email', ar: 'البريد الإلكتروني للعمل' },
+    phone: { en: 'Phone or WhatsApp', ar: 'الهاتف أو واتساب' },
+    country: { en: 'Country', ar: 'الدولة' },
+    volume: { en: 'Shipments a month', ar: 'الشحنات شهرياً' },
+    message: { en: 'Anything we should know (optional)', ar: 'أي شيء يجب أن نعرفه (اختياري)' },
+    optional: { en: 'optional', ar: 'اختياري' },
+    choose: { en: 'Choose', ar: 'اختاروا' },
+  },
+  countries: [
+    { value: 'Kuwait', en: 'Kuwait', ar: 'الكويت' },
+    { value: 'UAE', en: 'UAE', ar: 'الإمارات' },
+    { value: 'Saudi Arabia', en: 'Saudi Arabia', ar: 'السعودية' },
+    { value: 'Bahrain', en: 'Bahrain', ar: 'البحرين' },
+    { value: 'Oman', en: 'Oman', ar: 'عُمان' },
+    { value: 'Qatar', en: 'Qatar', ar: 'قطر' },
+    { value: 'Other', en: 'Elsewhere', ar: 'دولة أخرى' },
+  ],
+  volumes: [
+    { value: 'Under 50', en: 'Under 50', ar: 'أقل من 50' },
+    { value: '50-200', en: '50 to 200', ar: 'من 50 إلى 200' },
+    { value: '200-1,000', en: '200 to 1,000', ar: 'من 200 إلى 1,000' },
+    { value: 'Over 1,000', en: 'Over 1,000', ar: 'أكثر من 1,000' },
+  ],
+  submit: { en: 'Ask for a pilot', ar: 'اطلبوا التجربة' },
+  sending: { en: 'Sending…', ar: 'جارٍ الإرسال…' },
+  done: {
+    title: { en: 'Thank you. We have it.', ar: 'شكراً لكم، وصلنا طلبكم.' },
+    body: {
+      en: 'Someone from CargoSharks will be in touch. In the meantime the live demo is open, with no sign-up.',
+      ar: 'سيتواصل معكم أحد من CargoSharks. وإلى ذلك الحين النسخة التجريبية مفتوحة، بلا تسجيل.',
+    },
+  },
+  error: {
+    missing: {
+      en: 'Please fill in your name, company and a work email.',
+      ar: 'يرجى إدخال الاسم والشركة وبريد العمل.',
+    },
+    busy: {
+      en: 'Too many requests from here. Please try again in an hour, or email us.',
+      ar: 'طلبات كثيرة من هذا العنوان. يرجى المحاولة بعد ساعة، أو مراسلتنا بالبريد.',
+    },
+    failed: {
+      en: 'That did not go through. Please try again, or email us.',
+      ar: 'لم يُرسَل الطلب. يرجى المحاولة مرة أخرى، أو مراسلتنا بالبريد.',
+    },
+  },
+  privacy: {
+    en: 'Used only to answer this request. See the privacy policy.',
+    ar: 'تُستخدم فقط للرد على هذا الطلب. راجعوا سياسة الخصوصية.',
   },
 }
 

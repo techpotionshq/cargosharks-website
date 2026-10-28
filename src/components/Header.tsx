@@ -11,6 +11,7 @@ import { DEMO_URL, hrefFor, type Lang, languageSwitch, nav } from '@/content/cop
 type Latest = {
   slug: string
   publishedAt: string
+  cover: string | null
   en: { title: string } | null
   ar: { title: string } | null
 }
@@ -478,11 +479,32 @@ export function Header({
                   a container yard has no language.
                 */}
                 <div className="lg:col-span-4">
-                  {panelItem.image ? (
+                  {/* The Blog panel shows the newest post's cover, a
+                      landscape photograph chosen for that post, and links it. */}
+                  {panelItem.id === 'blog' && latest[0]?.cover ? (
+                    <a
+                      href={postHref(latest[0].slug, lang)}
+                      onClick={() => setPanel(null)}
+                      className="block overflow-hidden rounded-lg border border-line/60"
+                    >
+                      <img
+                        src={latest[0].cover}
+                        alt=""
+                        width={1280}
+                        height={720}
+                        className="block aspect-[16/10] w-full object-cover"
+                      />
+                    </a>
+                  ) : panelItem.image ? (
                     <span className="block overflow-hidden rounded-lg border border-line/60">
                       <img
                         src={panelItem.image.src}
                         alt={panelItem.image.alt[lang]}
+                        style={
+                          panelItem.image.position
+                            ? { objectPosition: panelItem.image.position }
+                            : undefined
+                        }
                         width={1000}
                         height={667}
                         loading="lazy"

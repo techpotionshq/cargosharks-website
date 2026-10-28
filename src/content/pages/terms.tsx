@@ -41,19 +41,6 @@ export function TermsContent() {
         </div>
       </section>
 
-      <div className="draft">
-        <div className="shell">
-          <span className="draft__tag">Note</span>
-          <p>
-            These terms describe how CargoSharks is supplied and what each side is responsible for.
-            The product description is grounded in the codebase rather than in a template.{' '}
-            <b>The signed agreement and its order form govern.</b> Where those and this page differ,
-            they prevail, and the commercial particulars &mdash; fees, term, service levels,
-            liability and governing law &mdash; are settled there rather than here.
-          </p>
-        </div>
-      </div>
-
       <section className="band band--paper">
         <div className="shell">
           <div className="doc">
@@ -124,24 +111,6 @@ export function TermsContent() {
             </nav>
 
             <div className="doc__body">
-              <div className="draft-card">
-                <h2>What this is, and what it is not</h2>
-                <p>
-                  Written from the CargoSharks codebase. Sections 03, 05, 09, 10 and 11 describe the
-                  software and are accurate as of 25 August 2026 &mdash; they were written by
-                  reading the migrations, the adapters and the specification&rsquo;s build-status
-                  table, not by describing an intention.
-                </p>
-                <p>
-                  The commercial particulars live in your agreement and its order form, not here. In
-                  particular <b>no price appears anywhere in this document</b>, and none should be
-                  inferred from it.
-                </p>
-                <p>
-                  No certification is claimed. CargoSharks holds no SOC&nbsp;2 report, no
-                  ISO&nbsp;27001 certificate and no independent security attestation.
-                </p>
-              </div>
 
               <section id="t-what">
                 <h2>
@@ -158,6 +127,13 @@ export function TermsContent() {
                   and the <a href="/dpa/">data-processing addendum</a>, which governs personal data.
                   Where they conflict, the order form prevails, then the agreement, then the
                   addendum on anything concerning personal data, then these terms.
+                </p>
+                <p>
+                  The commercial particulars &mdash; fees, term, service levels, liability and
+                  governing law &mdash; are settled in the signed agreement and its order form, not
+                  here, and no price should be inferred from this page. No certification is
+                  claimed: CargoSharks holds no SOC&nbsp;2 report, no ISO&nbsp;27001 certificate
+                  and no independent security attestation.
                 </p>
               </section>
 

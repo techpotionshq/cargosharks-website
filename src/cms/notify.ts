@@ -11,7 +11,11 @@ export const SITE_URL = process.env.SITE_URL ?? 'https://cargosharks.com'
 /** `public/<key>.txt` holds the key; IndexNow fetches it to check we own the host. */
 const INDEXNOW_KEY = 'fb93406b9c03f241b9736dbbb81332bb'
 
-export async function slack(text: string): Promise<void> {
+/**
+ * Post to Slack. `channel` defaults to the blog's; pilot requests pass
+ * `SLACK_LEADS_CHANNEL` so sales and the blog can live in different channels.
+ */
+export async function slack(text: string, channel?: string): Promise<void> {
   const token = process.env.SLACK_BOT_TOKEN
   if (!token) return
   try {
@@ -22,7 +26,7 @@ export async function slack(text: string): Promise<void> {
         'content-type': 'application/json; charset=utf-8',
       },
       body: JSON.stringify({
-        channel: process.env.SLACK_BLOG_CHANNEL ?? '#blog-automation',
+        channel: channel ?? process.env.SLACK_BLOG_CHANNEL ?? '#blog-automation',
         text,
         unfurl_links: false,
       }),
