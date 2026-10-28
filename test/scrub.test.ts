@@ -22,6 +22,10 @@ describe('scrub', () => {
     expect(scrub('This post says that rates vary.')).toBe('Rates vary.')
   })
 
+  it('keeps an empty table cell a cell', () => {
+    expect(scrub('| Duty | % of CIF | — |')).toBe('| Duty | % of CIF | - |')
+  })
+
   it('uses the Arabic comma in Arabic text', () => {
     expect(scrub('وقت السماح — سبعة أيام')).toBe('وقت السماح، سبعة أيام')
   })

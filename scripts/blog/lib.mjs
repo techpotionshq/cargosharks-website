@@ -65,8 +65,13 @@ export async function complete({ system, user, schema, model }) {
  * (5–7 days) and stays.
  */
 export function scrub(text) {
+  // Table rows first: a cell holding only a dash means "nothing", and turned
+  // into a stray comma when the rules below reached it.
+  const rows = String(text).replace(/^\s*\|.*\|\s*$/gm, (row) =>
+    row.replace(/\|\s*[—–]\s*(?=\|)/g, '| - '),
+  )
   return (
-    String(text)
+    rows
       .replace(/^(\s*(?:[-*]|\d+\.)\s+\*\*[^*\n]+\*\*)\s*[—–]\s*/gm, '$1: ')
       // Arabic takes its own comma.
       .replace(

@@ -249,15 +249,23 @@ async function cover(query, used) {
 // --- checks ----------------------------------------------------------------
 
 function clean(markdown) {
-  return markdown
-    .replace(/^﻿?\s*---\n[\s\S]*?\n---\s*/, '')
-    .replace(/^\s*#\s+.*\n/, '')
-    .replace(
-      /\n#{1,6}\s*(sources|references|further reading|citations|faqs?|frequently asked questions|المصادر|المراجع|الأسئلة الشائعة)\s*\n[\s\S]*$/i,
-      '',
-    )
-    .trim()
-    .concat('\n')
+  return (
+    markdown
+      // The site's own pages as relative links: an absolute www. URL redirects,
+      // and the link checker only knows paths.
+      .replace(
+        /\]\(https?:\/\/(?:www\.)?cargosharks\.com(\/[^)\s]*)?\)/g,
+        (_, path) => `](${path || '/'})`,
+      )
+      .replace(/^﻿?\s*---\n[\s\S]*?\n---\s*/, '')
+      .replace(/^\s*#\s+.*\n/, '')
+      .replace(
+        /\n#{1,6}\s*(sources|references|further reading|citations|faqs?|frequently asked questions|المصادر|المراجع|الأسئلة الشائعة)\s*\n[\s\S]*$/i,
+        '',
+      )
+      .trim()
+      .concat('\n')
+  )
 }
 
 const slugify = (s) =>
@@ -267,6 +275,83 @@ const slugify = (s) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 80)
 
+// --- titles and meta --------------------------------------------------------
+
+/** What Google shows of a title and a description before it cuts them off. */
+const TITLE_MAX = 60
+const META_MIN = 120
+const META_MAX = 160
+const ARABIC = /[\u0600-\u06FF]/
+
+/** Why `c`'s title, description or keyword would cost it in search, if they would. */
+function searchProblems(lang, c) {
+  const problems = []
+  const title = String(c.title ?? '')
+  const meta = String(c.metaDescription ?? '')
+  const keyword = String(c.focusKeyword ?? '')
+  if (!keyword) problems.push('focusKeyword is empty')
+  else if (lang === 'ar' && !ARABIC.test(keyword))
+    problems.push('focusKeyword must be the Arabic search phrase, in Arabic')
+  else if (!title.toLowerCase().includes(keyword.toLowerCase()))
+    problems.push(`the title must contain the focusKeyword "${keyword}", near the start`)
+  if (title.length > TITLE_MAX)
+    problems.push(`the title is ${title.length} characters; at most ${TITLE_MAX}`)
+  if (meta.length < META_MIN || meta.length > META_MAX)
+    problems.push(
+      `metaDescription is ${meta.length} characters; it must be ${META_MIN}-${META_MAX}`,
+    )
+  return problems
+}
+
+const SEARCH_FIELDS_SCHEMA = {
+  name: 'search_fields',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'metaDescription', 'focusKeyword'],
+    properties: {
+      title: { type: 'string' },
+      metaDescription: { type: 'string' },
+      focusKeyword: { type: 'string' },
+    },
+  },
+}
+
+/**
+ * The model ignores length and keyword rules in a long generation about half
+ * the time: titles came back without their search phrase, descriptions at
+ * 205 characters, and once an Arabic edition with no description and an
+ * English keyword. A short call for those three fields alone fixes it; if it
+ * still fails, the draft keeps what it has and the warning says why.
+ */
+async function polish(lang, c, topic, system) {
+  let problems = searchProblems(lang, c)
+  for (let attempt = 0; problems.length && attempt < 2; attempt++) {
+    const current = {
+      title: c.title,
+      metaDescription: c.metaDescription,
+      focusKeyword: c.focusKeyword,
+    }
+    const fields = await complete({
+      model: MODEL,
+      schema: SEARCH_FIELDS_SCHEMA,
+      system,
+      user: [
+        `Target query (English): ${topic.targetQuery}`,
+        `Language: ${lang === 'ar' ? 'Arabic' : 'English'}`,
+        `Current: ${JSON.stringify(current)}`,
+        `Fix these and nothing else:\n- ${problems.join('\n- ')}`,
+        `The article begins:\n${String(c.markdown).slice(0, 1500)}`,
+      ].join('\n\n'),
+    })
+    c = { ...c, ...fields }
+    problems = searchProblems(lang, c)
+  }
+  if (problems.length) console.warn(`${lang}: ${problems.join('; ')}`)
+  return c
+}
+
 // --- the run ---------------------------------------------------------------
 
 /**
@@ -274,14 +359,21 @@ const slugify = (s) =>
  * first-hand detail (comparison, alternatives, use-case) when nobody has
  * written their `expertNote`. Returns the reason when there is none.
  */
-export function pickTopic(ready) {
+export function pickTopic(ready, known = new Set()) {
+  // A topic whose search is already a landing page's (e.g. "WhatsApp for
+  // freight forwarders" and /whatsapp-for-freight-forwarders/) would compete
+  // with that page in Google rather than add to it.
+  const covered = (t) => known.has(`/${slugify(t.targetQuery ?? '')}/`)
+  const duplicates = ready.filter(covered)
+  ready = ready.filter((t) => !covered(t))
   const topic = ready.find((t) => !PROOF_REQUIRED.has(t.archetype) || t.expertNote?.trim())
-  if (topic) return { topic }
+  if (topic) return { topic, duplicates }
   const blocked = ready.filter((t) => PROOF_REQUIRED.has(t.archetype)).map((t) => t.key ?? t.title)
   return {
     reason: ready.length
       ? `no ready topic cleared the proof gate (${blocked.join(', ')} need an expert note)`
       : 'no ready topics left',
+    duplicates,
   }
 }
 
@@ -351,7 +443,8 @@ SEO rules:
 
   en = await ensureFaqs('en', en, askForFaqs(VOICE))
   // Before the Arabic is written, so a corrected claim reaches both editions.
-  ;({ copy: en } = await factCheck(en, { model: MODEL, system: VOICE }))
+  const checked = await factCheck(en, { model: MODEL, system: VOICE })
+  en = checked.copy
 
   const AR_SYSTEM = `${VOICE}
 
@@ -381,13 +474,8 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
     focusKeyword: String(c.focusKeyword).trim(),
     faqs: usableFaqs(c).map((f) => ({ question: scrub(f.question), answer: scrub(f.answer) })),
   })
-  for (const [lang, c] of [
-    ['en', en],
-    ['ar', ar],
-  ]) {
-    if (!String(c.title).toLowerCase().includes(String(c.focusKeyword).toLowerCase()))
-      console.warn(`${lang}: the title does not contain the focus keyword "${c.focusKeyword}"`)
-  }
+  en = await polish('en', en, topic, VOICE)
+  ar = await polish('ar', ar, topic, AR_SYSTEM)
   const enLinks = unlinkMissing(scrub(clean(en.markdown)), known)
   const arLinks = unlinkMissing(arabicTwins(scrub(clean(ar.markdown)), known), known)
   const enBody = enLinks.markdown
@@ -407,5 +495,6 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
     ar: { ...pick(ar), body: arBody },
     cover: coverImage,
     unlinked,
+    flagged: checked.flagged,
   }
 }

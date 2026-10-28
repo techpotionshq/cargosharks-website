@@ -109,7 +109,13 @@ async function run() {
       }
     }
 
-    const { topic, reason } = pickTopic(ready)
+    const { topic, reason, duplicates } = pickTopic(ready, known)
+    for (const dup of duplicates ?? []) {
+      await payload.update({ collection: 'topics', id: dup.id, data: { status: 'rejected' } })
+      void slack(
+        `CargoSharks blog: topic "${dup.title}" rejected; its search "${dup.targetQuery}" is already a landing page, and a post would compete with it.`,
+      )
+    }
     if (!topic) {
       result.drafted = false
       result.reason = reason
@@ -190,6 +196,11 @@ async function run() {
         `<${preview('en')}|Preview> · <${preview('ar')}|المعاينة> · <${SITE_URL}/admin/collections/posts/${post.id}|Edit and publish in admin>`,
         draft.unlinked.length
           ? `Links removed, no such page: ${draft.unlinked.map((u: string) => `\`${u}\``).join(', ')}`
+          : '',
+        draft.flagged?.length
+          ? `:warning: *Check before publishing*, the fact-check could not confirm:\n${draft.flagged
+              .map((f: { quote: string; reason: string }) => `> ${f.quote}\n_${f.reason}_`)
+              .join('\n')}`
           : '',
       ]
         .filter(Boolean)

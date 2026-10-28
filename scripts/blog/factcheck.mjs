@@ -91,13 +91,18 @@ const VERDICT_SCHEMA = {
   },
 }
 
+/** A replacement written about the check rather than for the reader. */
+const META = /\b(search results?|sources?|evidence|not supported|unverified|fact[- ]?check)/i
+
 /** At most this many claims are searched: each is a request. */
 const MAX_CLAIMS = 10
 
 /**
  * @param {{ markdown: string, faqs?: { question: string, answer: string }[] }} copy
  * @param {{ model: string, system: string }} opts
- * @returns {Promise<{ copy: typeof copy, fixed: { quote: string, verdict: string, reason: string }[] }>}
+ * @returns {Promise<{ copy: typeof copy, fixed: Claim[], flagged: Claim[] }>}
+ *   `fixed` were rewritten; `flagged` could not be, and go to Slack for review.
+ * @typedef {{ quote: string, verdict: string, reason: string }} Claim
  */
 export async function factCheck(copy, { model, system }) {
   try {
@@ -106,7 +111,7 @@ export async function factCheck(copy, { model, system }) {
       model,
       schema: CLAIMS_SCHEMA,
       system,
-      user: `THE ARTICLE:\n\n${text}\n\nList every checkable factual claim in it: a tax or duty rate, a fee or amount, a deadline or date, what a law or authority requires, a statistic. Not advice, not general practice. Copy each exactly as written. At most ${MAX_CLAIMS}, the most specific first. Return [] if there are none.`,
+      user: `THE ARTICLE:\n\n${text}\n\nList every checkable factual claim in it: a tax or duty rate, a fee or amount, a deadline or date, what a law or authority requires, a statistic, and any statement that something has NOT been announced, published or decided (those go stale fastest). Not advice, not general practice. Copy each exactly as written. At most ${MAX_CLAIMS}, the most specific first. Return [] if there are none.`,
     })
     if (!claims.length) return { copy, fixed: [] }
 
@@ -126,15 +131,23 @@ export async function factCheck(copy, { model, system }) {
     const { verdicts = [] } = await complete({
       model,
       schema: VERDICT_SCHEMA,
-      system: `You fact-check a freight trade publication. Judge each claim only on the search results given and these settled facts:\n${GULF_FACTS}\n\n"supported" needs a result or fact that states it. A result from a vendor blog is weaker than one from an authority, a Big Four firm or a law firm; when sources disagree on a date, the claim is unverified. Keep replacements in the article's voice, no em dashes.`,
+      system: `You fact-check a freight trade publication. Judge each claim only on the search results given and these settled facts:\n${GULF_FACTS}\n\n"supported" needs a result or fact that states it. A result from a vendor blog is weaker than one from an authority, a Big Four firm or a law firm; when sources disagree on a date, the claim is unverified. A claim that something is not yet announced is contradicted by any credible result that announces it.\nA replacement is article prose for the reader: correct the claim from the results, or drop or qualify the unsupported specific. Never mention search results, sources, evidence or checking in it. Keep the article's voice, no em dashes.`,
       user: evidence.join('\n\n'),
     })
 
     let { markdown } = copy
     let faqs = copy.faqs
     const fixed = []
+    const flagged = []
     for (const v of verdicts) {
-      if (v.verdict === 'supported' || !v.replacement?.trim() || !v.quote) continue
+      if (v.verdict === 'supported' || !v.quote) continue
+      // A replacement that talks about the checking ("no search result
+      // supports…") once went into a post verbatim. Those, and empty ones,
+      // are left for the person reviewing the draft instead.
+      if (!v.replacement?.trim() || META.test(v.replacement)) {
+        flagged.push({ quote: v.quote, verdict: v.verdict, reason: v.reason })
+        continue
+      }
       if (markdown.includes(v.quote)) markdown = markdown.replace(v.quote, v.replacement.trim())
       else if (faqs?.some((f) => f.answer.includes(v.quote)))
         faqs = faqs.map((f) => ({ ...f, answer: f.answer.replace(v.quote, v.replacement.trim()) }))
@@ -142,10 +155,12 @@ export async function factCheck(copy, { model, system }) {
       fixed.push({ quote: v.quote, verdict: v.verdict, reason: v.reason })
     }
     for (const f of fixed)
-      console.warn(`factcheck: ${f.verdict}: ${f.quote.slice(0, 100)} (${f.reason})`)
-    return { copy: { ...copy, markdown, faqs }, fixed }
+      console.warn(`factcheck: ${f.verdict}, rewritten: ${f.quote.slice(0, 100)} (${f.reason})`)
+    for (const f of flagged)
+      console.warn(`factcheck: ${f.verdict}, for review: ${f.quote.slice(0, 100)} (${f.reason})`)
+    return { copy: { ...copy, markdown, faqs }, fixed, flagged }
   } catch (error) {
     console.warn(`factcheck: ${error.message}; the draft is unchecked`)
-    return { copy, fixed: [] }
+    return { copy, fixed: [], flagged: [] }
   }
 }
