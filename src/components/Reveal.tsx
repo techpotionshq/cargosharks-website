@@ -28,17 +28,8 @@ import { motion, useReducedMotion } from 'motion/react'
  * visible, so on a fast scroll the reader passes a paragraph mid-fade. Starting
  * it 80px early means it has finished by the time it is properly on screen.
  *
- * Under `prefers-reduced-motion` there is no movement and no fade: the
- * transition takes no time, and `[data-reveal]` in `globals.css` pins the block
- * visible before any script runs.
- *
- * **It must not render a different element when motion is reduced.** It used
- * to return a plain `<div>` in that case. The server cannot know the reader's
- * setting, so it always rendered the hidden starting state; the browser then
- * hydrated a `<div>` with no style over it, and React does not repair a style
- * attribute during hydration. The hidden state stuck, and a reader with Reduce
- * Motion switched on (an iPhone setting a lot of people use) got a home page
- * with an invisible headline and nineteen empty sections.
+ * Under `prefers-reduced-motion` the wrapper renders its children and nothing
+ * else — not a faster animation, none.
  */
 export function Reveal({
   children,
@@ -52,14 +43,15 @@ export function Reveal({
 }) {
   const reduced = useReducedMotion()
 
+  if (reduced) return <div className={className}>{children}</div>
+
   return (
     <motion.div
-      data-reveal=""
       className={className}
       initial={{ opacity: 0, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '0px 0px -80px 0px' }}
-      transition={reduced ? { duration: 0 } : { duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
     >
       {children}
     </motion.div>

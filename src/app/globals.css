@@ -76,9 +76,6 @@
   --color-amber: var(--pg-amber);
   --color-positive: var(--pg-positive);
   --color-on-brand: var(--pg-on-brand);
-  --color-blue-wash: var(--pg-blue-wash);
-  --color-amber-wash: var(--pg-amber-wash);
-  --color-amber-ink: var(--pg-amber-ink);
 
   --font-display: var(--pg-font-display);
   --font-sans: var(--pg-font-sans);
@@ -146,14 +143,6 @@ html {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
-  }
-
-  /* `Reveal` and the hero render their hidden starting state on the server,
-     which cannot know this setting. This shows them before any script runs,
-     and after it, since the inline style motion writes loses to !important. */
-  [data-reveal] {
-    opacity: 1 !important;
-    transform: none !important;
   }
 }
 

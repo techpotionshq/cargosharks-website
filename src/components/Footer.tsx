@@ -44,7 +44,7 @@ export function Footer({
 
         {footer.columns.map((column) => (
           <nav key={column.heading.en} className="lg:col-span-2">
-            <p className="text-[0.82rem] font-semibold text-on-void-dim">{column.heading[lang]}</p>
+            <p className="tracked text-[0.58rem] text-on-void-faint">{column.heading[lang]}</p>
             <ul className="mt-5 space-y-3">
               {column.links.map((link) => (
                 <li key={link.label.en}>
@@ -61,7 +61,7 @@ export function Footer({
         ))}
 
         <div className="lg:col-span-3">
-          <p className="text-[0.82rem] font-semibold text-on-void-dim">
+          <p className="tracked text-[0.58rem] text-on-void-faint">
             {lang === 'ar' ? 'اللغة' : 'Language'}
           </p>
           <a

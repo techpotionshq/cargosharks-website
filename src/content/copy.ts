@@ -521,6 +521,261 @@ export const hero = {
 }
 
 /**
+ * The proof strip.
+ *
+ * Facts about the product a buyer can check in the demo, not outcomes: there
+ * is no pilot data yet, so nothing here is a saving or a speed-up. It used to
+ * count row-level policies, audit triggers and interface strings, which are
+ * true and mean nothing to the owner of a forwarding desk.
+ */
+export const proof: { value: string; label: Bi }[] = [
+  { value: '1', label: { en: 'file from enquiry to paid invoice', ar: 'سجل من الاستفسار إلى الفاتورة المسدَّدة' } },
+  { value: '0', label: { en: 'times a shipment is keyed in twice', ar: 'مرات إدخال الشحنة مرتين' } },
+  { value: '2', label: { en: 'languages on every screen and document', ar: 'لغتان في كل شاشة ومستند' } },
+  { value: '3', label: { en: 'decimals on every dinar', ar: 'خانات عشرية لكل دينار' } },
+]
+
+/**
+ * The three-step sequence.
+ *
+ * `shot` is the file in `public/pic/screens`; the Arabic page appends `-ar`,
+ * because the sidebar crop is a logical property and takes its bite out of the
+ * wrong edge on a left-to-right capture shown in a right-to-left document.
+ */
+/**
+ * `icon` is a key, not a component. `copy.ts` is imported by client and server
+ * components alike and holds nothing but content; the mapping to Phosphor lives
+ * in `Work.tsx`, so this file stays a data file and swapping icon sets is one
+ * edit rather than sixty.
+ */
+/**
+ * `desk` is the tab label and `title` is the claim.
+ *
+ * The section used to pin a frame and dim two of three stages as the reader
+ * scrolled past them, which meant the only way to see stage three was to scroll
+ * through stages one and two. A tab says which desk you are looking at in one
+ * word and lets a finance buyer go straight to finance — and one word is all
+ * that fits in a tab, which is why it is a separate string rather than a
+ * truncation of the title.
+ */
+export const steps: {
+  n: string
+  shot: string
+  icon: string
+  desk: Bi
+  title: Bi
+  body: Bi
+  points: Bi[]
+}[] = [
+  {
+    n: '01',
+    shot: 'enquiries',
+    icon: 'commercial',
+    desk: { en: 'Commercial', ar: 'التجاري' },
+    title: {
+      en: 'The enquiry arrives as an email. It leaves as a quote.',
+      ar: 'يصل الاستفسار بريداً إلكترونياً، ويخرج عرض سعر.',
+    },
+    body: {
+      en: 'Mail lands in a shared box, is read, and becomes a structured enquiry with a shipper, a lane and a mode. It is priced off the rate cards you loaded where they cover the route, and sent to agents where they do not.',
+      ar: 'يصل البريد إلى صندوق مشترك، فيُقرأ ويصير استفساراً منظَّماً له شاحن ومسار ووسيلة. يُسعَّر من بطاقات أسعاركم متى غطّت المسار، ويُرسل إلى الوكلاء متى لم تغطّه.',
+    },
+    points: [
+      {
+        en: 'One queue for every branch, one owner and one deadline per line.',
+        ar: 'قائمة واحدة لكل الفروع، ولكل سطر مسؤول ومهلة.',
+      },
+      {
+        en: 'Rate cards by lane, mode and carrier. Two cannot overlap on one route.',
+        ar: 'بطاقات حسب المسار والوسيلة والناقل. والتداخل على مسار واحد غير ممكن.',
+      },
+      {
+        en: 'Buy, sell and margin are on the screen before the quote goes out.',
+        ar: 'الشراء والبيع والهامش على الشاشة قبل خروج العرض.',
+      },
+    ],
+  },
+  {
+    n: '02',
+    shot: 'jobs',
+    icon: 'operations',
+    desk: { en: 'Operations', ar: 'العمليات' },
+    title: {
+      en: 'One job file, and everything hangs off it.',
+      ar: 'سجل واحد للشحنة، وكل شيء معلَّق عليه.',
+    },
+    body: {
+      en: 'Booking, containers, milestones, customs status, documents and exceptions live on the same file. Every change is stamped with who made it and when, and nothing is ever deleted — a superseded row is marked superseded and stays.',
+      ar: 'الحجز والحاويات والمراحل وحالة التخليص والمستندات والحالات الاستثنائية على السجل نفسه. كل تغيير مختوم بمن أجراه ومتى، ولا يُحذف شيء — بل يُعلَّم السطر المستبدَل بأنه مستبدَل ويبقى.',
+    },
+    points: [
+      {
+        en: 'Planned, revised and actual are all three kept, not overwritten.',
+        ar: 'المخطط والمعدّل والفعلي — الثلاثة محفوظة، لا يُكتب أحدها فوق الآخر.',
+      },
+      {
+        en: 'A free-time clock per container, writing its own cost line.',
+        ar: 'عدّاد وقت سماح لكل حاوية، يكتب بند تكلفته بنفسه.',
+      },
+      {
+        en: 'The board sorts by exception, oldest first, before the customer calls.',
+        ar: 'اللوحة ترتِّب حسب الحالات الاستثنائية، الأقدم أولاً، قبل أن يتصل العميل.',
+      },
+    ],
+  },
+  {
+    n: '03',
+    shot: 'finance',
+    icon: 'finance',
+    desk: { en: 'Finance', ar: 'المالية' },
+    title: {
+      en: 'Costs land against the job before the invoice does.',
+      ar: 'التكاليف تُقيَّد على الشحنة قبل أن تصدر الفاتورة.',
+    },
+    body: {
+      en: 'What you accrued and what the supplier actually billed are compared line by line, and the variance is a number on the screen before anyone approves it. Money is decimal end to end, and the dinar keeps its three places.',
+      ar: 'ما استحق على الشحنة وما فوتره المورّد فعلاً يُطابَقان بنداً ببند، والفرق رقم على الشاشة قبل أن يعتمده أحد. الحساب عشري من طرف إلى طرف، والدينار يحتفظ بخاناته الثلاث.',
+    },
+    points: [
+      {
+        en: 'Supplier invoices matched to the accrual, variance shown before approval.',
+        ar: 'فواتير المورّدين تُطابَق مع المستحق، والفرق يظهر قبل الاعتماد.',
+      },
+      {
+        en: 'Receivables by age, with the credit limit that was actually set.',
+        ar: 'الذمم المدينة حسب التقادم، مع الحد الائتماني المعتمد فعلاً.',
+      },
+      {
+        en: 'Documents issued in both languages from the shipment’s own data.',
+        ar: 'المستندات تصدر باللغتين من بيانات الشحنة نفسها.',
+      },
+    ],
+  },
+]
+
+export const work = {
+  eyebrow: { en: 'The cycle', ar: 'دورة العمل' },
+  title: {
+    en: 'Three desks, one file.',
+    ar: 'ثلاثة مكاتب، وسجل واحد.',
+  },
+  sub: {
+    en: 'Commercial, operations and finance work the same shipment. Nothing is re-keyed between them and nothing leaves the file.',
+    ar: 'التجاري والعمليات والمالية يعملون على الشحنة نفسها. لا يُعاد إدخال شيء بينهم، ولا يخرج من السجل شيء.',
+  },
+}
+
+/**
+ * The four modes, as a strip under the hero.
+ *
+ * `proof` already counts them — "4 transport modes" — and a count is a claim a
+ * reader has to take on trust. Naming them costs one line and settles the
+ * question a forwarder is actually asking, which is not *how many* but *is mine
+ * one of them*. An air-only broker reading "4" scrolls on; the same broker
+ * reading "Air" does not.
+ *
+ * Sea is carried as two container types — FCL and LCL — so `modeEnum` in
+ * `packages/db` holds five values for these four modes; the strip lists the
+ * modes a forwarder books, not the enum rows. There is no rail: the product
+ * has no rail rating rule or milestone template, so the strip does not claim
+ * one.
+ *
+ * `key` maps to a Phosphor glyph in `Modes.tsx`, the same split `steps.icon`
+ * uses and for the same reason: this file stays data.
+ */
+export const modes: { key: string; label: Bi }[] = [
+  { key: 'sea', label: { en: 'Sea', ar: 'بحري' } },
+  { key: 'air', label: { en: 'Air', ar: 'جوي' } },
+  { key: 'road', label: { en: 'Road', ar: 'بري' } },
+  { key: 'courier', label: { en: 'Courier', ar: 'بريد سريع' } },
+]
+
+export const modesNote = {
+  en: 'One file, whichever way the cargo moves',
+  ar: 'سجل واحد، مهما تحرّكت البضاعة',
+}
+
+/**
+ * The capability grid.
+ *
+ * The page had no section between "here are three desks" and "here is a
+ * demurrage clock", which left the specific questions a buyer arrives with —
+ * does it hold my rate cards, does it print my documents, who can see my rows —
+ * answered nowhere on the home page. They were answered on `/what-we-do/`,
+ * which is a page nobody reaches before they have decided the product is
+ * plausible.
+ *
+ * Five cards. Each opens with what the desk gets and follows with how the
+ * product makes it hold: a buyer reads the first sentence and an evaluator the
+ * second, and they used to open with the database. `icon` is a key, not
+ * a component — the mapping to Phosphor lives in `Capabilities.tsx`, so this
+ * file stays a data file and swapping icon sets is one edit rather than five.
+ */
+export const capabilities = {
+  eyebrow: { en: 'Under the file', ar: 'داخل السجل' },
+  title: {
+    en: 'The parts a forwarder opens every day.',
+    ar: 'الأجزاء التي يفتحها الوكيل كل يوم.',
+  },
+  sub: {
+    en: 'Five things a desk relies on, built so they still hold on the day everyone is in a hurry.',
+    ar: 'خمسة أمور يعتمد عليها المكتب، مبنية لتصمد حتى في اليوم الذي يستعجل فيه الجميع.',
+  },
+  cards: [
+    {
+      key: 'lane',
+      span: 'wide',
+      icon: 'route',
+      title: { en: 'Every leg on one timeline', ar: 'كل مرحلة على خط زمني واحد' },
+      body: {
+        en: 'See where every shipment is, and what changed. Pickup, gate-in, sailing, discharge, customs and delivery sit on one file, with planned, revised and actual times side by side. Nothing is overwritten, so when a customer asks when a date moved and who moved it, there is an answer.',
+        ar: 'اعرفوا أين كل شحنة، وما الذي تغيّر. الاستلام والدخول والإبحار والتفريغ والتخليص والتسليم على سجل واحد، والوقت المخطط والمعدّل والفعلي جنباً إلى جنب. لا يُكتب شيء فوق شيء، فحين يسأل العميل متى تغيّر التاريخ ومن غيّره، يوجد جواب.',
+      },
+    },
+    {
+      key: 'money',
+      span: 'half',
+      icon: 'money',
+      title: { en: 'Three decimals, all the way down', ar: 'ثلاث خانات عشرية، من الطرف إلى الطرف' },
+      body: {
+        en: 'Dinar invoices that add up to the fils. The dinar has three decimal places, and every amount is kept and calculated to all three, never rounded to two on its way to a screen, so the third decimal is never quietly dropped.',
+        ar: 'فواتير بالدينار صحيحة حتى الفلس. للدينار ثلاث خانات عشرية، وكل مبلغ يُحفَظ ويُحسَب بها كاملة، ولا يُقرَّب إلى خانتين في طريقه إلى الشاشة، فلا تضيع الخانة الثالثة بهدوء.',
+      },
+    },
+    {
+      key: 'rates',
+      span: 'half',
+      icon: 'rates',
+      title: { en: 'Quotes from the right rate, every time', ar: 'عروض من السعر الصحيح، في كل مرة' },
+      body: {
+        en: 'Your team prices from the card that is actually current. Cards are set by lane, mode and carrier with validity dates, and two can never cover the same route at the same time, so nobody has to remember which one applies.',
+        ar: 'يسعّر فريقكم من البطاقة السارية فعلاً. البطاقات حسب المسار والوسيلة والناقل بتواريخ صلاحية، ولا يمكن لبطاقتين أن تغطّيا المسار نفسه في الوقت نفسه، فلا يحتاج أحد أن يتذكّر أيّها ينطبق.',
+      },
+    },
+    {
+      key: 'docs',
+      span: 'half',
+      icon: 'docs',
+      title: { en: 'Documents without the retyping', ar: 'مستندات بلا إعادة كتابة' },
+      body: {
+        en: 'House bill, air waybill, delivery order, packing list, manifest and the customs pack come straight from the shipment file, in Arabic or English. Nothing is retyped into a template, so nothing is mistyped on the way.',
+        ar: 'بوليصة الشحن الفرعية وبوليصة الشحن الجوي وأمر التسليم وقائمة التعبئة والبيان وحزمة التخليص تصدر مباشرة من سجل الشحنة، بالعربية أو الإنجليزية. لا يُعاد كتابة شيء في قالب، فلا يُخطأ في شيء على الطريق.',
+      },
+    },
+    {
+      key: 'tenancy',
+      span: 'half',
+      icon: 'tenancy',
+      title: { en: 'Each branch sees its own work', ar: 'كل فرع يرى عمله فقط' },
+      body: {
+        en: 'Staff see the branches and entities they work for, and nothing else. The separation is enforced by the database itself rather than by a filter on the screen, so even a faulty report cannot show one branch another branch’s shipments.',
+        ar: 'يرى الموظفون الفروع والكيانات التي يعملون لها، ولا شيء غيرها. الفصل تفرضه قاعدة البيانات نفسها لا مرشّح على الشاشة، فحتى التقرير الخاطئ لا يُظهر لفرع شحنات فرع آخر.',
+      },
+    },
+  ],
+}
+
+/**
  * The free-time calculator.
  *
  * The one section on this page that is not an argument. A reader moves a
@@ -549,8 +804,8 @@ export const calculator = {
     ar: 'كم يكلّفكم وقت السماح؟',
   },
   sub: {
-    en: 'Move four numbers from your own board. The arithmetic runs in this page, and nothing is sent anywhere.',
-    ar: 'حرّكوا أربعة أرقام من لوحتكم. الحساب يجري داخل هذه الصفحة، ولا يُرسل شيء إلى أي مكان.',
+    en: 'Four numbers off your own board. Nothing is sent anywhere — the arithmetic happens in this page.',
+    ar: 'أربعة أرقام من لوحتكم. لا يُرسل شيء إلى أي مكان — الحساب يجري داخل هذه الصفحة.',
   },
   fields: [
     {
@@ -603,8 +858,8 @@ export const calculator = {
   boxesLabel: { en: 'Boxes it happens to', ar: 'حاويات يقع عليها' },
   boxesUnit: { en: 'a year', ar: 'في السنة' },
   note: {
-    en: 'CargoSharks does not make this number smaller by itself. It shows it on the day the clock starts, as a charge line against the job that caused it, instead of six weeks later on a supplier invoice.',
-    ar: 'لا يصغّر CargoSharks هذا الرقم بنفسه. بل يُظهره يوم يبدأ العدّاد، بنداً على الشحنة التي سبّبته، لا بعد ستة أسابيع على فاتورة مورّد.',
+    en: 'CargoSharks does not make this number smaller. It makes it arrive on the day the clock starts instead of six weeks later on a supplier invoice — as a charge line you raised, against the job that caused it, with the milestone that started it on the same screen.',
+    ar: 'لا يصغّر CargoSharks هذا الرقم. بل يجعله يصل يوم يبدأ العدّاد لا بعد ستة أسابيع على فاتورة مورّد — بنداً كتبتموه أنتم، على الشحنة التي سبّبته، والمرحلة التي بدأ عندها على الشاشة نفسها.',
   },
 }
 
@@ -625,14 +880,15 @@ export const yard = {
 }
 
 export const bilingual = {
-  eyebrow: { en: 'Arabic and English', ar: 'العربية والإنجليزية' },
-  title: {
-    en: 'Arabic your team and your customers will actually use.',
-    ar: 'عربية يستخدمها فريقكم وعملاؤكم فعلاً.',
-  },
+  eyebrow: { en: 'Language', ar: 'اللغة' },
+  title: { en: 'Arabic is not a translation layer.', ar: 'مبنيّ باللغتين، لا مترجَم' },
   body: {
-    en: 'Every screen, document and email exists in both languages, laid out right to left from the start rather than mirrored from the English. Each user works in their own language, and any document goes out in either.',
-    ar: 'كل شاشة ومستند وبريد موجود باللغتين، ومصمَّم من اليمين إلى اليسار من البداية لا معكوساً عن الإنجليزية. يعمل كل مستخدم بلغته، ويخرج أي مستند بأيٍّ من اللغتين.',
+    en: 'Every screen, document and email template exists in both languages, checked for parity on every commit. Right-to-left is in the layout rather than added on top of it, so the quote your customer opens in Arabic reads the way an Arabic document should, because it was built that way rather than mirrored from the English.',
+    ar: 'كل شاشة ومستند وقالب بريد موجود باللغتين، ويُتحقق من تطابقهما مع كل تعديل. والاتجاه من اليمين إلى اليسار في بنية التصميم لا مضافاً إليه، فعرض السعر الذي يفتحه عميلكم بالعربية يُقرأ كما ينبغي لمستند عربي أن يُقرأ، لأنه بُني هكذا لا لأنه عُكس عن الإنجليزية.',
+  },
+  aside: {
+    en: 'Every product in this market was built in English and had Arabic added. You can tell in about four seconds, and so can your customer.',
+    ar: 'كل منتج في هذا السوق بُني بالإنجليزية ثم أُضيفت إليه العربية. تعرفون ذلك خلال أربع ثوانٍ تقريباً، ويعرفه عميلكم كذلك.',
   },
   toggleHint: { en: 'Try it', ar: 'جرّبوه' },
 }
@@ -648,18 +904,18 @@ export const bilingual = {
  * The figure is the same figure, doing a job.
  */
 export const leak = {
-  eyebrow: { en: 'Free time and demurrage', ar: 'وقت السماح والأرضيات' },
+  eyebrow: { en: 'Free time · running now', ar: 'وقت السماح · يجري الآن' },
   title: {
-    en: 'Catch demurrage the day it starts, not six weeks later.',
-    ar: 'اكتشفوا الأرضيات يوم تبدأ، لا بعد ستة أسابيع.',
+    en: 'The clock nobody starts is the one that costs you.',
+    ar: 'العدّاد الذي لا يشغّله أحد هو الذي يكلّفكم.',
   },
   body: {
-    en: 'A box goes past its free days and nothing happens, because starting the count is somebody’s job and nobody’s job. It surfaces weeks later on a supplier invoice, after the customer has been billed.',
-    ar: 'تتجاوز الحاوية أيام السماح ولا يحدث شيء، لأن بدء العدّ مهمة أحدهم وليس مهمة أحد. ثم تظهر بعد أسابيع على فاتورة مورّد، بعد أن فوترتم العميل.',
+    en: 'A container goes past its free days and nothing happens, because starting a counter is somebody’s job and it is nobody’s job. It surfaces weeks later, on a supplier invoice, and by then the question is who was supposed to be watching.',
+    ar: 'تتجاوز الحاوية أيام السماح ولا يحدث شيء، لأن تشغيل العدّاد مهمة أحدهم وليس مهمة أحد. ثم تظهر بعد أسابيع على فاتورة مورّد، ويصير السؤال: من كان يفترض به أن يراقب؟',
   },
   answer: {
-    en: 'CargoSharks starts the clock from the milestone that starts free time, on every container, and writes the charge line to the job itself. You bill it, dispute it or chase it while it still matters.',
-    ar: 'يبدأ CargoSharks العدّاد من المرحلة التي يبدأ عندها وقت السماح، على كل حاوية، ويكتب بند التكلفة على الشحنة بنفسه. فتفوترونه أو تعترضون عليه أو تتابعونه وهو لا يزال مهماً.',
+    en: 'CargoSharks starts it from the milestone that starts free time, and writes the charge line itself as it runs.',
+    ar: 'يشغّله CargoSharks من المرحلة التي يبدأ عندها وقت السماح، ويكتب بند التكلفة بنفسه وهو يعمل.',
   },
   /** The charge line. Every label here is one the product prints. */
   line: {
@@ -687,9 +943,23 @@ export const pilot = {
     ar: 'جرّبوه على شحناتكم أنتم.',
   },
   body: {
-    en: 'Tell us a little about your desk. A person reads every request and replies, in English or Arabic.',
-    ar: 'أخبرونا قليلاً عن مكتبكم. يقرأ شخصٌ كل طلب ويرد عليكم، بالعربية أو الإنجليزية.',
+    en: 'Tell us a little about your desk. A person reads every request and replies with what a pilot on your data would involve, in English or Arabic.',
+    ar: 'أخبرونا قليلاً عن مكتبكم. يقرأ شخصٌ كل طلب ويرد عليكم بما تتضمنه تجربة على بياناتكم، بالعربية أو الإنجليزية.',
   },
+  points: [
+    {
+      en: 'Your own rate cards, customers and lanes loaded in',
+      ar: 'أسعاركم وعملاؤكم وخطوطكم محمّلة فيه',
+    },
+    {
+      en: 'Your team on it from the first week, in both languages',
+      ar: 'فريقكم يعمل عليه من الأسبوع الأول، باللغتين',
+    },
+    {
+      en: 'Nothing to install, and your data stays yours',
+      ar: 'لا شيء لتثبيته، وبياناتكم تبقى ملككم',
+    },
+  ],
   fields: {
     name: { en: 'Your name', ar: 'الاسم' },
     company: { en: 'Company', ar: 'الشركة' },
@@ -759,17 +1029,23 @@ export const pilot = {
  * do and one line explaining why it costs nothing to do it.
  */
 export const cta = {
-  eyebrow: { en: 'The demo is the real software', ar: 'النسخة التجريبية هي البرنامج نفسه' },
+  eyebrow: { en: 'The demo is the build', ar: 'النسخة التجريبية هي المنتج نفسه' },
   title: {
     en: 'Judge it in ten minutes, not ten meetings.',
     ar: 'احكموا عليه في عشر دقائق، لا في عشرة اجتماعات.',
   },
   body: {
-    en: 'Open the demo now, with sign-ins for staff, a customer and an agent, or ask for a 15-day pilot on your own data. A person replies, in English or Arabic.',
-    ar: 'افتحوا النسخة التجريبية الآن، بحسابات لموظف وعميل ووكيل، أو اطلبوا تجربة لمدة 15 يوماً على بياناتكم. يرد عليكم شخص، بالعربية أو الإنجليزية.',
+    en: 'It is the real software on a seeded dataset, with a sign-in for you, for your customer and for your agent. Nothing to install, nothing to uninstall, and nothing you do in it touches anything.',
+    ar: 'هو البرنامج نفسه يعمل على بيانات مُعدّة، بحساب لكم، وحساب لعميلكم، وحساب لوكيلكم. لا شيء يُثبَّت ولا شيء يُزال، ولا يمسّ ما تفعلونه فيه شيئاً.',
   },
   primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  secondary: { en: 'Ask for a 15-day pilot', ar: 'اطلبوا تجربة لمدة 15 يوماً' },
+  secondary: { en: 'Ask for a 15-day pilot', ar: 'اطلبوا تجربة الخمسة عشر يوماً' },
+  /** Three claims, each one checkable in the first thirty seconds. */
+  points: [
+    { en: 'No sign-up', ar: 'بلا تسجيل' },
+    { en: 'Three roles', ar: 'ثلاثة حسابات' },
+    { en: 'Arabic and English', ar: 'بالعربية والإنجليزية' },
+  ],
 }
 
 export const footer = {
