@@ -55,6 +55,36 @@ export async function complete({ system, user, schema, model }) {
   return extractJson(content)
 }
 
+/**
+ * Em dashes out, and FAQ answers that talk about "the article" turned into
+ * direct answers. The voice forbids both; the model writes them anyway (54 em
+ * dashes in one draft, mostly `**Term** — reason` list items).
+ *
+ * A dash after a bold list label becomes a colon; any other em dash, or an en
+ * dash with spaces round it, becomes a comma. An unspaced en dash is a range
+ * (5–7 days) and stays.
+ */
+export function scrub(text) {
+  // Table rows first: a cell holding only a dash means "nothing", and turned
+  // into a stray comma when the rules below reached it.
+  const rows = String(text).replace(/^\s*\|.*\|\s*$/gm, (row) =>
+    row.replace(/\|\s*[—–]\s*(?=\|)/g, '| - '),
+  )
+  return (
+    rows
+      .replace(/^(\s*(?:[-*]|\d+\.)\s+\*\*[^*\n]+\*\*)\s*[—–]\s*/gm, '$1: ')
+      // Arabic takes its own comma.
+      .replace(
+        /(\S?)\s*(?:—|\s–\s)\s*/g,
+        (_, before) => before + (/[\u0600-\u06FF]/.test(before) ? '، ' : ', '),
+      )
+      .replace(
+        /(^|[.!?]\s+)(?:according to |as )?(?:the|this) (?:article|post|guide|checklist)(?: (?:says|recommends|suggests|explains|notes|advises|states))?(?: that| to)?[,:]?\s+(\p{L})/giu,
+        (_, lead, first) => lead + first.toUpperCase(),
+      )
+  )
+}
+
 /** The FAQ entries a page can render: both halves present and not blank. */
 export const usableFaqs = (copy) =>
   (copy?.faqs ?? []).filter((f) => f?.question?.trim() && f?.answer?.trim())
@@ -91,6 +121,7 @@ export async function searxng(query, limit = 6) {
       `${base}/search?${new URLSearchParams({ q: query, format: 'json', categories: 'general' })}`,
       {
         headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(20_000),
       },
     )
     if (!res.ok) return []

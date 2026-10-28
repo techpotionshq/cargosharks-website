@@ -4822,11 +4822,23 @@
 .doc-page .post {
   max-width: 760px;
 }
+.doc-page .post__figure {
+  margin: 0 0 40px;
+}
 .doc-page .post__cover {
+  display: block;
   width: 100%;
   height: auto;
-  margin-bottom: 40px;
   border-radius: var(--radius);
+}
+.doc-page .post__credit {
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  color: var(--ink-subtle);
+}
+.doc-page .post__credit a {
+  color: inherit;
+  text-decoration: underline;
 }
 .doc-page .post__body {
   font-size: 1.0625rem;

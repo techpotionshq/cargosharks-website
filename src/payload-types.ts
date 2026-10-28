@@ -170,6 +170,18 @@ export interface Post {
 export interface Media {
   id: number
   alt?: string | null
+  /**
+   * Photographer, shown under the cover.
+   */
+  credit?: string | null
+  /**
+   * The photo page on Pexels.
+   */
+  creditUrl?: string | null
+  /**
+   * e.g. pexels:12345. Set by the drafting run.
+   */
+  sourceId?: string | null
   updatedAt: string
   createdAt: string
   url?: string | null
@@ -371,6 +383,9 @@ export interface TopicsSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   alt?: T
+  credit?: T
+  creditUrl?: T
+  sourceId?: T
   updatedAt?: T
   createdAt?: T
   url?: T

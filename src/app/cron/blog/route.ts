@@ -28,12 +28,26 @@ export const maxDuration = 900
 
 const LOW_WATER = 3
 
+// One run at a time. Two overlapping runs both pick the oldest ready topic and
+// draft it twice (a retried task, or a manual run during the scheduled one).
+// One container serves the site, so a module flag is the whole lock.
+let running = false
+
 export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET
   if (!secret) return Response.json({ error: 'CRON_SECRET is not set' }, { status: 503 })
   if (request.headers.get('authorization') !== `Bearer ${secret}`)
     return Response.json({ error: 'unauthorised' }, { status: 401 })
+  if (running) return Response.json({ error: 'a run is already in progress' }, { status: 409 })
+  running = true
+  try {
+    return await run()
+  } finally {
+    running = false
+  }
+}
 
+async function run() {
   const payload = await getPayload({ config })
   const posts = await allPosts()
   const { docs: topics } = await payload.find({
@@ -95,7 +109,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const { topic, reason } = pickTopic(ready)
+    const { topic, reason, duplicates } = pickTopic(ready, known)
+    for (const dup of duplicates ?? []) {
+      await payload.update({ collection: 'topics', id: dup.id, data: { status: 'rejected' } })
+      void slack(
+        `CargoSharks blog: topic "${dup.title}" rejected; its search "${dup.targetQuery}" is already a landing page, and a post would compete with it.`,
+      )
+    }
     if (!topic) {
       result.drafted = false
       result.reason = reason
@@ -103,22 +123,37 @@ export async function POST(request: Request) {
       return Response.json(result)
     }
 
+    // Every stock photo already uploaded, published or not, so no two posts
+    // share a cover.
+    const stock = await payload.find({
+      collection: 'media',
+      where: { sourceId: { exists: true } },
+      select: { sourceId: true },
+      limit: 0,
+      pagination: false,
+    })
     const draft = await draftPost({
       topic,
       known,
       earlier: earlierPosts(posts),
       taken: new Set(drafts.map((d) => d.slug)),
+      usedPhotos: new Set(stock.docs.flatMap((m) => (m.sourceId ? [m.sourceId] : []))),
     })
 
     const cover = draft.cover
       ? await payload.create({
           collection: 'media',
-          data: { alt: draft.en.title },
+          data: {
+            alt: draft.en.title,
+            sourceId: draft.cover.sourceId,
+            credit: draft.cover.credit,
+            creditUrl: draft.cover.creditUrl,
+          },
           file: {
-            data: draft.cover,
+            data: draft.cover.data,
             mimetype: 'image/webp',
             name: `${draft.slug}.webp`,
-            size: draft.cover.length,
+            size: draft.cover.data.length,
           },
         })
       : null
@@ -161,6 +196,11 @@ export async function POST(request: Request) {
         `<${preview('en')}|Preview> · <${preview('ar')}|المعاينة> · <${SITE_URL}/admin/collections/posts/${post.id}|Edit and publish in admin>`,
         draft.unlinked.length
           ? `Links removed, no such page: ${draft.unlinked.map((u: string) => `\`${u}\``).join(', ')}`
+          : '',
+        draft.flagged?.length
+          ? `:warning: *Check before publishing*, the fact-check could not confirm:\n${draft.flagged
+              .map((f: { quote: string; reason: string }) => `> ${f.quote}\n_${f.reason}_`)
+              .join('\n')}`
           : '',
       ]
         .filter(Boolean)
