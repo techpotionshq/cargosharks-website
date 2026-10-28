@@ -1,13 +1,15 @@
 # Blog pipeline
 
-Posts live in Payload (`/admin`), in PostgreSQL. A model drafts one a day; a
+Posts live in Payload (`/admin`), in PostgreSQL. Every Sunday the week's
+topics are queued at once; a model drafts one post a day from them; a
 person reads it, edits it if needed, and presses Publish. Publishing is the
 whole release: the blog, the sitemap, the feed and `llms.txt` revalidate on
 the spot, Slack gets the links, and IndexNow gets the URLs.
 
 ```
+Coolify, Sunday → node scripts/cron.mjs topics → POST /cron/topics/ → 12 topics → Slack list
 Coolify, daily  → node scripts/cron.mjs → POST /cron/blog/ (Bearer CRON_SECRET)
-/cron/blog      → fewer than 3 ready topics? ideate.mjs proposes more  → Topics
+/cron/blog      → oldest ready topic (queue empty? propose 3 as a fallback)
                 → generate.mjs drafts EN + AR, a Pexels cover → a draft in Posts → Slack: Preview / Edit
 You             → /admin: read, edit, Publish
 Publish         → revalidateTag('blog') → live, no rebuild → Slack + IndexNow
@@ -60,8 +62,10 @@ node scripts/cron.mjs
    (cover photos), and optionally
    `SLACK_BOT_TOKEN`, `SLACK_BLOG_CHANNEL`, `SEARXNG_URL`, `OPENROUTER_MODEL`.
 3. **Storages**: a volume mounted at `/app/media`, or uploads vanish on deploy.
-4. **Scheduled Tasks**: `node scripts/cron.mjs`, daily at `0 3 * * *` (06:00
-   in Kuwait when the server is on UTC).
+4. **Scheduled Tasks**: `node scripts/cron.mjs topics` on Sundays at
+   `0 2 * * 0`, and `node scripts/cron.mjs` daily at `0 3 * * *` (05:00 and
+   06:00 in Kuwait when the server is on UTC). `BLOG_TOPICS_PER_WEEK` changes
+   the weekly count (12).
 5. Deploy, open `/admin`, create the first user. The seed migration loads the
    existing posts and the topic backlog on first start.
 
