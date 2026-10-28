@@ -1,6 +1,7 @@
+import { ArrowDown } from '@phosphor-icons/react/dist/ssr'
 import { Accrue } from '@/components/Accrue'
 import { Reveal } from '@/components/Reveal'
-import { type Lang, leak, yard } from '@/content/copy'
+import { calculator, type Lang, leak, yard } from '@/content/copy'
 
 /**
  * Demurrage, shown as the thing the software actually produces, on the ground
@@ -21,6 +22,10 @@ import { type Lang, leak, yard } from '@/content/copy'
  * corners and hairline rules for the same reason: the paperwork this trade runs
  * on is square, and a rounded card with a drop shadow reads as a component from
  * a design system.
+ *
+ * It sits beside its argument now rather than under it: the heading, the
+ * paragraph and the card were three centred blocks stacked down a dark band,
+ * and on a laptop the card, which is the point, started below the fold.
  *
  * There is no illustration under it any more, and there is not meant to be. A
  * drawn berth plan sat there for a while — six numbered bays, one box called out
@@ -49,69 +54,68 @@ export function Leak({ lang }: { lang: Lang }) {
       <div className="absolute inset-0 -z-10 bg-void/78" />
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-void via-transparent to-void" />
 
-      <Reveal className="shell flex flex-col items-center text-center">
-        <p className="tracked text-[0.62rem] text-amber">{leak.eyebrow[lang]}</p>
+      <div className="shell grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
+        <Reveal className="lg:col-span-5">
+          <p className="text-[0.9rem] font-semibold text-amber">{leak.eyebrow[lang]}</p>
 
-        <h2 className="mt-6 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em] text-on-void">
-          {leak.title[lang]}
-        </h2>
+          <h2 className="mt-3 text-balance font-display text-[clamp(2rem,4vw,3rem)] font-semibold leading-[1.1] tracking-[-0.025em] text-on-void">
+            {leak.title[lang]}
+          </h2>
 
-        <p className="mt-6 max-w-[56ch] text-balance text-[1.0625rem] leading-[1.7] text-on-void-dim">
-          {leak.body[lang]}
-        </p>
+          <p className="mt-6 text-[1.05rem] leading-[1.7] text-on-void-dim">{leak.body[lang]}</p>
 
-        <p className="mt-6 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.7] text-on-void">
-          {leak.answer[lang]}
-        </p>
-      </Reveal>
+          <p className="mt-5 text-[1.05rem] leading-[1.7] text-on-void">{leak.answer[lang]}</p>
 
-      <Reveal className="shell mt-14" delay={0.08}>
-        {/* Narrower than the copy above it on purpose. A document is a fixed
-            width and does not stretch to its container; letting this one run the
-            full measure would be the detail that gives away that it is a web
-            page pretending. */}
-        <div className="mx-auto max-w-[44rem] bg-paper-lift shadow-2xl">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line-strong px-7 py-5 sm:px-9">
-            <p className="figures font-mono text-[1.05rem] text-ink">{line.container}</p>
-            <p className="text-[0.85rem] text-ink-faint">{line.lane[lang]}</p>
-          </div>
+          <a
+            href="#calculator"
+            className="group mt-8 inline-flex items-center gap-2 text-[0.98rem] font-semibold text-amber"
+          >
+            {calculator.title[lang]}
+            <ArrowDown
+              weight="bold"
+              className="size-4 transition-transform group-hover:translate-y-0.5"
+            />
+          </a>
+        </Reveal>
 
-          <dl className="divide-y divide-line px-7 sm:px-9">
-            <Row label={line.startedLabel[lang]} value={line.startedValue[lang]} />
-            <Row label={line.rateLabel[lang]} value={line.rateValue[lang]} />
-            <Row label={line.daysLabel[lang]} value={line.daysValue[lang]} />
-          </dl>
-
-          <div className="border-t border-line-strong px-7 py-7 sm:px-9">
-            <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-              <dt className="tracked text-[0.6rem] text-ink-faint">{line.totalLabel[lang]}</dt>
-              <dd className="figures flex items-baseline gap-2 font-mono text-ink">
-                <span className="tracked text-[0.7rem] text-ink-faint">KWD</span>
-                <span className="text-[clamp(1.9rem,4vw,2.8rem)] font-medium leading-none tracking-[-0.02em]">
-                  <Accrue from={4187.264} perDay={32} />
-                </span>
-              </dd>
+        <Reveal className="lg:col-span-7" delay={0.08}>
+          {/* A document is a fixed width and does not stretch to its
+              container, so the card keeps its own measure inside the column. */}
+          <div className="mx-auto max-w-[40rem] bg-paper-lift shadow-2xl">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line-strong px-7 py-5 sm:px-9">
+              <p className="figures font-mono text-[1.05rem] text-ink">{line.container}</p>
+              <p className="text-[0.85rem] text-ink-faint">{line.lane[lang]}</p>
             </div>
 
-            <p className="mt-5 border-t border-line pt-5 text-[0.8rem] text-ink-dim">
-              {line.written[lang]}
-            </p>
+            <dl className="divide-y divide-line px-7 sm:px-9">
+              <Row label={line.startedLabel[lang]} value={line.startedValue[lang]} />
+              <Row label={line.rateLabel[lang]} value={line.rateValue[lang]} />
+              <Row label={line.daysLabel[lang]} value={line.daysValue[lang]} />
+            </dl>
+
+            <div className="border-t border-line-strong px-7 py-7 sm:px-9">
+              <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+                <dt className="text-[0.85rem] font-medium text-ink-faint">
+                  {line.totalLabel[lang]}
+                </dt>
+                <dd className="figures flex items-baseline gap-2 font-mono text-ink">
+                  <span className="text-[0.75rem] text-ink-faint">KWD</span>
+                  <span className="text-[clamp(1.9rem,4vw,2.8rem)] font-medium leading-none tracking-[-0.02em] text-amber-ink">
+                    <Accrue from={4187.264} perDay={32} />
+                  </span>
+                </dd>
+              </div>
+
+              <p className="mt-5 flex items-center gap-2 border-t border-line pt-5 text-[0.85rem] text-ink-dim">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-positive" />
+                {line.written[lang]}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* The caption that admits what the photograph is. Without it the image
-            is a stock backdrop; with it, it is the yard the counter refers to.
-
-            There was a drawn berth plan above this line — six numbered bays with
-            one box called out in amber, and a dashed lane with marching ants
-            running along it. It went for two reasons. The animation was the
-            cheap kind: a `stroke-dashoffset` loop is the visual language of a
-            loading state, so the one moving thing in the section read as
-            something still fetching. And the drawing was illustrating a
-            container yard directly on top of a photograph of a container yard.
-            The photograph is better at it. */}
-        <p className="mt-10 text-center text-[0.85rem] text-on-void-faint">{yard.quote[lang]}</p>
-      </Reveal>
+          <p className="mt-6 text-center text-[0.85rem] text-on-void-faint">{yard.quote[lang]}</p>
+        </Reveal>
+      </div>
     </section>
   )
 }
