@@ -1,12 +1,13 @@
 import type { CollectionConfig } from 'payload'
 
 /**
- * Pilot requests from the site's form (`src/app/contact/route.ts`).
+ * Demo requests from the site's form (`src/app/contact/route.ts`).
  *
  * It replaced a mailto link: a reader without a mail client configured, which
- * is most people on a work laptop that is not their own, clicked "Ask for a
- * pilot" and nothing happened. Now the request is a row here and a Slack
- * message, and the admin tracks it through to an answer.
+ * is most people on a work laptop that is not their own, clicked the button
+ * and nothing happened. Now the request is a row here and a Slack message,
+ * and the admin tracks it through to an answer. The form's qualifying answers
+ * are written at the top of `message` (see the route) until they settle.
  *
  * Nobody but a signed-in admin reads or writes these. The public route creates
  * them through the local API, so `create` is closed here too.

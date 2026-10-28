@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { SectionHeader } from '@/components/ui/section'
 import { bilingual, type Lang } from '@/content/copy'
 
 /**
@@ -35,22 +36,12 @@ export function Bilingual({ lang }: { lang: Lang }) {
   ]
 
   return (
-    <section className="border-t border-line bg-paper-sunk py-band-sm lg:py-band">
-      <div className="shell flex flex-col items-center text-center">
-        <p className="tracked text-[0.62rem] text-ink-faint">{bilingual.eyebrow[lang]}</p>
+    <section className="border-t border-line bg-paper-sunk py-16 md:py-20 lg:py-24">
+      <div className="shell">
+        <SectionHeader title={bilingual.title[lang]} lede={bilingual.body[lang]} />
 
-        <h2 className="mt-5 max-w-[22ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
-          {bilingual.title[lang]}
-        </h2>
-
-        <p className="mt-6 max-w-[60ch] text-balance text-[1.0625rem] leading-[1.7] text-ink-dim">
-          {bilingual.body[lang]}
-        </p>
-
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
-          <span className="tracked text-[0.58rem] text-ink-faint">
-            {bilingual.toggleHint[lang]}
-          </span>
+        <div className="mt-8 flex flex-wrap items-center gap-4">
+          <span className="text-small text-ink-faint">{bilingual.toggleHint[lang]}</span>
           <div
             role="group"
             className="inline-flex rounded-lg border border-line-strong bg-paper p-1"
@@ -85,10 +76,10 @@ export function Bilingual({ lang }: { lang: Lang }) {
           mirrors them, which is the same mechanism the product relies on. This
           is the one frame on the site whose chrome is the demonstration rather
           than the container, which is why it draws its own. */}
-      <div className="shell-wide mt-12">
+      <div className="shell mt-8">
         <div
           dir={shown === 'ar' ? 'rtl' : 'ltr'}
-          className="mx-auto overflow-hidden rounded-2xl border border-line shadow-xl"
+          className="mx-auto overflow-hidden rounded-xl border border-line shadow-lg"
         >
           <div className="bg-paper-lift">
             <div className="flex items-center gap-2 border-b border-line px-4 py-3">
@@ -96,7 +87,7 @@ export function Bilingual({ lang }: { lang: Lang }) {
               <span className="size-2.5 rounded-full bg-line-strong" />
               <span className="size-2.5 rounded-full bg-line-strong" />
               <span
-                className={`ms-3 text-[0.7rem] text-ink-faint ${shown === 'ar' ? 'arabic' : 'font-mono'}`}
+                className={`ms-3 text-label text-ink-faint ${shown === 'ar' ? 'arabic' : 'font-mono'}`}
                 lang={shown}
               >
                 {shown === 'ar' ? 'الشحنات الجارية' : 'Active shipments'}
@@ -126,9 +117,7 @@ export function Bilingual({ lang }: { lang: Lang }) {
           </div>
         </div>
 
-        <p className="mx-auto mt-10 max-w-[56ch] border-t border-line pt-7 text-center text-[0.9375rem] leading-[1.7] text-ink-dim">
-          {bilingual.aside[lang]}
-        </p>
+        <p className="mt-6 max-w-[62ch] text-small text-ink-dim">{bilingual.aside[lang]}</p>
       </div>
     </section>
   )

@@ -1,4 +1,4 @@
-import { DocPage } from '@/components/DocPage'
+import { BlogFrame } from '@/components/blog/BlogFrame'
 import { BlogIndexContent, blogIndexMetadata } from '@/content/pages/blog'
 import { blogPath, postsIn } from '@/lib/blog'
 
@@ -15,8 +15,8 @@ export function generateMetadata() {
 
 export default async function Page() {
   return (
-    <DocPage lang="en" alternate={blogPath('ar')}>
+    <BlogFrame lang="en" alternate={blogPath('ar')}>
       <BlogIndexContent posts={await postsIn('en')} lang="en" />
-    </DocPage>
+    </BlogFrame>
   )
 }

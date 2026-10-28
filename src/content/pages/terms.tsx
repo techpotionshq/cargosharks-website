@@ -57,7 +57,7 @@ export function TermsContent() {
                   <a href="#t-supply">What is supplied</a>
                 </li>
                 <li>
-                  <a href="#t-pilot">The pilot</a>
+                  <a href="#t-onboarding">Setup and onboarding</a>
                 </li>
                 <li>
                   <a href="#t-yours">Your data is yours</a>
@@ -208,12 +208,12 @@ export function TermsContent() {
                 </p>
               </section>
 
-              <section id="t-pilot">
+              <section id="t-onboarding">
                 <h2>
-                  <span className="doc__n">04</span>The pilot
+                  <span className="doc__n">04</span>Setup and onboarding
                 </h2>
                 <p>
-                  The pilot is a fixed-scope, fixed-fee engagement: your rate card, your customer
+                  Setup and onboarding is a fixed-scope, fixed-fee engagement: your rate card, your customer
                   and agent lists, fifteen to twenty-five of your own completed job files, your
                   logo, and ninety minutes with whoever runs your operation &mdash; built into a
                   working deployment in fifteen working days from the day your data arrives, rather
@@ -222,7 +222,7 @@ export function TermsContent() {
                 <ol className="clauses">
                   <li data-s="4">
                     It is built on <strong>your</strong> deployment, in your region, under your
-                    brand. Nothing built during the pilot is thrown away if you proceed.
+                    brand. Nothing built during onboarding is thrown away if you proceed.
                   </li>
                   <li data-s="4">
                     The fee is fixed and, if you proceed, is credited against the full

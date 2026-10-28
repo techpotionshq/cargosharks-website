@@ -110,7 +110,7 @@ export function SiteSchema({ lang }: { lang: 'en' | 'ar' }) {
           publisher: { '@id': `${SITE_URL}/#organization` },
           /*
             No `aggregateRating` and no `offers`. Both are the fields that get a
-            rich result, and both would be invented — the product is in pilot,
+            rich result, and both would be invented — the product is new,
             so there are no ratings, and pricing is not published. Marking up a
             rating you do not have is the one SEO decision that can get a domain
             penalised rather than merely ignored.

@@ -76,6 +76,19 @@
   --color-amber: var(--pg-amber);
   --color-positive: var(--pg-positive);
   --color-on-brand: var(--pg-on-brand);
+  --color-heading: var(--pg-heading);
+
+  /*
+    Chart series, in the order a chart reaches for them. The owner asked for
+    the dark navy rather than grey wherever a second series or a comparison
+    sits beside the blue, so navy is the second colour, and the greys are left
+    for gridlines and axes. Amber stays reserved for money running.
+  */
+  --color-chart-1: var(--pg-blue);
+  --color-chart-2: var(--pg-heading);
+  --color-chart-3: var(--pg-amber);
+  --color-chart-4: var(--pg-positive);
+  --color-chart-5: var(--pg-blue-lit);
 
   --font-display: var(--pg-font-display);
   --font-sans: var(--pg-font-sans);
@@ -85,6 +98,60 @@
      spacing is a decision taken once rather than per section. */
   --spacing-band: 7rem;
   --spacing-band-sm: 4.5rem;
+
+  /*
+    shadcn/ui's names, answered from the palette.
+
+    `src/components/ui/` is shadcn's code, added with `components.json`, and it
+    asks for `bg-primary`, `border-input` and the rest. Pointing those names at
+    the palette rather than at shadcn's own OKLCH defaults means a component
+    pulled in with `shadcn add` arrives in this site's blue on this site's
+    paper, and `palette.css` stays the only place a colour is written.
+  */
+  --color-background: var(--pg-paper);
+  --color-foreground: var(--pg-ink);
+  --color-card: var(--pg-paper-lift);
+  --color-card-foreground: var(--pg-ink);
+  --color-popover: var(--pg-paper-lift);
+  --color-popover-foreground: var(--pg-ink);
+  --color-primary: var(--pg-blue);
+  --color-primary-foreground: var(--pg-on-brand);
+  --color-secondary: var(--pg-paper-sunk);
+  --color-secondary-foreground: var(--pg-ink);
+  --color-muted: var(--pg-paper-sunk);
+  --color-muted-foreground: var(--pg-ink-dim);
+  --color-accent: var(--pg-paper-sunk);
+  --color-accent-foreground: var(--pg-ink);
+  --color-border: var(--pg-line);
+  --color-input: var(--pg-line-strong);
+  --color-ring: var(--pg-blue);
+
+  /*
+    One type scale, seven steps, nothing under 13px.
+
+    The site had grown sixty-nine distinct font sizes, from 8.8px mono labels
+    to three different H2s on one page, which is the scale nobody chose. These
+    are the only sizes the rebuilt sections use; the steps follow the reference
+    the rebuild was measured against (supabase.com's `apps/www`, Apache-2.0)
+    rescaled for Manrope, whose x-height runs larger than Inter's.
+  */
+  --text-display: clamp(2.2rem, 1.45rem + 2.6vw, 3.4rem);
+  --text-display--line-height: 1.06;
+  --text-display--letter-spacing: -0.03em;
+  --text-h2: clamp(1.6rem, 1.2rem + 1.3vw, 2.3rem);
+  --text-h2--line-height: 1.16;
+  --text-h2--letter-spacing: -0.026em;
+  --text-h3: clamp(1.15rem, 1rem + 0.4vw, 1.35rem);
+  --text-h3--line-height: 1.3;
+  --text-h3--letter-spacing: -0.016em;
+  --text-lede: 1.125rem;
+  --text-lede--line-height: 1.6;
+  --text-body: 1rem;
+  --text-body--line-height: 1.65;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.55;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.4;
 }
 
 /**

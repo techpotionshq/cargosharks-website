@@ -11,7 +11,7 @@ here first.
 - One record per job from enquiry and quote, through award, milestones, customs, documents and costs, to the customer invoice.
 - Built bilingual: Arabic and English interface and documents, not a translation layer.
 - Sea, air, road, rail and courier.
-- A live demo opens without sign-up at https://demo.cargosharks.com. The product is in pilot.
+- A live demo opens without sign-up at https://demo.cargosharks.com. Demo calls are free; setup and onboarding, then a subscription, are quoted per operation. Never call any of it a pilot or a trial.
 
 ## What it does
 
@@ -21,15 +21,15 @@ here first.
 - Free time and demurrage: the clock starts from the milestone that starts it, and the charge line is written to the job as it runs.
 - On the website, a free time cost calculator: from containers a month, the share that overrun free time, the average days over and the daily rate, it estimates what overruns cost a month. It is an estimate of the size of the problem, not a tool for one shipment: it does not work out a container's free time, last free day or charge.
 - Customs status and document issue, in Arabic and English.
-- Costs, supplier invoice matching and receivables; each invoice line carries its tax treatment and rate.
+- Costs, supplier invoice matching and receivables; each invoice line carries its VAT category, rate and exemption code, decided from rules the finance team edits.
+- E-invoicing: Saudi ZATCA Phase 2 (tax invoices, credit and debit notes as signed XML with the QR code, cleared with ZATCA as they are issued) and UAE e-invoicing (PINT AE, sent to the customer's accredited service provider as soon as the invoice is issued). Kuwaiti branches invoice as before. Do not say "certified" or "approved by ZATCA"; ZATCA does not certify software.
 - A customer portal, an agent portal for overseas partners, and public shipment tracking.
 - A journal of the period's invoices, receipts, supplier bills and payments exports for the accountant to import.
 
 ## What it does not do (say so plainly when relevant)
 
 - No direct connector to a specific accounting package in this release; the journal export is the hand-off.
-- It does not issue UAE e-invoices (PINT AE) today and there is no ship date. Issue them from the accounting system or an accredited provider.
-- It does not issue ZATCA tax invoices; those keep coming from the customer's ZATCA-compliant system.
+- It is not an accredited service provider (ASP) in the UAE; each business appoints its own and CargoSharks sends invoices to it.
 - No published pricing, no ratings, no customer logos or named customers. Never invent any.
 
 ## Pages worth linking

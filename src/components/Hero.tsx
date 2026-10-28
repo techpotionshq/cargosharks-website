@@ -1,9 +1,11 @@
 'use client'
 
-import { motion, useReducedMotion } from 'motion/react'
+import { motion } from 'motion/react'
+import { DURATION, EASE } from '@/lib/motion'
 import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
-import { Accrue } from '@/components/Accrue'
-import { DEMO_URL, hero, type Lang } from '@/content/copy'
+import { Accrue, DaysSince } from '@/components/Accrue'
+import { Button } from '@/components/ui/button'
+import { DEMO_URL, DEMURRAGE_PER_DAY, FREE_TIME_ENDED, hero, type Lang } from '@/content/copy'
 
 /**
  * A photograph, a sentence, and the product straddling the join.
@@ -26,9 +28,15 @@ import { DEMO_URL, hero, type Lang } from '@/content/copy'
  *
  * The rest follows from it. Weight 500 rather than 800 and tracking at
  * `-0.02em` rather than `-0.04em`, because at this size 800 is shouting and
- * every generated page shouts. A mono eyebrow, which is this repository's own
- * label convention. Buttons at `rounded-lg`, because a pill is the framework's
- * default and therefore everyone's. And no badge.
+ * every generated page shouts. Buttons at `rounded-lg`, because a pill is the
+ * framework's default and therefore everyone's. No badge, and no eyebrow: the
+ * mono label that sat above the headline said less than the headline did.
+ *
+ * **The headline is on the page before any script runs.** It used to fade in
+ * from `opacity: 0`, which the server rendered inline, so the page's H1 was
+ * invisible to a crawler and to anyone whose JavaScript was slow; it was also
+ * the likely LCP element, held back 80ms on purpose. Only the product frame
+ * moves now, and it rises from where it already is rather than appearing.
  *
  * **The frame straddles the boundary.** It is pulled up out of the paper into
  * the bottom of the photograph, so the two bands are joined by the product
@@ -36,20 +44,9 @@ import { DEMO_URL, hero, type Lang } from '@/content/copy'
  * a photo section followed by a screenshot section.
  */
 export function Hero({ lang, shot }: { lang: Lang; shot: string }) {
-  const reduced = useReducedMotion()
-
-  const enter = (delay: number) =>
-    reduced
-      ? {}
-      : {
-          initial: { opacity: 0, y: 16 },
-          animate: { opacity: 1, y: 0 },
-          transition: { duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] as const },
-        }
-
   return (
     <section className="relative">
-      <div className="relative isolate overflow-hidden bg-void pt-[9.5rem] pb-[13rem] lg:pt-[11rem] lg:pb-[15rem]">
+      <div className="relative isolate overflow-hidden bg-void pt-36 pb-48 lg:pt-40 lg:pb-56">
         <img
           src="/pic/photos/hero-port-dusk.webp"
           alt=""
@@ -65,110 +62,86 @@ export function Hero({ lang, shot }: { lang: Lang; shot: string }) {
         <div className="absolute inset-0 -z-10 bg-gradient-to-b from-void/85 via-transparent to-void" />
 
         <div className="shell relative flex flex-col items-center text-center">
-          <motion.p {...enter(0.02)} className="tracked text-[0.62rem] text-on-void-faint">
-            {hero.eyebrow[lang]}
-          </motion.p>
+          <h1 className="max-w-[18ch] text-balance font-display text-display font-extrabold text-on-void">
+            {hero.title[lang]}
+          </h1>
 
-          <motion.h1
-            {...enter(0.08)}
-            className="mt-7 max-w-[20ch] text-balance font-display text-[clamp(2.5rem,5.6vw,4.25rem)] font-medium leading-[1.06] tracking-[-0.02em] text-on-void"
-          >
-            {hero.title[lang].join(' ')}
-          </motion.h1>
-
-          <motion.p
-            {...enter(0.18)}
-            className="mt-7 max-w-[54ch] text-balance text-[clamp(1.05rem,1.5vw,1.25rem)] leading-[1.6] text-on-void-dim"
-          >
+          <p className="mt-6 max-w-[58ch] text-balance text-lede text-on-void-dim">
             {hero.body[lang]}
-          </motion.p>
+          </p>
 
-          <motion.div
-            {...enter(0.26)}
-            className="mt-10 flex flex-wrap items-center justify-center gap-3"
-          >
-            <a
-              href={DEMO_URL}
-              className="tracked group flex items-center gap-2.5 rounded-lg bg-blue px-6 py-4 text-[0.66rem] leading-none text-on-brand transition-opacity hover:opacity-90"
-            >
-              {hero.primary[lang]}
-              {/* `rtl:-scale-x-100` rather than a second icon: an arrow means
-                  "onward", and onward is leftward in Arabic. */}
-              <ArrowRight
-                weight="bold"
-                className="size-3.5 transition-transform group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5"
-              />
-            </a>
-            <a
-              href="#work"
-              className="tracked rounded-lg border border-on-void-faint/40 px-6 py-4 text-[0.66rem] leading-none text-on-void transition-colors hover:bg-void-lift"
-            >
-              {hero.secondary[lang]}
-            </a>
-          </motion.div>
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+            <Button asChild size="lg">
+              <a href={DEMO_URL}>
+                {hero.primary[lang]}
+                {/* `rtl:-scale-x-100` rather than a second icon: an arrow means
+                    "onward", and onward is leftward in Arabic. */}
+                <ArrowRight weight="bold" className="size-4 rtl:-scale-x-100" />
+              </a>
+            </Button>
+            <Button asChild size="lg" variant="onDark">
+              <a href="#demo">{hero.secondary[lang]}</a>
+            </Button>
+          </div>
+
+          {/* What a Gulf buyer checks for first, as text. ZATCA leads because it
+              is the question every forwarder in the region is asking now. */}
+          <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-small text-on-void-dim">
+            {hero.facts.map((fact, index) => (
+              <li key={fact.en} className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={`size-1.5 rounded-full ${index < 2 ? 'bg-positive' : 'bg-on-void-faint'}`}
+                />
+                {fact[lang]}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
 
       {/* Pulled up into the photograph. The negative margin is the whole idea —
           see the header — so it is deliberately larger than it looks like it
           needs to be. */}
-      <div className="shell-wide relative z-10 -mt-[9rem] lg:-mt-[11rem]">
+      <div className="shell-wide relative z-10 -mt-36 lg:-mt-44">
+        {/* The same element whatever the motion preference: the server cannot
+            know it, so a conditional here rendered one thing on the server and
+            another in the browser. Reduced motion is pinned by CSS instead. */}
         <motion.div
-          initial={reduced ? undefined : { opacity: 0, y: 26 }}
-          animate={reduced ? undefined : { opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.34, ease: [0.16, 1, 0.3, 1] }}
+          className="motion-reduce:transform-none!"
+          initial={{ y: 24 }}
+          animate={{ y: 0 }}
+          transition={{ duration: DURATION.slow, ease: EASE }}
         >
-          {/*
-            Rounded at the top, square at the bottom, and one element rather
-            than two.
-
-            The rule across the site is that a frame with all four corners
-            rounded is a complete object and a frame rounded only at the top is
-            one that continues past its crop. This is the only cropped frame
-            here, so it is the only one shaped this way — the ones in `Work` and
-            `Bilingual` show a whole capture and keep all four.
-
-            It was a rounded box inside a rounded box: the border and shadow on
-            the outer element, the mask on the inner. That drew a crisp closed
-            rectangle *underneath* an image that was dissolving — the frame
-            finished itself while its contents evaporated, which is two edges
-            making opposite claims about the same boundary. A radius says the
-            object ends here and a fade says it does not.
-
-            So the mask is on the element that carries the border, and it takes
-            the border with it. The shadow went with the second element and is
-            not missed: its top half sat on a dark photograph where a shadow is
-            invisible, and its bottom half sat under the part that fades out.
-          */}
+          {/* Rounded at the top and square at the bottom: the only cropped frame
+              on the page, so the only one shaped as continuing past its crop. The
+              mask is on the element that carries the border so the two edges
+              agree about where the object ends. */}
           <div className="floor max-h-[30rem] overflow-hidden rounded-t-2xl border border-b-0 border-line bg-paper-lift">
             <img
               src={`/pic/screens/${shot}.webp`}
-              alt=""
+              alt={
+                lang === 'ar'
+                  ? 'لوحة CargoSharks: الردود المتأخرة وغرامات التأخير الجارية والاستفسارات المفتوحة والشحنات الحالية'
+                  : 'The CargoSharks dashboard: overdue replies, demurrage accruing, open enquiries and live shipments'
+              }
               width={2360}
               height={1476}
               className="w-full"
-              fetchPriority="high"
             />
           </div>
         </motion.div>
 
-        {/*
-          The live figure, as one mono line under the frame.
-
-          This is the counter that used to be a floating glass chip laid over
-          the screenshot. The chip was the problem: an overlay that is not part
-          of the interface underneath it is a sticker, and it covered a real
-          card on the dashboard that says the same thing. As a caption it is the
-          device Stripe opens with — one oddly specific, obviously live number
-          in small type, which does more for credibility than any adjective. It
-          is also, precisely, the argument of the entire page.
-        */}
-        <p className="mt-6 flex flex-wrap items-baseline justify-center gap-x-2.5 gap-y-1 text-center font-mono text-[0.8rem] text-ink-faint">
+        {/* One live figure under the frame. The days and the amount both come
+            from `FREE_TIME_ENDED`, so they agree with each other and with today. */}
+        <p className="mt-5 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-center text-small text-ink-faint">
           <span>{hero.tickerLabel[lang]}</span>
-          <span className="figures font-medium text-amber">
-            KWD <Accrue from={4187.264} perDay={32} />
+          <span className="figures font-mono font-medium text-amber">
+            KWD <Accrue since={FREE_TIME_ENDED} perDay={DEMURRAGE_PER_DAY} />
           </span>
-          <span className="text-ink-faint/70">{hero.tickerRef[lang]}</span>
+          <span className="figures">
+            · MSKU 704 118 2 · <DaysSince since={FREE_TIME_ENDED} /> {hero.tickerDays[lang]}
+          </span>
         </p>
       </div>
     </section>

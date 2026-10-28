@@ -1,61 +1,40 @@
 /**
  * The comparison pages, as data.
  *
- * Four pages that are the same page with different contents, so they are one
- * component and a table rather than four hand-written documents that drift.
- * `/compare/` §03 already sets the editorial rule these follow, and it is worth
- * restating here because it is the whole design of this file:
+ * Four pages that are the same argument with different contents, so they are
+ * one component (`src/components/compare/ComparisonPage.tsx`) and this table
+ * rather than four documents that drift. The editorial rule they follow is the
+ * one `/compare/` states: no tick-and-cross grid about somebody else's
+ * product. A grid is a snapshot of another company's roadmap that starts
+ * decaying the day it is published, and the person it misleads is the buyer.
  *
- *   > We do not publish claims about other people's products. […] A grid is a
- *   > snapshot of somebody else's roadmap. Every entry in it starts decaying
- *   > the day it is published, and the thing about a decayed competitive claim
- *   > is that the person it misleads is your prospect and the person who looks
- *   > foolish is you.
+ * So there is no `features: { us: true, them: false }` anywhere below, and no
+ * field that could hold one. What each page carries instead:
  *
- * So there is no `features: { us: true, them: false }` anywhere below, and
- * there is no field that could hold one. What each page carries instead:
+ *   - `theirPitch`: what the vendor says about itself, read off the page in
+ *     `source` on the date in `checked`, and printed with both. A claim with a
+ *     date on it goes stale visibly, which a grid never does.
+ *   - `pickThem`: the case for the other product, written to be true. A
+ *     comparison that cannot name a reader who should buy the other thing is
+ *     an advertisement.
+ *   - `pickUs`: mechanisms, each one checkable in the demo.
+ *   - `ask`: the questions to put to both vendors. `ours` is our answer;
+ *     `tell` is what a good answer sounds like from anybody, us included. It
+ *     replaced a blank column for the reader to fill in on the call, which on a
+ *     screen read as content that had failed to load.
  *
- *   - `theirPitch` — **what the vendor says about itself**, in one or two
- *     sentences, with `source` pointing at the page it was read from and
- *     `checked` recording the day somebody read it. Positioning rather than
- *     features, because positioning is what a vendor states plainly and
- *     features are what a grid gets wrong.
- *   - `pickThem` — the case *for* the other product, written to be true. A
- *     comparison page that cannot name a reader who should buy the other thing
- *     is an advertisement wearing a comparison's clothes, and a forwarder
- *     evaluating three systems can tell in one paragraph.
- *   - `pickUs` — mechanisms, each checkable in the demo or this repository.
- *   - `ask` — the questions to put to both vendors, with two answers each.
- *     `ours` is what we say. `tell` is what a good answer to that question
- *     sounds like *from anybody*, us included.
+ * Every `theirPitch` was read off the vendor's own page, not recalled. The
+ * first pass was written from memory and got all three wrong in the same way:
+ * Logistaas publishes "80+ countries" and offices in Amman and London, not "the
+ * Middle East, Africa and Asia"; DP World calls CARGOES Runner an ERP for small
+ * and medium-sized forwarders, not a "cloud logistics platform"; CargoWise's
+ * front page does not mention an implementation-partner network. Cite what you
+ * read. `cargoes.com` refuses non-browser requests with a 403, so the CARGOES
+ * Runner source is DP World's own product page, where it was actually read.
  *
- *     `tell` exists because the third column of that table was originally
- *     blank — a ruled box for the reader to fill in on the call. On paper that
- *     is a worksheet; on a screen it read as content that had failed to load,
- *     which is a worse first impression than having no third column at all. It
- *     also asked the reader to do the work while we supplied nothing. Saying
- *     what separates a good answer from a weak one is the genuinely useful
- *     thing we can put there, and it is still not a claim about anybody's
- *     product — every line of it applies to us as much as to them.
- *
- * `checked` is a real date and it is meant to go stale visibly. A page that
- * says when it was last read is a page a reader can discount for themselves,
- * which is the honest version of a claim about somebody else.
- *
- * **Every `theirPitch` below was read off the vendor's own page on the date in
- * `checked`, not recalled.** That distinction is the whole basis on which this
- * file is publishable, so it is worth recording what the first pass got wrong
- * when it was written from memory: Logistaas was described as serving "the
- * Middle East, Africa and Asia" when it publishes "80+ countries" and offices
- * in Amman and London; CARGOES Runner was called a "cloud logistics platform"
- * when DP World calls it an ERP for small and medium-sized forwarders; and
- * CargoWise was credited with "a large implementation-partner network", which
- * is true enough as an industry fact and is not what its own front page says.
- * None of those was a lie and all three were the wrong kind of writing.
- *
- * `cargoes.com` refuses non-browser requests with a 403, so the CARGOES Runner
- * source is DP World's own product page, which is where the description was
- * actually read. Cite what you read.
+ * `h1` and `meta` lead with the phrase a buyer searches ("CargoSharks vs
+ * CargoWise", "CargoWise alternative"); `title` is the short name the related
+ * links on the market pages print under "vs CargoWise".
  */
 
 import type { Bi } from '@/content/copy'
@@ -65,12 +44,17 @@ export interface Comparison {
   slug: string
   /** The other thing, as a person would say it. */
   name: string
-  /** For the page title and the mega menu. */
+  /** For the mega menu. */
   short: string
-  /** `null` where there is no vendor — a spreadsheet has nobody to misquote. */
+  /** `null` where there is no vendor: a spreadsheet has nobody to misquote. */
   source: string | null
   /** ISO date somebody last read `source`. Rendered, on purpose. */
   checked: string | null
+  /** The search phrase first. */
+  h1: Bi
+  /** English only, like the pages. Title ≤ 60 characters, description ≤ 155. */
+  meta: { title: string; description: string }
+  /** Short, for related-link cards elsewhere on the site. */
   title: Bi
   lede: Bi
   theirPitch: Bi
@@ -82,41 +66,41 @@ export interface Comparison {
 /** Shared by three of the four pages, so the wording cannot drift between them. */
 const OUR_POINTS: Bi[] = [
   {
-    en: 'Arabic and English are the same build, checked for parity on every commit — 2,727 interface strings in both, and every document the system issues exists in each.',
-    ar: 'العربية والإنجليزية بناء واحد، يُتحقق من تطابقهما مع كل تعديل — 2,727 نص واجهة باللغتين، وكل مستند يصدره النظام موجود بكليهما.',
+    en: 'Arabic and English are one build, checked for parity on every change, and every document the system issues exists in both.',
+    ar: 'العربية والإنجليزية بناء واحد، يُتحقق من تطابقهما مع كل تعديل، وكل مستند يصدره النظام موجود باللغتين.',
   },
   {
-    en: 'The dinar keeps three decimal places from the database to the printed invoice. Money is decimal end to end and never a floating-point number.',
+    en: 'The dinar keeps its three decimal places from the database to the printed invoice. Money is decimal end to end and never a floating-point number.',
     ar: 'الدينار يحتفظ بخاناته العشرية الثلاث من قاعدة البيانات إلى الفاتورة المطبوعة. الحساب عشري من طرف إلى طرف، ولا رقم عائم في أي موضع.',
   },
   {
-    en: 'Separation between branches and entities is a row-level policy in the database, not a filter in the application — 197 of them. A query written wrong returns nothing rather than somebody else’s shipments.',
-    ar: 'الفصل بين الفروع والكيانات سياسة على مستوى الصف في قاعدة البيانات لا مرشّح في التطبيق — 197 سياسة. والاستعلام المكتوب خطأً يعيد لا شيء، لا شحنات غيركم.',
+    en: 'Separation between branches and entities is a row-level policy in the database on every table. A query written wrong returns nothing rather than somebody else’s shipments.',
+    ar: 'الفصل بين الفروع والكيانات سياسة على مستوى الصف في قاعدة البيانات على كل جدول. والاستعلام المكتوب خطأً يعيد لا شيء، لا شحنات غيركم.',
   },
   {
-    en: 'Nothing is deleted. Every change is stamped with who made it and when, by 80 audit triggers, and a superseded row is marked superseded and stays.',
-    ar: 'لا يُحذف شيء. كل تغيير مختوم بمن أجراه ومتى، عبر 80 مُشغِّل تدقيق، والسطر المستبدَل يُعلَّم بأنه مستبدَل ويبقى.',
+    en: 'Nothing is deleted. A database trigger stamps every change with who made it and when, and a superseded row is marked superseded and kept.',
+    ar: 'لا يُحذف شيء. مُشغِّل في قاعدة البيانات يختم كل تغيير بمن أجراه ومتى، والسطر المستبدَل يُعلَّم بأنه مستبدَل ويبقى.',
   },
   {
-    en: 'You can open the whole thing right now, on seeded data, with a sign-in for you, your customer and your agent, without talking to anybody.',
+    en: 'You can open all of it now, on seeded data, with a sign-in for you, your customer and your agent, without talking to anybody.',
     ar: 'يمكنكم فتحه كاملاً الآن على بيانات مُعدّة، بحساب لكم ولعميلكم ولوكيلكم، دون التحدث إلى أحد.',
   },
 ]
 
-/** Also shared: the questions are the same questions whoever you are asking. */
+/** Also shared: the questions are the same whoever you are asking. */
 const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
   {
     question: {
-      en: 'Is the Arabic a translation layer, or is it the same build?',
+      en: 'Is the Arabic a translation layer, or the same build?',
       ar: 'هل العربية طبقة ترجمة أم أنها البناء نفسه؟',
     },
     ours: {
-      en: 'The same build. Right-to-left is in the layout rather than added on top of it, and `pnpm lint` fails if a string exists in one language and not the other. Open the demo, press the language switch, and look at a delivery order.',
-      ar: 'البناء نفسه. الاتجاه من اليمين إلى اليسار في بنية التصميم لا مضافاً إليه، ويفشل الفحص إن وُجد نص بلغة دون الأخرى. افتحوا النسخة التجريبية واضغطوا مبدّل اللغة وانظروا إلى أمر تسليم.',
+      en: 'The same build. Right-to-left is part of the layout, and a build check fails if a string exists in one language and not the other. Open the demo, press the language switch, and look at a delivery order.',
+      ar: 'البناء نفسه. الاتجاه من اليمين إلى اليسار جزء من بنية التصميم، ويفشل الفحص إن وُجد نص بلغة دون الأخرى. افتحوا النسخة التجريبية واضغطوا مبدّل اللغة وانظروا إلى أمر تسليم.',
     },
     tell: {
-      en: 'A good answer names a mechanism — a parity check that fails a build, one catalogue rather than two, right-to-left in the layout. A weak one is “yes, we support Arabic” plus a screenshot. Ask to see a printed delivery order rather than a screen: that is where an added-on language shows first.',
-      ar: 'الجواب الجيد يسمّي آلية — فحص تطابق يُفشل البناء، فهرس واحد لا اثنان، واتجاه من اليمين إلى اليسار في بنية التصميم. والجواب الضعيف هو «نعم، ندعم العربية» مع لقطة شاشة. اطلبوا أمر تسليم مطبوعاً لا شاشة: هناك تظهر اللغة المضافة أولاً.',
+      en: 'A good answer names a mechanism: a parity check that fails a build, one catalogue for both languages, right-to-left in the layout. A weak one is “yes, we support Arabic” and a screenshot. Ask to see a printed delivery order; that is where an added-on language shows first.',
+      ar: 'الجواب الجيد يسمّي آلية: فحص تطابق يُفشل البناء، وفهرس واحد للغتين، واتجاه من اليمين إلى اليسار في بنية التصميم. والجواب الضعيف هو «نعم، ندعم العربية» مع لقطة شاشة. اطلبوا أمر تسليم مطبوعاً؛ هناك تظهر اللغة المضافة أولاً.',
     },
   },
   {
@@ -125,26 +109,26 @@ const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
       ar: 'كم خانة عشرية تحملها فاتورة بالدينار الكويتي؟',
     },
     ours: {
-      en: 'Three, everywhere, because the dinar has three. This is the single fastest way to find out whether a system was built for dollars and adapted.',
+      en: 'Three, everywhere, because the dinar has three. It is the fastest way to find out whether a system was built for dollars and adapted.',
       ar: 'ثلاث، في كل موضع، لأن للدينار ثلاثاً. وهذه أسرع طريقة لمعرفة ما إذا كان النظام قد بُني للدولار ثم كُيِّف.',
     },
     tell: {
-      en: '“Three” should come back instantly and without conditions. Hesitation, or “it is configurable”, usually means money is a floating-point number somewhere and the decimals are a display setting — which is fine until a rounding difference lands on a reconciliation.',
-      ar: '«ثلاث» ينبغي أن تأتي فوراً وبلا شروط. والتردد، أو «هذا قابل للضبط»، يعني غالباً أن المال رقم عائم في مكان ما وأن الخانات إعداد عرض — وهذا مقبول إلى أن يظهر فرق تقريب في مطابقة.',
+      en: '“Three” should come back at once and without conditions. Hesitation, or “it is configurable”, usually means money is a floating-point number somewhere and the decimals are a display setting, which is fine until a rounding difference lands on a reconciliation.',
+      ar: '«ثلاث» ينبغي أن تأتي فوراً وبلا شروط. والتردد، أو «هذا قابل للضبط»، يعني غالباً أن المال رقم عائم في مكان ما وأن الخانات إعداد عرض، وهذا مقبول إلى أن يظهر فرق تقريب في مطابقة.',
     },
   },
   {
     question: {
-      en: 'Whose database is it, and can I have a copy of my data on a Tuesday afternoon without asking?',
-      ar: 'قاعدة البيانات لمن، وهل يمكنني أخذ نسخة من بياناتي بعد ظهر الثلاثاء دون طلب؟',
+      en: 'Whose database is it, and can I have a copy of my data without asking?',
+      ar: 'قاعدة البيانات لمن، وهل يمكنني أخذ نسخة من بياناتي دون طلب؟',
     },
     ours: {
-      en: 'PostgreSQL, and yes. The separation between customers is enforced by the database itself rather than by our application, which is also what makes the answer to the first half of that question boring.',
-      ar: 'PostgreSQL، ونعم. الفصل بين العملاء تفرضه قاعدة البيانات نفسها لا تطبيقنا، وهو أيضاً ما يجعل جواب الشطر الأول ممِلاً.',
+      en: 'Yours: a PostgreSQL database in your own instance, shared with no other customer. An export in an open format is yours any day at no charge. Today we assemble it for you; a single self-service export action is specified and not yet built. Source escrow is available on request.',
+      ar: 'لكم: قاعدة بيانات PostgreSQL في نسختكم الخاصة، لا يشارككم فيها عميل آخر. والتصدير بصيغة مفتوحة حقكم في أي يوم وبلا رسوم. نجمعه لكم اليوم؛ أما إجراء التصدير الذاتي بخطوة واحدة فمحدَّد ولم يُبنَ بعد. وإيداع الشيفرة المصدرية متاح عند الطلب.',
     },
     tell: {
-      en: 'Listen for a named engine and an export you can trigger yourself. “We can arrange an extract” is a different answer from “here is the button”, and the difference is what leaving costs you in three years.',
-      ar: 'أنصتوا إلى اسم محرّك قاعدة بيانات وتصدير تشغّلونه بأنفسكم. «يمكننا ترتيب استخراج» جواب مختلف عن «هذا هو الزر»، والفرق بينهما هو كلفة المغادرة بعد ثلاث سنوات.',
+      en: 'Listen for a named engine and an export you can trigger yourself. “We can arrange an extract” is a different answer from “here is the button”, and the difference is what leaving costs you in three years. Hold us to the same test.',
+      ar: 'أنصتوا إلى اسم محرّك قاعدة بيانات وتصدير تشغّلونه بأنفسكم. «يمكننا ترتيب استخراج» جواب مختلف عن «هذا هو الزر»، والفرق بينهما هو كلفة المغادرة بعد ثلاث سنوات. وطبّقوا علينا الاختبار نفسه.',
     },
   },
   {
@@ -153,12 +137,12 @@ const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
       ar: 'ما التكلفة إذا تضاعف الحجم؟',
     },
     ours: {
-      en: 'Ask every vendor this and ask for the answer in writing. Per-shipment and per-transaction pricing is normal in this category and is not a trick — but it is a different shape of bill from a flat one, and the difference shows up in year two rather than at signature.',
-      ar: 'اسألوا كل مورّد هذا واطلبوا الجواب مكتوباً. التسعير بالشحنة أو بالعملية معتاد في هذا المجال وليس حيلة — لكنه شكل فاتورة مختلف عن الثابت، والفرق يظهر في السنة الثانية لا عند التوقيع.',
+      en: 'Ask every vendor this, in writing. Per-shipment and per-transaction pricing is normal in this category, but it is a different shape of bill from a flat one, and the difference shows up in year two rather than at signature.',
+      ar: 'اسألوا كل مورّد هذا، كتابةً. التسعير بالشحنة أو بالعملية معتاد في هذا المجال، لكنه شكل فاتورة مختلف عن الثابت، والفرق يظهر في السنة الثانية لا عند التوقيع.',
     },
     tell: {
-      en: 'Any pricing shape is defensible; a refusal to put the shape in writing is not. Ask for the figure at twice and five times today’s volume, in the contract rather than on a call — and ask us the same way.',
-      ar: 'أي شكل تسعير يمكن الدفاع عنه؛ أما رفض كتابة الشكل فلا. اطلبوا الرقم عند ضعف الحجم الحالي وخمسة أضعافه، في العقد لا في مكالمة — واسألونا بالطريقة نفسها.',
+      en: 'Any pricing shape is defensible; a refusal to put the shape in writing is not. Ask for the figure at twice and five times today’s volume, in the contract rather than on a call, and ask us the same way.',
+      ar: 'أي شكل تسعير يمكن الدفاع عنه؛ أما رفض كتابة الشكل فلا. اطلبوا الرقم عند ضعف الحجم الحالي وخمسة أضعافه، في العقد لا في مكالمة، واسألونا بالطريقة نفسها.',
     },
   },
   {
@@ -167,91 +151,68 @@ const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
       ar: 'هل يمكنني رؤيته يعمل، اليوم، دون مكالمة؟',
     },
     ours: {
-      en: 'Yes — demo.cargosharks.com, no sign-up. We think this question separates vendors more reliably than any feature question, which is why it is last.',
-      ar: 'نعم — demo.cargosharks.com، بلا تسجيل. ونرى أن هذا السؤال يفرز المورّدين أكثر من أي سؤال عن المزايا، ولذلك جاء أخيراً.',
+      en: 'Yes: demo.cargosharks.com, with no sign-up. This question separates vendors more reliably than any feature question, which is why it is last.',
+      ar: 'نعم: demo.cargosharks.com، بلا تسجيل. وهذا السؤال يفرز المورّدين أكثر من أي سؤال عن المزايا، ولذلك جاء أخيراً.',
     },
     tell: {
-      en: 'The answer is yes or no, and both are legitimate. A demo that needs a discovery call first is a sales process rather than a fault — but it is also a reliable measure of how long a pilot will take to start.',
-      ar: 'الجواب نعم أو لا، وكلاهما مشروع. والنسخة التجريبية التي تتطلب مكالمة استكشاف أولاً عملية بيع لا عيب — لكنها أيضاً مقياس صادق لكم سيستغرق بدء التجربة.',
+      en: 'Yes and no are both legitimate. A demo that needs a discovery call first is a sales process, and also a reliable measure of how long onboarding will take to start.',
+      ar: 'نعم ولا كلاهما مشروع. والنسخة التجريبية التي تتطلب مكالمة استكشاف أولاً عملية بيع، وهي أيضاً مقياس موثوق لكم سيستغرق بدء الإعداد.',
     },
   },
 ]
 
 /**
- * The claims about us that carry a number, and the command that re-checks each.
+ * The claims about us, and how a buyer checks each one in the demo.
  *
- * This is the table §03 was missing. Everything else on a comparison page is
- * prose, and prose is where a reader stops being able to tell a mechanism from
- * an adjective — "fully bilingual" and "2,727 strings in both, and the build
- * fails if one is missing" are the same sentence until one of them shows its
- * working.
- *
- * `check` is the point of the table rather than decoration. Every row can be
- * run by somebody who has cloned the repository, opened the demo, or connected
- * to a deployment, which is the difference between this and the stat band
- * every site in the category carries. They can only be wrong by going stale,
- * and going stale is a thing a person can be asked to look at —
- * `apps/landing/README.md` records the same commands.
- *
- * **Two of these rows are SQL and not grep, and that is deliberate.** They
- * were originally published as `grep -c "CREATE POLICY"` and
- * `grep -c "attach_audit"` over the migration files, and both were wrong in a
- * way that is worse than being absent: the migrations write lowercase SQL, so
- * the first returned zero on all 38 files, and the policies and triggers are
- * created inside `foreach … execute format(…)` loops, so no grep of any casing
- * can count them — the second returned 16 against a published 80. A prospect's
- * technical evaluator who runs the flagship command and gets a screen of zeros
- * does not conclude that the command is wrong. They conclude the 197 was
- * invented, and then they discount every other row on the page. Which is the
- * exact failure this file's header warns about, aimed at ourselves.
+ * This table used to print the SQL that re-counts each figure (`select
+ * count(*) from pg_policies …`) beside counts typed in by hand: 197 policies,
+ * 80 audit triggers, 2,727 strings. A buyer cannot run SQL against our
+ * database, and a typed count goes stale on the next migration without
+ * anybody noticing. Every row is now something a person can do in the demo in
+ * a minute or two, and the only numbers left are ones that do not move: the
+ * modes, the dinar's decimals, the minutes.
  */
-export const facts: { claim: Bi; figure: string; check: Bi }[] = [
+export const facts: { claim: Bi; check: Bi }[] = [
   {
-    claim: { en: 'Transport modes', ar: 'وسائل الشحن' },
-    figure: '5',
+    claim: { en: 'Five transport modes', ar: 'خمس وسائل شحن' },
     check: {
-      en: 'Sea FCL, sea LCL, air, road, rail and courier appear in the mode selector on any enquiry in the demo.',
-      ar: 'بحري بحاوية كاملة وبحري بضاعة مجمعة وجوي وبري وسككي وبريد سريع تظهر في مُنتقي الوسيلة على أي استفسار في النسخة التجريبية.',
+      en: 'Start an enquiry in the demo. The mode selector offers sea (FCL and LCL), air, road, rail and courier.',
+      ar: 'ابدؤوا استفساراً في النسخة التجريبية. مُنتقي الوسيلة يعرض البحري (حاوية كاملة وبضاعة مجمعة) والجوي والبري والسككي والبريد السريع.',
     },
   },
   {
-    claim: { en: 'Row-level security policies', ar: 'سياسات الأمان على مستوى الصف' },
-    figure: '197',
-    check: {
-      en: "select count(*) from pg_policies where schemaname = 'public' — against any deployment, ours or yours. The policies are written by loops over the table registry, so a grep of the migration text counts the loops rather than the policies; pnpm test:db fails the build if any table lacks one.",
-      ar: "select count(*) from pg_policies where schemaname = 'public' — على أي نشر، نشرنا أو نشركم. السياسات تكتبها حلقات تمرّ على سجل الجداول، فبحث نصي في ملفات الترحيل يعدّ الحلقات لا السياسات؛ ويُفشل pnpm test:db البناء إن خلا جدول من سياسة.",
-    },
-  },
-  {
-    claim: { en: 'Audit triggers', ar: 'مُشغِّلات التدقيق' },
-    figure: '80',
-    check: {
-      en: "select count(*) from pg_trigger where tgname like '%\\_audit' and not tgisinternal — attached by a loop rather than by a list, so a table added in a later migration is covered without anybody remembering to add it.",
-      ar: "select count(*) from pg_trigger where tgname like '%\\_audit' and not tgisinternal — تُربط بحلقة لا بقائمة، فالجدول المضاف في ترحيل لاحق مشمول دون أن يتذكره أحد.",
-    },
-  },
-  {
-    claim: { en: 'Interface strings, English and Arabic', ar: 'نصوص الواجهة بالإنجليزية والعربية' },
-    figure: '2,727',
-    check: {
-      en: 'pnpm lint runs check-messages.mjs, which fails the build if a key exists in one catalogue and not the other.',
-      ar: 'يشغّل pnpm lint ملف check-messages.mjs، الذي يُفشل البناء إن وُجد مفتاح في أحد الفهرسين دون الآخر.',
-    },
-  },
-  {
-    claim: { en: 'Decimal places on every dinar', ar: 'الخانات العشرية لكل دينار' },
-    figure: '3',
+    claim: { en: 'Three decimals on every dinar', ar: 'ثلاث خانات عشرية لكل دينار' },
     check: {
       en: 'Open any invoice in the demo. A system built for dollars and adapted shows two.',
       ar: 'افتحوا أي فاتورة في النسخة التجريبية. النظام المبني للدولار ثم المكيَّف يُظهر خانتين.',
     },
   },
   {
-    claim: { en: 'Minutes to check all of the above', ar: 'دقائق للتحقق مما سبق' },
-    figure: '~10',
+    claim: { en: 'Separation enforced by the database', ar: 'فصل تفرضه قاعدة البيانات' },
     check: {
-      en: 'No sign-up and no call. That is the claim this whole page rests on.',
-      ar: 'بلا تسجيل وبلا مكالمة. وهذه هي الدعوى التي تقوم عليها هذه الصفحة كلها.',
+      en: 'Sign in to the demo as the customer contact and try to open the operations board. Other customers’ shipments are not hidden behind a filter; they are never returned.',
+      ar: 'ادخلوا النسخة التجريبية بحساب العميل وحاولوا فتح لوحة العمليات. شحنات العملاء الآخرين لا يخفيها مرشّح؛ بل لا تُعاد أصلاً.',
+    },
+  },
+  {
+    claim: { en: 'Changes kept, nothing deleted', ar: 'التغييرات محفوظة ولا يُحذف شيء' },
+    check: {
+      en: 'Revise a milestone on a demo job. The planned time stays beside the revised one instead of being overwritten.',
+      ar: 'عدّلوا مرحلة على شحنة في النسخة التجريبية. يبقى الموعد المخطط إلى جانب المعدَّل بدل أن يُكتب فوقه.',
+    },
+  },
+  {
+    claim: { en: 'Arabic and English, one build', ar: 'العربية والإنجليزية، بناء واحد' },
+    check: {
+      en: 'Press the language switch and issue a document. The layout, the figures and the document all turn right-to-left, with no English label left behind.',
+      ar: 'اضغطوا مبدّل اللغة وأصدروا مستنداً. تنقلب الواجهة والأرقام والمستند من اليمين إلى اليسار، بلا تسمية إنجليزية متبقية.',
+    },
+  },
+  {
+    claim: { en: 'About ten minutes for all of it', ar: 'نحو عشر دقائق لكل ما سبق' },
+    check: {
+      en: 'No sign-up and no call. The whole page rests on that.',
+      ar: 'بلا تسجيل وبلا مكالمة. وعلى هذا تقوم الصفحة كلها.',
     },
   },
 ]
@@ -263,24 +224,33 @@ export const comparisons: Comparison[] = [
     short: 'CargoWise',
     source: 'https://www.cargowise.com/',
     checked: '2026-08-25',
+    h1: {
+      en: 'CargoSharks vs CargoWise: a CargoWise alternative for Gulf forwarders',
+      ar: 'CargoSharks مقابل CargoWise: بديل لـ CargoWise لوكلاء الشحن في الخليج',
+    },
+    meta: {
+      title: 'CargoSharks vs CargoWise: a CargoWise alternative',
+      description:
+        'CargoSharks vs CargoWise for Gulf forwarders: what CargoWise says about itself, when it is the better choice, and the questions to ask both vendors.',
+    },
     title: {
       en: 'CargoSharks and CargoWise',
       ar: 'CargoSharks و CargoWise',
     },
     lede: {
-      en: 'The two are not the same size of thing, and pretending otherwise would waste your afternoon. Here is what each one is for, where CargoWise is the better answer, and the questions worth putting to both of us.',
-      ar: 'ليسا شيئاً واحداً في الحجم، والتظاهر بغير ذلك يضيّع وقتكم. هنا ما كل واحد منهما له، وأين يكون CargoWise الجواب الأفضل، والأسئلة التي تستحق أن تُطرح علينا معاً.',
+      en: 'The two are not the same size of thing. Here is what each is for, where CargoWise is the better answer, and the questions worth putting to both of us.',
+      ar: 'ليسا شيئاً واحداً في الحجم. هنا ما كل واحد منهما له، وأين يكون CargoWise الجواب الأفضل، والأسئلة التي تستحق أن تُطرح علينا معاً.',
     },
     theirPitch: {
-      en: 'WiseTech Global’s CargoWise calls itself “the platform that powers global logistics” — “a single intelligent system” on “a single global database” that “unifies your end-to-end supply chain”, quoting 193 countries, 30 languages and 162 currencies. It addresses forwarders, customs brokers, warehouse operators, carriers and drayage operators from the same platform.',
-      ar: 'يصف CargoWise، من WiseTech Global، نفسه بأنه «المنصة التي تشغّل الخدمات اللوجستية عالمياً» — «نظام ذكي واحد» على «قاعدة بيانات عالمية واحدة» يوحّد سلسلة التوريد من طرف إلى طرف، ويذكر 193 دولة و30 لغة و162 عملة. ويخاطب وكلاء الشحن والمخلّصين ومشغّلي المستودعات والناقلين من المنصة نفسها.',
+      en: 'WiseTech Global’s CargoWise calls itself “the platform that powers global logistics”: “a single intelligent system” on “a single global database” that “unifies your end-to-end supply chain”, quoting 193 countries, 30 languages and 162 currencies. It addresses forwarders, customs brokers, warehouse operators, carriers and drayage operators from the same platform.',
+      ar: 'يصف CargoWise، من WiseTech Global، نفسه بأنه «المنصة التي تشغّل الخدمات اللوجستية عالمياً»: «نظام ذكي واحد» على «قاعدة بيانات عالمية واحدة» يوحّد سلسلة التوريد من طرف إلى طرف، ويذكر 193 دولة و30 لغة و162 عملة. ويخاطب وكلاء الشحن والمخلّصين ومشغّلي المستودعات والناقلين من المنصة نفسها.',
     },
     pickThem: {
       heading: { en: 'Pick CargoWise if', ar: 'اختاروا CargoWise إذا' },
       points: [
         {
-          en: 'You clear customs in a dozen countries and need the coverage that comes with a platform quoting 193 of them. This is the strongest single reason to pick CargoWise and we are not going to argue with it.',
-          ar: 'كنتم تخلّصون جمركياً في عشر دول أو أكثر وتحتاجون التغطية التي تأتي مع منصة تذكر 193 دولة. هذا أقوى سبب منفرد لاختيار CargoWise ولن نجادل فيه.',
+          en: 'You clear customs in a dozen countries and need the coverage of a platform quoting 193 of them. This is the strongest single reason to pick CargoWise.',
+          ar: 'كنتم تخلّصون جمركياً في عشر دول أو أكثر وتحتاجون تغطية منصة تذكر 193 دولة. هذا أقوى سبب منفرد لاختيار CargoWise.',
         },
         {
           en: 'Your customers, agents or parent company already run it and the integration is the point.',
@@ -293,7 +263,7 @@ export const comparisons: Comparison[] = [
       ],
     },
     pickUs: {
-      heading: { en: 'Pick us if', ar: 'اختارونا إذا' },
+      heading: { en: 'Pick CargoSharks if', ar: 'اختاروا CargoSharks إذا' },
       points: OUR_POINTS,
     },
     ask: SHARED_ASKS,
@@ -304,13 +274,22 @@ export const comparisons: Comparison[] = [
     short: 'Logistaas',
     source: 'https://www.logistaas.com/',
     checked: '2026-08-25',
+    h1: {
+      en: 'CargoSharks vs Logistaas: a Logistaas alternative built in Kuwait',
+      ar: 'CargoSharks مقابل Logistaas: بديل لـ Logistaas بُني في الكويت',
+    },
+    meta: {
+      title: 'CargoSharks vs Logistaas: a Logistaas alternative',
+      description:
+        'CargoSharks vs Logistaas: two cloud freight systems for forwarders the same size. Where Logistaas is the better choice, where we are, and what to ask both.',
+    },
     title: {
       en: 'CargoSharks and Logistaas',
       ar: 'CargoSharks و Logistaas',
     },
     lede: {
-      en: 'The closest comparison on this list: cloud freight software, sold to forwarders our size, active in this region. So the differences are narrow and specific, which makes them worth writing down properly.',
-      ar: 'أقرب مقارنة في هذه القائمة: برنامج شحن سحابي يُباع لوكلاء بحجمنا، وناشط في هذه المنطقة. لذا فالفروق ضيقة ومحددة، وهو ما يجعل كتابتها بدقة أمراً يستحق.',
+      en: 'The closest comparison on this list: cloud freight software, sold to forwarders our size, active in this region. The differences are narrow and specific, so they are written down precisely.',
+      ar: 'أقرب مقارنة في هذه القائمة: برنامج شحن سحابي يُباع لوكلاء بحجمنا، وناشط في هذه المنطقة. الفروق ضيقة ومحددة، ولذلك كُتبت بدقة.',
     },
     theirPitch: {
       en: 'Logistaas calls itself a transportation management system and “freight forwarding software of the future”, and says forwarders in more than 80 countries use it. It names modules for sales and pricing, operations, finance, accounting and a customer portal, and it publishes offices in Amman and London.',
@@ -320,17 +299,17 @@ export const comparisons: Comparison[] = [
       heading: { en: 'Pick Logistaas if', ar: 'اختاروا Logistaas إذا' },
       points: [
         {
-          en: 'You want a vendor with live customers behind them — they say forwarders in more than 80 countries use it. We are in pilot. That is a real difference and it is the one we would weigh most heavily in your position.',
-          ar: 'أردتم مورّداً وراءه عملاء عاملون — يقولون إن وكلاء في أكثر من 80 دولة يستخدمونه. نحن في مرحلة تجريبية. هذا فرق حقيقي، وهو ما كنا سنرجّحه أكثر لو كنا مكانكم.',
+          en: 'You want a vendor with many live customers behind it: they say forwarders in more than 80 countries use it. We are a newer product with far fewer customers, and in your position we would weigh that most heavily.',
+          ar: 'أردتم مورّداً وراءه عملاء عاملون كثيرون: يقولون إن وكلاء في أكثر من 80 دولة يستخدمونه. نحن منتج أحدث وعملاؤنا أقل بكثير، ولو كنا مكانكم لرجّحنا هذا أكثر من غيره.',
         },
         {
-          en: 'You need a module we have not built. Our boundary is published on /what-we-do/ §07 — no warehouse module, no purchase-order management, no native mobile app.',
-          ar: 'احتجتم وحدة لم نبنِها. حدودنا منشورة في /what-we-do/ §07 — لا وحدة مستودعات، ولا إدارة أوامر شراء، ولا تطبيق جوال أصلي.',
+          en: 'You need a module we have not built. Our boundary is published on the What we do page: no warehouse module, no purchase-order management, no native mobile app.',
+          ar: 'احتجتم وحدة لم نبنِها. حدودنا منشورة في صفحة «ماذا نفعل»: لا وحدة مستودعات، ولا إدارة أوامر شراء، ولا تطبيق جوال أصلي.',
         },
       ],
     },
     pickUs: {
-      heading: { en: 'Pick us if', ar: 'اختارونا إذا' },
+      heading: { en: 'Pick CargoSharks if', ar: 'اختاروا CargoSharks إذا' },
       points: OUR_POINTS,
     },
     ask: SHARED_ASKS,
@@ -341,6 +320,15 @@ export const comparisons: Comparison[] = [
     short: 'CARGOES Runner',
     source: 'https://www.dpworld.com/smart-trade/freight-forwarding-erp',
     checked: '2026-08-25',
+    h1: {
+      en: 'CargoSharks vs CARGOES Runner: an independent alternative to DP World’s ERP',
+      ar: 'CargoSharks مقابل CARGOES Runner: بديل مستقل عن نظام DP World',
+    },
+    meta: {
+      title: 'CargoSharks vs CARGOES Runner: an independent alternative',
+      description:
+        'CargoSharks vs CARGOES Runner, DP World’s ERP for forwarders: when a group that size is the reason to pick it, and where an independent system fits.',
+    },
     title: {
       en: 'CargoSharks and CARGOES Runner',
       ar: 'CargoSharks و CARGOES Runner',
@@ -350,8 +338,8 @@ export const comparisons: Comparison[] = [
       ar: 'منتج من DP World، وهذه أهم حقيقة عنه ولا علاقة لها بالبرمجيات. هنا ما يشتريه لكم ذلك، وأين يكون النظام المستقل الأصغر جواباً أفضل.',
     },
     theirPitch: {
-      en: 'DP World describes CARGOES Runner as an ERP built from the ground up for small and medium-sized freight forwarders, aimed at back-office operations — quotations against your own tariff, quote-to-ship, digital invoicing and margin analytics, with an integrated ocean sailing-schedule search.',
-      ar: 'تصف DP World منتج CARGOES Runner بأنه نظام تخطيط موارد بُني من الأساس لوكلاء الشحن الصغار والمتوسطين، موجَّه إلى عمليات المكتب الخلفي — تسعير من تعرفتكم، ومن العرض إلى الشحن، وفوترة رقمية وتحليلات هوامش، مع بحث مدمج في جداول الإبحار.',
+      en: 'DP World describes CARGOES Runner as an ERP built from the ground up for small and medium-sized freight forwarders, aimed at back-office operations: quotations against your own tariff, quote-to-ship, digital invoicing and margin analytics, with an integrated ocean sailing-schedule search.',
+      ar: 'تصف DP World منتج CARGOES Runner بأنه نظام تخطيط موارد بُني من الأساس لوكلاء الشحن الصغار والمتوسطين، موجَّه إلى عمليات المكتب الخلفي: تسعير من تعرفتكم، ومن العرض إلى الشحن، وفوترة رقمية وتحليلات هوامش، مع بحث مدمج في جداول الإبحار.',
     },
     pickThem: {
       heading: { en: 'Pick CARGOES Runner if', ar: 'اختاروا CARGOES Runner إذا' },
@@ -361,13 +349,13 @@ export const comparisons: Comparison[] = [
           ar: 'كان حجمكم يمرّ عبر محطات DP World وأردتم المنصة الأقرب إليها.',
         },
         {
-          en: 'The backing of a group that size is itself part of what you are buying. That is a legitimate reason to choose a vendor and we would say so on a call.',
+          en: 'The backing of a group that size is part of what you are buying. That is a legitimate reason to choose a vendor, and we would say so on a call.',
           ar: 'كان دعم مجموعة بهذا الحجم جزءاً مما تشترونه. هذا سبب مشروع لاختيار مورّد، وسنقوله في مكالمة.',
         },
       ],
     },
     pickUs: {
-      heading: { en: 'Pick us if', ar: 'اختارونا إذا' },
+      heading: { en: 'Pick CargoSharks if', ar: 'اختاروا CargoSharks إذا' },
       points: OUR_POINTS,
     },
     ask: SHARED_ASKS,
@@ -377,17 +365,26 @@ export const comparisons: Comparison[] = [
     name: 'spreadsheets and email',
     short: 'Spreadsheets',
     // No vendor, so nobody to quote and nothing to go stale. This is the one
-    // page on the site that can be direct about the alternative, because the
-    // alternative is a working method rather than somebody's product.
+    // page that can be direct about the alternative, because the alternative
+    // is a working method rather than somebody's product.
     source: null,
     checked: null,
+    h1: {
+      en: 'Freight forwarding software vs Excel: the three places a spreadsheet breaks',
+      ar: 'برنامج الشحن مقابل Excel: المواضع الثلاثة التي ينكسر فيها جدول البيانات',
+    },
+    meta: {
+      title: 'Freight forwarding software vs Excel: where it breaks',
+      description:
+        'When a spreadsheet and a shared mailbox are still right for a forwarder, and the three moments they stop being right: rates, free time and history.',
+    },
     title: {
       en: 'CargoSharks and the spreadsheet',
       ar: 'CargoSharks وجدول البيانات',
     },
     lede: {
-      en: 'The real incumbent, and the one alternative here we can be blunt about — a spreadsheet has no vendor to misrepresent. It is also better than most software at several things, which is why it is still winning.',
-      ar: 'المنافس الحقيقي، والبديل الوحيد هنا الذي يمكننا الحديث عنه بصراحة — فجدول البيانات ليس له مورّد نسيء تمثيله. وهو أيضاً أفضل من معظم البرمجيات في أمور عدة، ولهذا ما زال يفوز.',
+      en: 'The real incumbent, and the one alternative here we can be blunt about: a spreadsheet has no vendor to misrepresent. It is also better than most software at several things, which is why it is still winning.',
+      ar: 'المنافس الحقيقي، والبديل الوحيد هنا الذي يمكننا الحديث عنه بصراحة: فجدول البيانات ليس له مورّد نسيء تمثيله. وهو أيضاً أفضل من معظم البرمجيات في أمور عدة، ولهذا ما زال يفوز.',
     },
     theirPitch: {
       en: 'A rate sheet in Excel, enquiries in four mailboxes, a WhatsApp group per customer and a shared drive of PDFs. Nobody chose this. It accumulated, and it works.',
@@ -397,48 +394,26 @@ export const comparisons: Comparison[] = [
       heading: { en: 'Keep the spreadsheet if', ar: 'أبقوا على جدول البيانات إذا' },
       points: [
         {
-          en: 'You move a handful of shipments a month. Below some volume the overhead of any system is larger than the problem it solves, and anyone who tells you otherwise is selling.',
-          ar: 'كنتم تحرّكون بضع شحنات في الشهر. تحت حجم معيّن تكون كلفة أي نظام أكبر من المشكلة التي يحلّها، ومن يقول غير ذلك فإنما يبيع.',
+          en: 'You move a handful of shipments a month. Below some volume the overhead of any system is larger than the problem it solves.',
+          ar: 'كنتم تحرّكون بضع شحنات في الشهر. تحت حجم معيّن تكون كلفة أي نظام أكبر من المشكلة التي يحلّها.',
         },
         {
-          en: 'One person does the whole job end to end and it is all in their head. The thing a file replaces is a handover, and you do not have one.',
-          ar: 'كان شخص واحد يؤدي العمل كله من طرف إلى طرف وكله في رأسه. فما يستبدله السجل هو التسليم بين الأشخاص، وأنتم لا تسلّمون.',
+          en: 'One person does the whole job end to end and it is all in their head. What a system replaces is a handover, and you do not have one.',
+          ar: 'كان شخص واحد يؤدي العمل كله من طرف إلى طرف وكله في رأسه. فما يستبدله النظام هو التسليم بين الأشخاص، وأنتم لا تسلّمون.',
         },
         {
-          en: 'Nothing has ever surfaced weeks late on a supplier invoice. If that is genuinely true, the case below does not apply to you.',
-          ar: 'لم يظهر لديكم قط شيء متأخراً أسابيع على فاتورة مورّد. إن صحّ هذا فعلاً، فما دونه لا ينطبق عليكم.',
+          en: 'Nothing has ever surfaced weeks late on a supplier invoice. If that is true, the case below does not apply to you.',
+          ar: 'لم يظهر لديكم قط شيء متأخراً أسابيع على فاتورة مورّد. إن صحّ هذا، فما دونه لا ينطبق عليكم.',
         },
       ],
     },
+    // The case for a system is the three moments in `comparison-leads.ts`,
+    // each with what happens on a file instead; repeating them here as a
+    // second list is what made the old page say everything twice.
     pickUs: {
-      heading: { en: 'The three places it breaks', ar: 'المواضع الثلاثة التي ينكسر فيها' },
-      points: [
-        {
-          en: 'A clock nobody starts. Free time runs out, the counter is somebody’s job and it is nobody’s job, and it surfaces weeks later on a supplier invoice. A file that knows the discharge milestone starts the clock itself and writes the charge line as it runs.',
-          ar: 'عدّاد لا يشغّله أحد. ينتهي وقت السماح، وتشغيل العدّاد مهمة أحدهم وليس مهمة أحد، فيظهر بعد أسابيع على فاتورة مورّد. أما السجل الذي يعرف مرحلة التفريغ فيشغّل العدّاد بنفسه ويكتب بند التكلفة وهو يعمل.',
-        },
-        {
-          en: 'Two people, one rate. Rate cards in a shared workbook overlap, and the version that goes out is whichever one the person quoting had open. In the database, two cards cannot cover one lane at one time.',
-          ar: 'شخصان وسعر واحد. بطاقات الأسعار في مصنّف مشترك تتداخل، والنسخة التي تخرج هي التي كانت مفتوحة أمام من يسعّر. أما في قاعدة البيانات فلا يمكن لبطاقتين تغطية مسار واحد في وقت واحد.',
-        },
-        {
-          en: 'Nobody can say who changed it. A spreadsheet has one truth and no history, so the question of when a date moved and who moved it has no answer at all — where a file with 80 audit triggers has a boring one.',
-          ar: 'لا أحد يستطيع القول من غيّره. لجدول البيانات حقيقة واحدة بلا تاريخ، فسؤال متى تغيّر التاريخ ومن غيّره لا جواب له البتة — بينما لسجل فيه 80 مُشغِّل تدقيق جواب ممِل.',
-        },
-      ],
+      heading: { en: 'What a system does instead', ar: 'ما يفعله النظام بدلاً من ذلك' },
+      points: [],
     },
     ask: SHARED_ASKS,
   },
 ]
-
-export const compareIndex = {
-  eyebrow: { en: 'Comparisons', ar: 'المقارنات' },
-  title: {
-    en: 'The three systems you are probably looking at, and the one you already use.',
-    ar: 'الأنظمة الثلاثة التي تنظرون إليها غالباً، والنظام الذي تستخدمونه أصلاً.',
-  },
-  body: {
-    en: 'One page each. None of them contains a tick-and-cross grid, for the reasons on this page — every one instead says what the other vendor states about itself, where that vendor is the better answer, and the questions worth asking both of us.',
-    ar: 'صفحة لكل واحد. لا تحتوي أي منها جدول علامات صح وخطأ، للأسباب المذكورة في هذه الصفحة — بل تقول كل صفحة ما يذكره المورّد الآخر عن نفسه، وأين يكون هو الجواب الأفضل، والأسئلة التي تستحق أن تُطرح علينا معاً.',
-  },
-}

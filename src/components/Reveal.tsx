@@ -1,12 +1,14 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion } from 'motion/react'
+import { DURATION, EASE, RISE, STAGGER, VIEWPORT } from '@/lib/motion'
+import { cn } from '@/lib/utils'
 
 /**
  * The page's only scroll animation, defined once.
  *
- * A block rises about twelve pixels and fades in as it comes into view, once,
+ * A block rises twelve pixels into place as it comes into view, once,
  * and never again. That is the whole vocabulary, and keeping it in one file is
  * the point: the moment two sections animate by different distances at
  * different speeds the page stops feeling composed and starts feeling
@@ -23,13 +25,24 @@ import { motion, useReducedMotion } from 'motion/react'
  * than to the thing arriving. At this distance a reader registers that the page
  * is responsive and never consciously sees a movement.
  *
- * **`margin` pulls the trigger line up off the bottom edge.** Firing exactly at
- * the viewport boundary means a block animates while it is still half a line
- * visible, so on a fast scroll the reader passes a paragraph mid-fade. Starting
- * it 80px early means it has finished by the time it is properly on screen.
+ * **It starts just before the block is on screen.** The trigger used to be a
+ * `-80px` margin, which shrinks the viewport rather than growing it, so a
+ * block only began to move once it was 80px into view and arrived late on a
+ * quick scroll. `VIEWPORT` in `lib/motion.ts` starts it 64px early instead,
+ * and the move is 0.35s, so it has settled by the time anyone reads it.
  *
- * Under `prefers-reduced-motion` the wrapper renders its children and nothing
- * else — not a faster animation, none.
+ * Under `prefers-reduced-motion` nothing moves, and the element is the same
+ * one either way. It used to render a plain `<div>` for reduced motion, but
+ * the server cannot know the preference and always sends the animated
+ * element with its starting offset inline; React does not repair a style
+ * attribute on hydration, so the block stayed twelve pixels low and the
+ * console logged a mismatch. The CSS rule pins it in place instead.
+ *
+ * **It moves; it does not appear.** It used to fade from `opacity: 0`, which
+ * the server rendered inline, so until a block scrolled into view it was a
+ * blank rectangle: on a fast scroll, on an anchor jump to `#demo`, in a
+ * crawler's render and in every full-page screenshot. Content is visible from
+ * the first paint now and only travels the twelve pixels into place.
  */
 export function Reveal({
   children,
@@ -41,17 +54,13 @@ export function Reveal({
   delay?: number
   className?: string
 }) {
-  const reduced = useReducedMotion()
-
-  if (reduced) return <div className={className}>{children}</div>
-
   return (
     <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '0px 0px -80px 0px' }}
-      transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
+      className={cn(className, 'motion-reduce:transform-none!')}
+      initial={{ y: RISE }}
+      whileInView={{ y: 0 }}
+      viewport={VIEWPORT}
+      transition={{ duration: DURATION.base, delay: Math.min(delay, STAGGER * 2), ease: EASE }}
     >
       {children}
     </motion.div>

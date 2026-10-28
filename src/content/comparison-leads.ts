@@ -3,50 +3,34 @@ import type { Bi } from '@/content/copy'
 /**
  * The opening section of each comparison page, which is different on each one.
  *
- * The four pages were one component and a table. That is good engineering and
- * it made a bad set of pages: they *could* not differ, so they didn't, and four
- * identical documents read as a template with the nouns swapped.
- *
- * The shared parts stay shared, and deliberately — the questions table, the
- * facts table and the policy note are the promise this site makes on every one
- * of these pages, and a promise that changes shape per page is not a promise.
- * What is different now is the lead, because the reason somebody is comparing
- * us to CargoWise is not the reason they are comparing us to a spreadsheet:
+ * The four pages are one component and a table, and that made them identical
+ * documents with the nouns swapped. The questions table and the checks table
+ * stay shared on purpose: they are the same promise on every page. The lead
+ * differs, because the reason somebody compares us to CargoWise is not the
+ * reason they compare us to a spreadsheet:
  *
  *   `scale`   the two are not the same size of thing
- *   `peer`    the difference is narrow, and the agreement is most of it
+ *   `peer`    the difference is narrow, and most of it is agreement
  *   `chain`   who owns the software, and where they stand in the trade
  *   `modes`   three failure moments, told as three moments
  *
- * `modes` also drops the "what they say about themselves" section entirely.
- * A spreadsheet has no vendor and no positioning, and running it through a
- * template that expects one is how the first version ended up with a heading
- * reading "What they say about themselves" over a paragraph about Excel.
+ * `modes` has no vendor and no positioning to quote, so its page drops the
+ * "in their words" quote and its case is the three `moments` rather than a
+ * list of points.
  */
 
 export type LeadShape = 'scale' | 'peer' | 'chain' | 'modes'
 
 export interface Lead {
   shape: LeadShape
-  eyebrow: Bi
   heading: Bi
   body: Bi
-  /** `modes` only: the three moments, each with its own cost. */
+  /** `modes` only: the three moments, each with what a file does instead. */
   moments?: { when: Bi; what: Bi; instead: Bi }[]
   /**
    * The one screen this page's reader should open first, and what to look at.
-   *
-   * Four pages that argued entirely in prose and tables, on a site whose central
-   * claim is *open it and check* — and not one of them showed the thing they
-   * were asking somebody to open. A screenshot is not decoration here, it is the
-   * evidence: `file` is a real capture of the running build in
-   * `public/pic/screens/`, and the Arabic page appends `-ar` because the sidebar
-   * crop is a logical property and bites the wrong edge otherwise.
-   *
-   * `look` is the sentence that makes it worth a reader's attention — what to
-   * notice, tied to this page's own argument. A caption reading "the operations
-   * board" under a picture of the operations board is a caption that could have
-   * been left off.
+   * `file` is a capture of the running build in `public/pic/screens/`; `look`
+   * says what to notice, tied to this page's argument.
    */
   shot: { file: string; alt: Bi; look: Bi }
 }
@@ -54,14 +38,13 @@ export interface Lead {
 export const leads: Record<string, Lead> = {
   cargowise: {
     shape: 'scale',
-    eyebrow: { en: '01 — The question underneath', ar: '01 — السؤال الكامن' },
     heading: {
-      en: 'This is a question about size, not about features',
-      ar: 'هذا سؤال عن الحجم لا عن المزايا',
+      en: 'The two are built for different sizes of operation',
+      ar: 'بُني كلٌّ منهما لحجم عمليات مختلف',
     },
     body: {
-      en: 'Almost every honest sentence on this page follows from one fact: the two are not the same size of thing. A platform that quotes 193 countries and a system built for a Kuwaiti forwarder are not competing to be more capable — they are aimed at different operations, and the overlap between them is where you have to decide.',
-      ar: 'تنبع كل جملة صادقة في هذه الصفحة تقريباً من حقيقة واحدة: ليسا شيئاً واحداً في الحجم. فمنصة تذكر 193 دولة ونظام بُني لوكيل شحن كويتي لا يتنافسان على القدرة — بل هما موجَّهان إلى عمليتين مختلفتين، والتداخل بينهما هو موضع القرار.',
+      en: 'A platform that quotes 193 countries and a system built for a Kuwaiti forwarder are aimed at different operations. Where they overlap is where you have to decide, and the question there is which one was built for your size.',
+      ar: 'منصة تذكر 193 دولة ونظام بُني لوكيل شحن كويتي موجَّهان إلى عمليتين مختلفتين. وحيث يتداخلان يكون القرار، والسؤال هناك: أيّهما بُني لحجمكم؟',
     },
     shot: {
       file: 'app-dashboard',
@@ -70,22 +53,21 @@ export const leads: Record<string, Lead> = {
         ar: 'لوحة المعلومات: أربعة أرقام وخريطة للشحنات الجارية ولوحة المساعد',
       },
       look: {
-        en: 'This is the whole of the software rather than a module of it, and that is the honest version of the size argument: a system built for one operation is one you can see the edges of on the first screen. Nothing here is configured on before it works.',
-        ar: 'هذه هي البرمجية كلها لا وحدة منها، وهذه هي الصيغة الصادقة لحجة الحجم: النظام المبني لعملية واحدة نظامٌ تُرى حدوده من أول شاشة. ولا شيء هنا يحتاج إعداداً قبل أن يعمل.',
+        en: 'This is the whole of the software rather than one module of it: a system built for one operation shows its edges on the first screen, and nothing here has to be configured before it works.',
+        ar: 'هذه هي البرمجية كلها لا وحدة منها: النظام المبني لعملية واحدة تُرى حدوده من أول شاشة، ولا شيء هنا يحتاج إعداداً قبل أن يعمل.',
       },
     },
   },
 
   logistaas: {
     shape: 'peer',
-    eyebrow: { en: '01 — What we agree on', ar: '01 — ما نتفق عليه' },
     heading: {
       en: 'Most of this comparison is agreement',
       ar: 'معظم هذه المقارنة اتفاق',
     },
     body: {
-      en: 'Two cloud systems sold to forwarders the same size in the same region will do most of the same job, and pretending otherwise is how comparison pages lose the reader. Quoting, operations, documents and finance are table stakes and both of us clear them. So this page concedes the middle first, and then spends its length on the crescents — which are narrow, specific, and worth writing down properly.',
-      ar: 'نظامان سحابيان يُباعان لوكلاء بالحجم نفسه في المنطقة نفسها سيؤديان معظم العمل نفسه، والتظاهر بغير ذلك هو ما يفقد صفحات المقارنة قارئها. التسعير والعمليات والمستندات والمالية أساسيات نجتازها كلانا. لذا تسلّم هذه الصفحة بالوسط أولاً، ثم تقضي طولها في الهلالين — وهما ضيّقان ومحددان ويستحقان الكتابة بدقة.',
+      en: 'Two cloud systems sold to forwarders the same size in the same region do most of the same job. Quoting, operations, documents and finance are table stakes and both of us clear them. The differences sit at the edges, and they are narrow and specific.',
+      ar: 'نظامان سحابيان يُباعان لوكلاء بالحجم نفسه في المنطقة نفسها يؤديان معظم العمل نفسه. التسعير والعمليات والمستندات والمالية أساسيات نجتازها كلانا. والفروق عند الأطراف، ضيقة ومحددة.',
     },
     shot: {
       file: 'finance',
@@ -94,22 +76,21 @@ export const leads: Record<string, Lead> = {
         ar: 'الذمم المدينة مجمّعة حسب مدة التأخر، والأكبر تعرضاً أولاً',
       },
       look: {
-        en: 'The crescents are where a comparison between two peers is decided, and this is one of them: every charge line stores its own rate and the moment it was taken, money is decimal from the database to the page, and the ageing is grouped by exposure rather than by invoice date.',
-        ar: 'الهلالان هما موضع الحسم بين نظيرين، وهذا أحدهما: كل بند تكلفة يخزّن سعر صرفه ولحظة أخذه، والمال عشري من القاعدة إلى الشاشة، وتقادم الذمم مجمّع حسب حجم التعرض لا حسب تاريخ الفاتورة.',
+        en: 'One of the edges: every charge line stores its own rate and the moment it was taken, money is decimal from the database to the page, and ageing is grouped by exposure rather than by invoice date.',
+        ar: 'أحد الأطراف: كل بند تكلفة يخزّن سعر صرفه ولحظة أخذه، والمال عشري من القاعدة إلى الشاشة، وتقادم الذمم مجمّع حسب حجم التعرض لا حسب تاريخ الفاتورة.',
       },
     },
   },
 
   'cargoes-runner': {
     shape: 'chain',
-    eyebrow: { en: '01 — Who owns the software', ar: '01 — لمن البرنامج' },
     heading: {
-      en: 'The distinguishing fact here is not a feature',
-      ar: 'الحقيقة المميِّزة هنا ليست ميزة',
+      en: 'The difference that matters is who owns the software',
+      ar: 'الفرق المهم هو من يملك البرنامج',
     },
     body: {
-      en: 'DP World operates terminals and also sells software to the forwarders who book through them. Both parties publish that and it is not an accusation — for a forwarder whose volume runs through those terminals, the closeness is the whole reason to choose it. For a forwarder whose volume does not, it is a question worth asking out loud. That is the axis this comparison turns on, and no feature list touches it.',
-      ar: 'تشغّل DP World محطات وتبيع أيضاً البرنامج لوكلاء الشحن الذين يحجزون عبرها. وكلا الطرفين ينشر ذلك، وليست تهمة — فالوكيل الذي يمرّ حجمه عبر تلك المحطات يجد في القرب سبب الاختيار كله. أما من لا يمرّ حجمه عبرها فالسؤال يستحق أن يُطرح صراحة. وهذا هو المحور الذي تدور عليه هذه المقارنة، ولا تلمسه قائمة مزايا.',
+      en: 'DP World operates terminals and also sells software to the forwarders who book through them. Both parties publish that. For a forwarder whose volume runs through those terminals, the closeness is the reason to choose it; for one whose volume does not, it is a question worth asking out loud.',
+      ar: 'تشغّل DP World محطات وتبيع أيضاً البرنامج لوكلاء الشحن الذين يحجزون عبرها. وكلا الطرفين ينشر ذلك. فالوكيل الذي يمرّ حجمه عبر تلك المحطات يجد في القرب سبب الاختيار؛ ومن لا يمرّ حجمه عبرها فالسؤال يستحق أن يُطرح صراحة.',
     },
     shot: {
       file: 'jobs',
@@ -118,22 +99,21 @@ export const leads: Record<string, Lead> = {
         ar: 'لوحة العمليات: الشحنات الجارية مرتّبة حسب الاستثناء، الأقدم أولاً',
       },
       look: {
-        en: 'Everything on this board is there because somebody at your desk put it there. We operate no terminal, no vessel and no depot, so nothing here arrives from a party that is also selling you the software — which is a position with two sides to it, and the other side is that we have no privileged data feed either.',
-        ar: 'كل ما على هذه اللوحة موجود لأن أحداً من مكتبكم وضعه. نحن لا نشغّل محطة ولا سفينة ولا مستودعاً، فلا يصل إليها شيء من طرف يبيعكم البرنامج أيضاً — وهذا وضع له وجهان، وثانيهما أننا كذلك بلا تغذية بيانات ذات امتياز.',
+        en: 'Everything on this board is there because somebody at your desk put it there. We operate no terminal, vessel or depot, so nothing arrives from a party that is also selling you the software; the other side of that is that we have no privileged data feed either.',
+        ar: 'كل ما على هذه اللوحة موجود لأن أحداً من مكتبكم وضعه. لا نشغّل محطة ولا سفينة ولا مستودعاً، فلا يصل إليها شيء من طرف يبيعكم البرنامج أيضاً؛ والوجه الآخر أننا بلا تغذية بيانات ذات امتياز كذلك.',
       },
     },
   },
 
   spreadsheets: {
     shape: 'modes',
-    eyebrow: { en: '01 — Three moments', ar: '01 — ثلاث لحظات' },
     heading: {
-      en: 'It does not break gradually. It breaks at three specific moments',
-      ar: 'لا ينكسر تدريجياً. ينكسر في ثلاث لحظات بعينها',
+      en: 'A spreadsheet breaks at three specific moments',
+      ar: 'جدول البيانات ينكسر في ثلاث لحظات بعينها',
     },
     body: {
-      en: 'A spreadsheet has no vendor, no roadmap and nothing to misrepresent, so this is the one page here that can be direct. It is also better than most software at several things, which is why it is still winning. What follows is not an argument that it is bad — it is the three moments at which it stops being the cheaper option, each one a thing that has already happened to somebody reading this.',
-      ar: 'جدول البيانات بلا مورّد وبلا خارطة طريق وبلا ما يُساء تمثيله، ولذا فهذه الصفحة الوحيدة هنا التي يمكن أن تكون صريحة. وهو أيضاً أفضل من معظم البرمجيات في أمور عدة، ولهذا ما زال يفوز. وما يلي ليس حجة على سوئه — بل هي اللحظات الثلاث التي يكفّ عندها عن كونه الخيار الأرخص، وكل واحدة منها وقعت فعلاً لأحد قرّاء هذه الصفحة.',
+      en: 'It does not wear out gradually, and it is not bad software. These are the three moments at which it stops being the cheaper option, and each one has already happened to somebody reading this.',
+      ar: 'لا يبلى تدريجياً، وليس برنامجاً سيئاً. هذه هي اللحظات الثلاث التي يكفّ عندها عن كونه الخيار الأرخص، وكل واحدة منها وقعت فعلاً لأحد قرّاء هذه الصفحة.',
     },
     shot: {
       file: 'enquiries',
@@ -142,42 +122,42 @@ export const leads: Record<string, Lead> = {
         ar: 'طابور الاستفسارات: لكل استفسار مالك وحالة وموعد للرد',
       },
       look: {
-        en: 'Three columns a shared workbook has no way to hold: an owner, a status, and a deadline that is measured rather than remembered. A file can have those headings. What it cannot have is anything that objects when they are left empty.',
-        ar: 'ثلاثة أعمدة لا يستطيع مصنّف مشترك أن يحملها: مالك، وحالة، وموعدٌ يُقاس لا يُتذكَّر. يستطيع الملف أن يحمل هذه العناوين، لكنه لا يملك ما يعترض حين تُترك فارغة.',
+        en: 'An owner, a status, and a deadline that is measured rather than remembered. A shared workbook can have those headings; it has nothing that objects when they are left empty.',
+        ar: 'مالك، وحالة، وموعدٌ يُقاس لا يُتذكَّر. يستطيع المصنّف المشترك أن يحمل هذه العناوين؛ لكنه لا يملك ما يعترض حين تُترك فارغة.',
       },
     },
     moments: [
       {
         when: { en: 'The second person joins', ar: 'حين ينضم الشخص الثاني' },
         what: {
-          en: 'Two people quoting from one workbook eventually send two prices for one lane, and the version that goes out is whichever one the person quoting had open. Nobody notices until the customer puts them side by side.',
-          ar: 'شخصان يسعّران من مصنّف واحد سيرسلان في النهاية سعرين لمسار واحد، والنسخة التي تخرج هي التي كانت مفتوحة أمام من يسعّر. ولا ينتبه أحد إلى أن يضعهما العميل جنباً إلى جنب.',
+          en: 'Two people quoting from one workbook eventually send two prices for one lane, and the one that goes out is whichever the person quoting had open. Nobody notices until the customer puts them side by side.',
+          ar: 'شخصان يسعّران من مصنّف واحد سيرسلان في النهاية سعرين لمسار واحد، والذي يخرج هو ما كان مفتوحاً أمام من يسعّر. ولا ينتبه أحد إلى أن يضعهما العميل جنباً إلى جنب.',
         },
         instead: {
-          en: 'A rate card carries a lane, a mode, a carrier and validity dates, and the database itself will not accept two that cover the same route at the same time.',
-          ar: 'بطاقة السعر تحمل مساراً ووسيلة وناقلاً وتواريخ صلاحية، وقاعدة البيانات نفسها لا تقبل بطاقتين تغطّيان المسار نفسه في الوقت نفسه.',
+          en: 'A rate card carries a lane, a mode, a carrier and validity dates, and the database will not accept two that cover the same route at the same time.',
+          ar: 'بطاقة السعر تحمل مساراً ووسيلة وناقلاً وتواريخ صلاحية، وقاعدة البيانات لا تقبل بطاقتين تغطّيان المسار نفسه في الوقت نفسه.',
         },
       },
       {
         when: { en: 'A container sits past its free days', ar: 'حين تتجاوز حاوية أيام السماح' },
         what: {
-          en: 'Starting the counter is somebody’s job and it is nobody’s job. It surfaces six weeks later on a supplier invoice, at which point the question has stopped being how much and become who was supposed to be watching.',
-          ar: 'تشغيل العدّاد مهمة أحدهم وليس مهمة أحد. فيظهر بعد ستة أسابيع على فاتورة مورّد، وعندها يكفّ السؤال عن كونه «كم» ويصير «من كان يفترض به أن يراقب».',
+          en: 'Starting the counter is everybody’s job and nobody’s. It surfaces six weeks later on a supplier invoice, when the question is no longer how much but who was supposed to be watching.',
+          ar: 'تشغيل العدّاد مهمة الجميع وليس مهمة أحد. فيظهر بعد ستة أسابيع على فاتورة مورّد، حين لا يعود السؤال «كم» بل «من كان يفترض به أن يراقب».',
         },
         instead: {
-          en: 'The milestone that ends free time starts the clock, and the charge line is written against the job on the day rather than found on a statement.',
-          ar: 'المرحلة التي ينتهي عندها وقت السماح تشغّل العدّاد، ويُكتب بند التكلفة على الشحنة في يومه لا يُكتشف في كشف حساب.',
+          en: 'The milestone that starts free time starts the clock, and the charge line is written to the job on the day rather than found on a statement.',
+          ar: 'المرحلة التي يبدأ عندها وقت السماح تشغّل العدّاد، ويُكتب بند التكلفة على الشحنة في يومه لا يُكتشف في كشف حساب.',
         },
       },
       {
         when: { en: 'Somebody asks who changed it', ar: 'حين يسأل أحدهم من غيّره' },
         what: {
-          en: 'A spreadsheet has one truth and no history. When a date moved, who moved it and what it said before are not hard questions — they are questions with no answer at all, which is a different and worse thing.',
-          ar: 'لجدول البيانات حقيقة واحدة بلا تاريخ. فمتى تغيّر التاريخ ومن غيّره وماذا كان قبله ليست أسئلة صعبة — بل أسئلة بلا جواب البتة، وهذا شيء آخر وأسوأ.',
+          en: 'A spreadsheet has one truth and no history. When a date moved, who moved it and what it said before are questions with no answer at all.',
+          ar: 'لجدول البيانات حقيقة واحدة بلا تاريخ. فمتى تغيّر التاريخ ومن غيّره وماذا كان قبله أسئلة بلا جواب البتة.',
         },
         instead: {
-          en: 'Nothing is deleted. Every change is stamped with who made it and when, and a superseded row is marked superseded and stays where it was.',
-          ar: 'لا يُحذف شيء. كل تغيير مختوم بمن أجراه ومتى، والسطر المستبدَل يُعلَّم بأنه مستبدَل ويبقى في موضعه.',
+          en: 'Nothing is deleted. A database trigger stamps every change with who made it and when, and a superseded row is marked superseded and stays where it was.',
+          ar: 'لا يُحذف شيء. مُشغِّل في قاعدة البيانات يختم كل تغيير بمن أجراه ومتى، والسطر المستبدَل يُعلَّم بأنه مستبدَل ويبقى في موضعه.',
         },
       },
     ],

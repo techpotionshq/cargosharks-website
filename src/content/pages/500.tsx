@@ -1,118 +1,97 @@
-/**
- * Converted, not written — and now the source.
- *
- * This page was hand-written HTML in `public/500.html` until the marketing
- * site became a Next app. The conversion was mechanical, by a script, and
- * deliberately so: between them these documents carry a clause-numbering
- * scheme people quote back in emails and a great deal of prose that says
- * exactly what the software does and no more. Retyping that into JSX by hand is the most expensive way to
- * introduce an error in this repository — a dropped `not` in a clause is
- * invisible in review and consequential in a way a layout bug never is.
- *
- * The HTML original is gone and this file is what there is. **Edit it here.**
- * It reads oddly for a React component — `className` on plain markup, no props,
- * no composition — because it is a document rather than a component, and
- * breaking it into components would be the retyping the conversion avoided.
- *
- * Its styling is `src/app/pages.css`, scoped under `.doc-page`, which
- * `src/components/DocPage.tsx` puts on the `<main>` around it.
- */
+import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
+import { EmailLink } from '@/components/Email'
+import { Footer } from '@/components/Footer'
+import { Header } from '@/components/Header'
+import { Wordmark } from '@/components/Wordmark'
+import { Button } from '@/components/ui/button'
+import { Section } from '@/components/ui/section'
 
-import { EmailAddress, EmailLink } from '@/components/Email'
+/**
+ * The server-error page, on the same masthead as the market pages and the 404.
+ *
+ * Short on purpose: what happened, that reloading once is worth it, and a way
+ * on. It used to say this site keeps nothing and has no database; the blog
+ * and the demo form put that out of date, and an error page is the last place
+ * to be caught saying something untrue. There is no reference number to quote,
+ * because inventing one for a page that logs nothing would be worse than
+ * having none: the address and the time are what we ask for instead.
+ *
+ * It renders the header and footer itself rather than sitting in `DocPage`,
+ * whose stylesheet sets `a { color: inherit }` unlayered and would beat every
+ * Tailwind colour below.
+ */
+const WAYS = [
+  { href: '/', label: 'The home page' },
+  { href: '/freight-forwarding-software-kuwait/', label: 'Freight forwarding software for Kuwait' },
+  { href: '/freight-forwarding-software-uae/', label: 'Freight forwarding software for the UAE' },
+  {
+    href: '/freight-forwarding-software-saudi-arabia/',
+    label: 'Freight forwarding software for Saudi Arabia',
+  },
+  { href: '/blog/', label: 'The blog' },
+]
 
 export function ServerErrorContent() {
   return (
     <>
-      <section className="hero hero--page errband">
-        <div className="hero__field" aria-hidden="true">
-          <div className="hero__grid"></div>
-        </div>
-
-        <div className="shell hero__copy">
-          <div className="err">
-            <div>
-              <p className="err__code" aria-hidden="true">
-                500
-              </p>
-              <p className="eyebrow">Error 500 &mdash; server error</p>
-              <h1>The request arrived and we failed to answer it.</h1>
-              <p className="err__say">
-                That is our fault rather than yours, and it is worth reloading once before doing
-                anything else &mdash; most failures of this kind are a single request that went
-                wrong rather than a site that is down.
-              </p>
-              <p className="err__say">
-                Nothing you sent has been lost, because <b>this site keeps nothing</b>. There is no
-                account here, no database behind it and no form that posts anywhere: the only thing
-                on it that sends is a <code>mailto:</code> link, which opens your own mail client
-                and waits for you to press send.
-              </p>
-              {/*
-                The product's own error boundary shows the Next.js digest, because the
-                server logged the stack under the same value and quoting it turns "the
-                site is down" into a line an engineer can grep for. A static file has
-                no digest and logs nothing, so there is no reference to print here —
-                and printing an invented one would be worse than printing none.
-              */}
-              <p className="err__say">
-                There is no reference number on this page to quote. A static file logs nothing on
-                its own, so what we need instead is the address you were on and roughly when.
-              </p>
-            </div>
-
-            <div>
-              <ul className="err__out">
-                <li>
-                  <a href="/">
-                    <span>
-                      <b>The home page</b>
-                      <small>Usually still standing when one page is not.</small>
-                    </span>
-                    <span className="err__tag">Home</span>
-                  </a>
-                </li>
-                <li>
-                  <a href="https://demo.cargosharks.com">
-                    <span>
-                      <b>The live demo</b>
-                      <small>
-                        A separate deployment on a separate address. This failure does not reach it.
-                      </small>
-                    </span>
-                    <span className="err__tag">Demo</span>
-                  </a>
-                </li>
-                <li>
-                  <a href="/#demo">
-                    <span>
-                      <b>Book the 15-day pilot</b>
-                      <small>
-                        If that is what you came for, the form is on the home page and takes six
-                        fields.
-                      </small>
-                    </span>
-                    <span className="err__tag">Pilot</span>
-                  </a>
-                </li>
-                <li>
-                  <EmailLink subject="Server error on cargosharks.com">
-                    <span>
-                      <b>
-                        <EmailAddress />
-                      </b>
-                      <small>
-                        Tell us the address and the time. A named person replies, not a ticket
-                        queue.
-                      </small>
-                    </span>
-                    <span className="err__tag">Email</span>
-                  </EmailLink>
-                </li>
-              </ul>
+      <Header lang="en" alternate="/ar/" mark={<Wordmark tone="onDark" height={24} />} />
+      <main id="top">
+        <section className="bg-void pt-32 pb-16 text-on-void lg:pt-36 lg:pb-20">
+          <div className="shell">
+            <h1 className="max-w-[22ch] text-balance font-display text-display font-extrabold">
+              Something went wrong on our side.
+            </h1>
+            <p className="mt-6 max-w-[58ch] text-lede text-on-void-dim">
+              The request reached us and we failed to answer it. That is our fault, not yours.
+              Reload the page once: most errors like this are a single request that went wrong,
+              not a site that is down.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild size="lg">
+                <a href="/#demo">Book a demo</a>
+              </Button>
+              <Button asChild size="lg" variant="onDark">
+                <a href="/">The home page</a>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        <Section space="tight">
+          <div className="shell grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-16">
+            <div className="lg:col-span-5">
+              <h2 className="font-display text-h3 font-bold text-heading">
+                Where to go from here
+              </h2>
+              <p className="mt-3 max-w-[40ch] text-body text-ink-dim">
+                If it keeps happening, tell us the address and roughly when at{' '}
+                <EmailLink
+                  subject="Server error on cargosharks.com"
+                  className="text-blue-ink hover:underline"
+                />
+                . A named person replies.
+              </p>
+            </div>
+            <ul className="divide-y divide-line border-y border-line lg:col-span-7">
+              {WAYS.map((link) => (
+                <li key={link.href}>
+                  <a
+                    href={link.href}
+                    className="group flex min-h-12 items-center justify-between gap-4 py-3 text-body font-semibold text-ink transition-colors hover:text-blue-ink"
+                  >
+                    {link.label}
+                    <ArrowRight
+                      weight="bold"
+                      className="size-4 shrink-0 text-ink-faint group-hover:text-blue-ink rtl:-scale-x-100"
+                    />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Section>
+      </main>
+      <Footer lang="en" alternate="/ar/" mark={<Wordmark tone="onDark" height={26} />} />
     </>
   )
 }

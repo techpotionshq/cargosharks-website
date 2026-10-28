@@ -1,38 +1,38 @@
 import { Bilingual } from '@/components/Bilingual'
 import { Calculator } from '@/components/Calculator'
 import { Capabilities } from '@/components/Capabilities'
-import { Cta } from '@/components/Cta'
-import { Pilot } from '@/components/Pilot'
+import { EInvoicing } from '@/components/EInvoicing'
+import { Enquiry } from '@/components/Enquiry'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { SiteSchema } from '@/components/StructuredData'
 import { Hero } from '@/components/Hero'
 import { Leak } from '@/components/Leak'
+import { Markets } from '@/components/Markets'
 import { Modes } from '@/components/Modes'
 import { Work } from '@/components/Work'
 import { Wordmark } from '@/components/Wordmark'
 import type { Lang } from '@/content/copy'
 
 /**
- * Eight blocks, in this order, in both languages.
+ * Ten blocks, in this order, in both languages.
  *
- * The order is an argument: what it is (Hero), who it is for and one checkable
- * fact (Modes), how it works (Work), what is inside it (Capabilities), what it
- * is worth in your own numbers (Calculator), what that looks like as a document
- * (Leak), the objection an Arabic-speaking buyer arrives with (Bilingual), and
- * the one thing to do (Cta).
+ * The order is an argument: what it is (Hero), one checkable fact (Modes), the
+ * question every Gulf buyer now asks first (EInvoicing), how it works (Work),
+ * what is inside it (Capabilities), what it is worth in your own numbers
+ * (Calculator), what that looks like as a document (Leak), the objection an
+ * Arabic-speaking buyer arrives with (Bilingual), where it is set up for
+ * (Markets), and the one thing to do (Enquiry).
  *
- * **The rhythm is light, light, light, dark, light, dark.** That is a
- * composition decision rather than a styling one, and it is the one the rebuild
- * turned on: the page was near-black end to end, which left it with no way to
- * say *this part is different* — every section had to shout to be distinguished
- * from the one above it, and the shouting is what made it read as generated.
- * Three dark bands on paper, each one carrying a photograph and each one placed
- * where the argument changes register, do the same job silently.
+ * E-invoicing sits second because it is what the market is shopping for:
+ * ZATCA Phase 2 in Saudi Arabia and the UAE's mandate are why forwarders are
+ * replacing systems this year, and a reader who has to scroll to the sixth
+ * section to learn it is covered has usually left by the third.
  *
- * `Calculator` is the only section a reader operates, and it is deliberately at
- * the middle: it is the point where somebody who is still reading stops being
- * an audience.
+ * Sections are separated by hairlines and 64 to 96px of padding rather than
+ * 224px of air, and two dark bands carry photographs where the argument
+ * changes register. `Markets` is there for readers and for crawlers both: it
+ * is the home page's only server-rendered link to the market and job pages.
  *
  * `Wordmark` is rendered here and passed down rather than imported by `Header`,
  * which is a client component: passing it as a child keeps `@qabandi/brand` out
@@ -57,13 +57,14 @@ export function Site({ lang }: { lang: Lang }) {
       <main>
         <Hero lang={lang} shot={`app-dashboard${suffix}`} />
         <Modes lang={lang} />
+        <EInvoicing lang={lang} />
         <Work lang={lang} shotSuffix={suffix} />
         <Capabilities lang={lang} />
         <Calculator lang={lang} />
         <Leak lang={lang} />
         <Bilingual lang={lang} />
-        <Cta lang={lang} />
-        <Pilot lang={lang} />
+        <Markets lang={lang} />
+        <Enquiry lang={lang} />
       </main>
       <Footer lang={lang} mark={<Wordmark tone="onDark" height={26} />} />
     </>

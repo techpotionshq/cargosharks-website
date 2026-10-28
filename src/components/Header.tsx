@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { DURATION, EASE } from '@/lib/motion'
 import { ArrowRight, CaretDown, List, X } from '@phosphor-icons/react/dist/ssr'
 import { DEMO_URL, hrefFor, type Lang, languageSwitch, nav } from '@/content/copy'
 
@@ -269,16 +270,21 @@ export function Header({
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 pt-3 sm:pt-4">
       <div className="shell-wide">
+        {/* The same starting state whatever the motion preference, pinned
+            visible by CSS when motion is reduced. `initial={false}` for reduced
+            motion could never apply: the server does not know the preference,
+            always sent the hidden bar, and React does not repair a style
+            attribute on hydration. */}
         <motion.div
-          initial={reduced ? false : { opacity: 0, y: -14 }}
+          initial={{ opacity: 0, y: -14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: DURATION.base, ease: EASE }}
           // One height, always. It used to shrink its padding once the reader
           // left the top of the page, which is a common trick and was wrong
           // here for a plain reason: the bar is fixed, so every pixel it loses
           // is a pixel the whole page appears to jump. Scrolling slowly past
           // the threshold made it twitch; scrolling fast made it flicker.
-          className="bar pointer-events-auto mx-auto flex max-w-[64rem] items-center justify-between gap-4 rounded-xl border py-2.5 pe-2.5 ps-5 shadow-lg backdrop-blur-xl"
+          className="bar pointer-events-auto mx-auto flex max-w-[64rem] items-center justify-between gap-4 rounded-xl border py-2.5 pe-2.5 ps-5 shadow-lg backdrop-blur-xl motion-reduce:transform-none! motion-reduce:opacity-100!"
         >
           <a
             href={lang === 'ar' ? '/ar/' : '/'}
@@ -324,7 +330,7 @@ export function Header({
                     <a
                       href={href}
                       aria-current={here(href) ? 'page' : undefined}
-                      className={`relative isolate block whitespace-nowrap rounded-lg px-2.5 py-2 text-[0.875rem] xl:px-3.5 ${
+                      className={`relative isolate block whitespace-nowrap rounded-lg px-2.5 py-2 text-small xl:px-3.5 ${
                         lit === item.id || active ? 'text-on-void' : 'text-on-void-dim'
                       }`}
                     >
@@ -336,7 +342,7 @@ export function Header({
                       type="button"
                       onClick={() => (isOpen ? setPanel(null) : holdPanel(item.id))}
                       aria-expanded={isOpen}
-                      className={`relative isolate flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-[0.875rem] xl:px-3.5 ${
+                      className={`relative isolate flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-small xl:px-3.5 ${
                         lit === item.id || isOpen ? 'text-on-void' : 'text-on-void-dim'
                       }`}
                     >
@@ -359,7 +365,7 @@ export function Header({
               href={other.href}
               hrefLang={other.hrefLang}
               lang={other.hrefLang}
-              className={`bar-hover rounded-lg border border-void-line text-on-void-dim px-3 py-2 text-[0.8rem] ${
+              className={`bar-hover rounded-lg border border-void-line text-on-void-dim px-3 py-2 text-label ${
                 lang === 'en' ? 'arabic' : ''
               }`}
             >
@@ -381,7 +387,7 @@ export function Header({
             */}
             <a
               href={DEMO_URL}
-              className="tracked group hidden items-center gap-2 rounded-lg bg-blue px-4 py-2.5 text-[0.6rem] leading-none text-on-brand transition-opacity duration-200 hover:opacity-90 sm:flex"
+              className="group hidden items-center gap-2 rounded-lg bg-blue px-4 py-2.5 text-small font-medium leading-none text-on-brand transition-opacity duration-200 hover:opacity-90 sm:flex"
             >
               {lang === 'ar' ? 'النسخة التجريبية' : 'Live demo'}
               <ArrowRight
@@ -518,7 +524,7 @@ export function Header({
                   ) : null}
 
                   {panelItem.intro ? (
-                    <p className="mt-4 max-w-[34ch] text-on-void-dim text-[0.85rem] leading-[1.6]">
+                    <p className="mt-4 max-w-[34ch] text-on-void-dim text-small">
                       {panelItem.intro[lang]}
                     </p>
                   ) : null}
@@ -527,9 +533,7 @@ export function Header({
                 <div className="grid gap-8 sm:grid-cols-2 lg:col-span-8 lg:gap-10">
                   {panelItem.id === 'blog' && latest.length ? (
                     <div>
-                      <p className="tracked text-on-void-dim text-[0.55rem] opacity-70">
-                        {latestHeading}
-                      </p>
+                      <p className="text-label font-medium text-on-void-faint">{latestHeading}</p>
                       <ul className="mt-4 space-y-1">
                         {latest.map((post) => (
                           <li key={post.slug}>
@@ -538,10 +542,10 @@ export function Header({
                               onClick={() => setPanel(null)}
                               className="bar-hover -mx-3 block rounded-lg px-3 py-2.5 transition-colors duration-150"
                             >
-                              <span className="block text-on-void text-[0.9rem] font-medium leading-[1.4]">
+                              <span className="block text-on-void text-small font-semibold leading-[1.4]">
                                 {post[lang]!.title}
                               </span>
-                              <span className="mt-0.5 block text-on-void-dim text-[0.8rem] opacity-80">
+                              <span className="mt-0.5 block text-on-void-dim text-label">
                                 {date(post.publishedAt)}
                               </span>
                             </a>
@@ -552,7 +556,7 @@ export function Header({
                   ) : null}
                   {(panelItem.columns ?? []).map((column) => (
                     <div key={column.heading.en}>
-                      <p className="tracked text-on-void-dim text-[0.55rem] opacity-70">
+                      <p className="text-label font-medium text-on-void-faint">
                         {column.heading[lang]}
                       </p>
                       <ul className="mt-4 space-y-1">
@@ -563,10 +567,10 @@ export function Header({
                               onClick={() => setPanel(null)}
                               className="bar-hover -mx-3 block rounded-lg px-3 py-2.5 transition-colors duration-150"
                             >
-                              <span className="block text-on-void text-[0.9rem] font-medium">
+                              <span className="block text-on-void text-small font-semibold">
                                 {link.label[lang]}
                               </span>
-                              <span className="mt-0.5 block text-on-void-dim text-[0.8rem] leading-[1.5] opacity-80">
+                              <span className="mt-0.5 block text-on-void-dim text-label">
                                 {link.blurb[lang]}
                               </span>
                             </a>
@@ -619,14 +623,14 @@ export function Header({
                         href={linkOf(group)}
                         onClick={() => setOpen(false)}
                         aria-current={here(linkOf(group)!) ? 'page' : undefined}
-                        className={`block rounded-lg px-3 py-2.5 text-on-void text-[0.95rem] font-medium ${
+                        className={`block rounded-lg px-3 py-2.5 text-on-void text-body font-medium ${
                           here(linkOf(group)!) ? 'bar-pill' : ''
                         }`}
                       >
                         {group.label[lang]}
                       </a>
                     ) : (
-                      <p className="tracked px-3 text-on-void-dim text-[0.55rem] opacity-70">
+                      <p className="px-3 text-label font-medium text-on-void-faint">
                         {group.label[lang]}
                       </p>
                     )}
@@ -639,10 +643,10 @@ export function Header({
                             onClick={() => setOpen(false)}
                             className="mt-1 block rounded-lg px-3 py-2.5"
                           >
-                            <span className="block text-on-void text-[0.95rem] font-medium">
+                            <span className="block text-on-void text-body font-medium">
                               {post[lang]!.title}
                             </span>
-                            <span className="mt-0.5 block text-on-void-dim text-[0.8rem] opacity-80">
+                            <span className="mt-0.5 block text-on-void-dim text-label">
                               {date(post.publishedAt)}
                             </span>
                           </a>
@@ -660,10 +664,10 @@ export function Header({
                             here(hrefFor(link, lang)) ? 'bar-pill' : ''
                           }`}
                         >
-                          <span className="block text-on-void text-[0.95rem] font-medium">
+                          <span className="block text-on-void text-body font-medium">
                             {link.label[lang]}
                           </span>
-                          <span className="mt-0.5 block text-on-void-dim text-[0.8rem] leading-[1.5] opacity-80">
+                          <span className="mt-0.5 block text-on-void-dim text-label">
                             {link.blurb[lang]}
                           </span>
                         </a>
@@ -673,7 +677,7 @@ export function Header({
                 <a
                   href={DEMO_URL}
                   onClick={() => setOpen(false)}
-                  className="tracked mt-2 rounded-lg bg-blue px-4 py-3.5 text-center text-[0.62rem] text-on-brand "
+                  className="mt-2 rounded-lg bg-blue px-4 py-3.5 text-center text-body font-medium text-on-brand "
                 >
                   {lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}
                 </a>

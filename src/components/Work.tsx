@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Reveal } from '@/components/Reveal'
+import { SectionHeader } from '@/components/ui/section'
 import { type Lang, steps, work } from '@/content/copy'
 
 /** How long a stage holds before the section moves itself on. */
@@ -85,23 +86,17 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
     <section
       ref={section}
       id="work"
-      className="scroll-mt-28 border-t border-line py-band-sm lg:py-band"
+      className="scroll-mt-24 border-t border-line py-16 md:py-20 lg:py-24"
     >
-      <Reveal className="shell flex flex-col items-center text-center">
-        <p className="tracked text-[0.62rem] text-ink-faint">{work.eyebrow[lang]}</p>
-        <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
-          {work.title[lang]}
-        </h2>
-        <p className="mt-5 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.65] text-ink-dim">
-          {work.sub[lang]}
-        </p>
+      <Reveal className="shell">
+        <SectionHeader title={work.title[lang]} lede={work.sub[lang]} />
       </Reveal>
 
       {/* The tab rail. Buttons rather than a `role="tablist"` with arrow-key
           handling: these swap a picture and a paragraph, not panels of
           focusable content, and a keyboard user can already operate a button. */}
-      <div className="shell mt-12">
-        <div className="flex justify-center border-b border-line">
+      <div className="shell mt-10">
+        <div className="flex overflow-x-auto border-b border-line">
           {steps.map((step, index) => {
             const on = index === active
 
@@ -114,12 +109,12 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
                   setHold(true)
                 }}
                 aria-pressed={on}
-                className={`relative -mb-px flex items-baseline gap-2.5 px-4 py-4 transition-colors sm:px-7 ${
+                className={`relative -mb-px flex items-baseline gap-2 py-3.5 pe-6 transition-colors sm:pe-8 ${
                   on ? 'text-ink' : 'text-ink-faint hover:text-ink-dim'
                 }`}
               >
-                <span className="tracked text-[0.58rem]">{step.n}</span>
-                <span className="text-[0.95rem] font-medium">{step.desk[lang]}</span>
+                <span className="figures font-mono text-label">{step.n}</span>
+                <span className="text-body font-medium">{step.desk[lang]}</span>
 
                 {/* The underline is the tab. It is also the dwell: keyed on
                     `active` so it restarts with each stage, it grows across the
@@ -130,10 +125,13 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
                   <motion.span
                     key={held || reduced ? 'held' : active}
                     aria-hidden="true"
-                    initial={held || reduced ? { scaleX: 1 } : { scaleX: 0 }}
+                    // `reduced` is unknown on the server, so it no longer picks the
+                    // starting state; with reduced motion the CSS shows the
+                    // underline whole instead of growing it.
+                    initial={held ? { scaleX: 1 } : { scaleX: 0 }}
                     animate={{ scaleX: 1 }}
                     transition={{ duration: held || reduced ? 0 : DWELL_MS / 1000, ease: 'linear' }}
-                    className="absolute inset-x-0 bottom-0 h-px origin-left bg-ink rtl:origin-right"
+                    className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-ink motion-reduce:transform-none! rtl:origin-right"
                   />
                 ) : null}
               </button>
@@ -144,8 +142,8 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
 
       {/* Full centred measure, so the capture is legible — this is the fault the
           rewrite exists to fix. */}
-      <Reveal className="shell-wide mt-10 lg:mt-12">
-        <div className="overflow-hidden rounded-2xl border border-line shadow-xl">
+      <Reveal className="shell mt-8">
+        <div className="overflow-hidden rounded-xl border border-line shadow-lg">
           <div className="bg-paper-lift">
             {/* The container holds the aspect ratio so a cross-fade does not
                 collapse the section's height to zero between two absolutely
@@ -171,7 +169,7 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
         </div>
       </Reveal>
 
-      <div className="shell mt-12">
+      <div className="shell mt-8">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={current.n}
@@ -180,11 +178,14 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
             exit={reduced ? undefined : { opacity: 0, y: -8 }}
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="flex flex-col items-center text-center">
-              <h3 className="max-w-[26ch] text-balance font-display text-[clamp(1.35rem,2.4vw,1.9rem)] font-medium leading-[1.22] tracking-[-0.015em]">
+            {/* The desk's claim beside its explanation, one row: centred and
+                stacked, this pair and the three points under it ran to 500px
+                below a screenshot that had already made the point. */}
+            <div className="grid gap-4 lg:grid-cols-12 lg:gap-12">
+              <h3 className="text-balance font-display text-h3 font-bold text-heading lg:col-span-5">
                 {current.title[lang]}
               </h3>
-              <p className="mt-5 max-w-[58ch] text-balance text-[1.0625rem] leading-[1.7] text-ink-dim">
+              <p className="max-w-[62ch] text-body text-ink-dim lg:col-span-7">
                 {current.body[lang]}
               </p>
             </div>
@@ -192,13 +193,13 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
             {/* Hairlines, not cards — the same reasoning as the capability grid.
                 A row of three boxes is a component; three columns divided by a
                 rule is a page. */}
-            <ul className="mt-12 grid gap-px border-y border-line bg-line sm:grid-cols-3">
-              {current.points.map((point, index) => (
-                <li key={point.en} className="bg-paper px-6 py-8">
-                  <p className="tracked text-[0.55rem] text-ink-faint">
-                    {String(index + 1).padStart(2, '0')}
-                  </p>
-                  <p className="mt-4 text-[0.9375rem] leading-[1.65] text-ink-dim">{point[lang]}</p>
+            <ul className="mt-8 grid gap-px border-y border-line bg-line sm:grid-cols-3">
+              {current.points.map((point) => (
+                <li
+                  key={point.en}
+                  className="bg-paper py-5 text-small text-ink-dim sm:px-5 sm:first:ps-0"
+                >
+                  {point[lang]}
                 </li>
               ))}
             </ul>

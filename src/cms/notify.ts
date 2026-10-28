@@ -12,7 +12,7 @@ export const SITE_URL = process.env.SITE_URL ?? 'https://cargosharks.com'
 const INDEXNOW_KEY = 'fb93406b9c03f241b9736dbbb81332bb'
 
 /**
- * Post to Slack. `channel` defaults to the blog's; pilot requests pass
+ * Post to Slack. `channel` defaults to the blog's; demo requests pass
  * `SLACK_LEADS_CHANNEL` so sales and the blog can live in different channels.
  */
 export async function slack(text: string, channel?: string): Promise<void> {

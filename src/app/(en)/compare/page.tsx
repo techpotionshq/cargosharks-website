@@ -1,11 +1,8 @@
 import type { Metadata } from 'next'
 import { pageOpenGraph } from '@/lib/og'
-import { DocPage } from '@/components/DocPage'
-import { CompareContent } from '@/content/pages/compare'
+import { CompareContent, compareMeta } from '@/content/pages/compare'
 
-const title = 'How CargoSharks compares — and who it is not for'
-const description =
-  'Three ways to run a forwarding operation, what each costs, and the half of this we are honest about. No claims are made about anyone else’s product.'
+const { title, description } = compareMeta
 
 export const metadata: Metadata = {
   title,
@@ -15,9 +12,5 @@ export const metadata: Metadata = {
 }
 
 export default function Page() {
-  return (
-    <DocPage lang="en">
-      <CompareContent />
-    </DocPage>
-  )
+  return <CompareContent />
 }
