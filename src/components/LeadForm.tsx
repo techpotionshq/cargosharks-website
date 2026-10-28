@@ -6,7 +6,7 @@ import { ArrowRight, CheckCircle } from '@phosphor-icons/react/dist/ssr'
 import { DEMO_URL, type Lang, pilot } from '@/content/copy'
 import { EmailLink } from './Email'
 
-type State = 'idle' | 'sending' | 'done' | 'missing' | 'busy' | 'failed'
+type State = 'idle' | 'sending' | 'done' | 'missing' | 'email' | 'busy' | 'failed'
 
 /**
  * The pilot request form. Posts to `/contact/`, which saves a lead and tells
@@ -40,9 +40,12 @@ export function LeadForm({ lang }: { lang: Lang }) {
           page: window.location.pathname,
         }),
       })
-      setState(
-        res.ok ? 'done' : res.status === 429 ? 'busy' : res.status === 400 ? 'missing' : 'failed',
-      )
+      if (res.status === 400) {
+        // The route says which: a field left empty, or an address it refused.
+        const { error } = (await res.json().catch(() => ({}))) as { error?: string }
+        return setState(error === 'email' ? 'email' : 'missing')
+      }
+      setState(res.ok ? 'done' : res.status === 429 ? 'busy' : 'failed')
     } catch {
       setState('failed')
     }
@@ -70,7 +73,9 @@ export function LeadForm({ lang }: { lang: Lang }) {
     'mt-1.5 block w-full rounded-lg border border-line-strong bg-paper-lift px-3.5 py-2.5 text-[0.95rem] text-ink placeholder:text-ink-faint focus:border-blue focus:outline-none focus:ring-2 focus:ring-blue/20'
   const label = 'block text-[0.82rem] font-medium text-ink'
   const error =
-    state === 'missing' || state === 'busy' || state === 'failed' ? pilot.error[state] : null
+    state === 'missing' || state === 'email' || state === 'busy' || state === 'failed'
+      ? pilot.error[state]
+      : null
 
   return (
     <form
@@ -145,7 +150,7 @@ export function LeadForm({ lang }: { lang: Lang }) {
       {error ? (
         <p role="alert" className="mt-5 text-[0.88rem] text-amber">
           {error[lang]}{' '}
-          {state !== 'missing' ? (
+          {state !== 'missing' && state !== 'email' ? (
             <EmailLink className="underline">{lang === 'ar' ? 'البريد' : 'Email'}</EmailLink>
           ) : null}
         </p>

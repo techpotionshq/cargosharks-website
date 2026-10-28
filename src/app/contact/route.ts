@@ -1,5 +1,6 @@
 import config from '@payload-config'
 import { getPayload } from 'payload'
+import { checkEmail } from '@/cms/email-check'
 import { slack } from '@/cms/notify'
 import type { Lead } from '@/payload-types'
 
@@ -79,6 +80,16 @@ export async function POST(request: Request) {
   if (!lead.name || !lead.company || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email))
     return Response.json({ error: 'missing' }, { status: 400 })
 
+  // Link-stuffed messages are what form spam looks like; a forwarder asking
+  // about a pilot does not paste three URLs. Same silent "thanks" as a bot.
+  if ((lead.message.match(/https?:\/\/|www\./gi) ?? []).length >= 2)
+    return Response.json({ ok: true })
+
+  // A throwaway inbox or a domain that cannot receive mail is refused out loud:
+  // the second is usually a typo the visitor can fix (src/cms/email-check.ts).
+  const verdict = await checkEmail(lead.email)
+  if (!verdict.ok) return Response.json({ error: 'email' }, { status: 400 })
+
   const payload = await getPayload({ config })
   const saved = await payload.create({ collection: 'leads', data: lead, overrideAccess: true })
 
@@ -86,7 +97,7 @@ export async function POST(request: Request) {
   void slack(
     [
       `:incoming_envelope: *New pilot request* from *${lead.company}*`,
-      `${lead.name} · ${lead.email}${lead.phone ? ` · ${lead.phone}` : ''}`,
+      `${lead.name} · ${lead.email}${verdict.personal ? ' _(personal email)_' : ''}${lead.phone ? ` · ${lead.phone}` : ''}`,
       [
         lead.country,
         lead.volume && `${lead.volume} shipments a month`,
