@@ -29,7 +29,10 @@ export function ToTop() {
     <a
       href="#top"
       aria-label="Back to top"
-      className={`fixed bottom-6 end-6 z-40 flex size-11 items-center justify-center rounded-full border border-edge-lit bg-void/85 text-ink-dim backdrop-blur-md transition-all hover:text-ink ${
+      // Brand blue with a white arrow, as `.to-top` in pages.css always meant
+      // it to be. It was `text-ink-dim` on `bg-void`: the dark grey meant for
+      // text on paper, on a near-black disc, so the arrow all but vanished.
+      className={`fixed bottom-6 end-6 z-40 flex size-11 items-center justify-center rounded-full bg-blue text-on-brand shadow-lg transition-all hover:-translate-y-0.5 hover:opacity-90 ${
         shown ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0'
       }`}
     >
