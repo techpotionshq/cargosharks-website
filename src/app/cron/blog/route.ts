@@ -103,22 +103,37 @@ export async function POST(request: Request) {
       return Response.json(result)
     }
 
+    // Every stock photo already uploaded, published or not, so no two posts
+    // share a cover.
+    const stock = await payload.find({
+      collection: 'media',
+      where: { sourceId: { exists: true } },
+      select: { sourceId: true },
+      limit: 0,
+      pagination: false,
+    })
     const draft = await draftPost({
       topic,
       known,
       earlier: earlierPosts(posts),
       taken: new Set(drafts.map((d) => d.slug)),
+      usedPhotos: new Set(stock.docs.flatMap((m) => (m.sourceId ? [m.sourceId] : []))),
     })
 
     const cover = draft.cover
       ? await payload.create({
           collection: 'media',
-          data: { alt: draft.en.title },
+          data: {
+            alt: draft.en.title,
+            sourceId: draft.cover.sourceId,
+            credit: draft.cover.credit,
+            creditUrl: draft.cover.creditUrl,
+          },
           file: {
-            data: draft.cover,
+            data: draft.cover.data,
             mimetype: 'image/webp',
             name: `${draft.slug}.webp`,
-            size: draft.cover.length,
+            size: draft.cover.data.length,
           },
         })
       : null

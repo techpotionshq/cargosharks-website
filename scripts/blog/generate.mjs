@@ -13,10 +13,11 @@
  *      translated line by line.
  *   3. Both FAQs checked (`ensureFaqs`), links to pages that do not exist
  *      unlinked, Arabic links moved to their /ar/ twins.
- *   4. A cover through OpenRouter's image API, as 1280x720 WebP. Best effort.
+ *   4. A cover photograph from Pexels, found with a search query the model
+ *      writes, cropped to 1280x720 WebP and credited. Best effort.
  *
- * Needs `OPENROUTER_API_KEY`. Optional: `OPENROUTER_MODEL`,
- * `OPENROUTER_IMAGE_MODEL`, `SEARXNG_URL`, `BLOG_COVER_IMAGE=off`.
+ * Needs `OPENROUTER_API_KEY`. Optional: `OPENROUTER_MODEL`, `SEARXNG_URL`,
+ * `PEXELS_API_KEY` (without it a post ships with no cover).
  */
 
 import { readFileSync } from 'node:fs'
@@ -24,7 +25,6 @@ import { join } from 'node:path'
 import {
   complete,
   formatSources,
-  headers,
   searxng,
   arabicTwins,
   checkLinks,
@@ -39,7 +39,6 @@ import {
 const PRODUCT_FACTS = readFileSync(join(process.cwd(), 'scripts/blog/product-facts.md'), 'utf8')
 
 const MODEL = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-pro'
-const IMAGE_MODEL = process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-3.1-flash-image'
 
 // --- the voice -------------------------------------------------------------
 
@@ -124,7 +123,7 @@ const EN_SCHEMA = {
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['slug', 'tags', 'imagePrompt', ...Object.keys(copyProps)],
+    required: ['slug', 'tags', 'photoQuery', ...Object.keys(copyProps)],
     properties: {
       slug: { type: 'string', description: 'kebab-case, English, 3-6 words, no date' },
       tags: {
@@ -132,10 +131,10 @@ const EN_SCHEMA = {
         items: { type: 'string' },
         description: '2-4 short lowercase topic tags',
       },
-      imagePrompt: {
+      photoQuery: {
         type: 'string',
         description:
-          'ONE concrete visual subject for the cover, a sentence or two. No text, words or numbers in the image, no style notes.',
+          'A 2-5 word stock photo search for the cover: one concrete, photographable subject from the post (e.g. "container ship at port", "customs inspection cargo", "warehouse forklift pallets"). No abstract ideas, no brand names.',
       },
       ...copyProps,
     },
@@ -166,45 +165,65 @@ const AR_SCHEMA = {
 
 // --- cover -----------------------------------------------------------------
 
-const COVER_STYLE =
-  'Calm editorial photograph-like 3D render of a Gulf port and logistics scene, soft early-morning light, ' +
-  'restrained palette of deep navy #0B2545, corporate blue #1F6FEB, light blue #79B0FF and warm off-white, ' +
-  'a single clear subject with generous negative space, 16:9 composition, premium and quiet. ' +
-  'Absolutely no text, letters, numbers, logos, flags or UI.'
+// Asked for when the post's own query finds nothing unused: always on topic for
+// a freight blog, and deep enough on Pexels never to run dry.
+const FALLBACK_QUERIES = ['container port', 'cargo ship', 'freight logistics warehouse']
 
-async function cover(concept) {
-  if (process.env.BLOG_COVER_IMAGE === 'off') return undefined
+/**
+ * A real photograph rather than a generated image: generated covers read as
+ * renders, which a trade audience notices. Pexels' licence allows downloading
+ * and hosting the file ourselves (Unsplash requires hotlinking theirs), and
+ * the photographer is credited under the cover anyway.
+ *
+ * `used` holds the Pexels ids already on the site, so two posts never share a
+ * cover. Returns undefined, and the post ships without one, on any failure.
+ */
+async function cover(query, used) {
+  const key = process.env.PEXELS_API_KEY
+  if (!key) {
+    console.warn('cover: PEXELS_API_KEY is not set; the post ships without one')
+    return undefined
+  }
   try {
     const { default: sharp } = await import('sharp')
-    let lastError = ''
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const res = await fetch('https://openrouter.ai/api/v1/images', {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({
-          model: IMAGE_MODEL,
-          prompt: `${concept}\n\n${COVER_STYLE}`,
-          aspect_ratio: '16:9',
-        }),
+    for (const q of [query, ...FALLBACK_QUERIES].filter(Boolean)) {
+      const url = new URL('https://api.pexels.com/v1/search')
+      url.search = new URLSearchParams({
+        query: q,
+        orientation: 'landscape',
+        size: 'large',
+        per_page: '30',
+      }).toString()
+      const res = await fetch(url, {
+        headers: { Authorization: key },
+        signal: AbortSignal.timeout(20_000),
       })
-      const b64 = res.ok ? (await res.json()).data?.[0]?.b64_json : null
-      if (b64) {
-        const webp = await sharp(Buffer.from(b64, 'base64'))
-          // Always exactly 1280×720: `postMetadata` declares that size to
-          // Open Graph, so a smaller source is scaled up rather than kept.
-          .resize({ width: 1280, height: 720, fit: 'cover' })
-          .webp({ quality: 82 })
-          .toBuffer()
-        return webp
+      if (!res.ok) throw new Error(`Pexels ${res.status} ${(await res.text()).slice(0, 200)}`)
+      const { photos = [] } = await res.json()
+      // Wide enough to crop to 1280x720 without scaling up.
+      const photo = photos.find(
+        (p) => !used.has(`pexels:${p.id}`) && p.width >= 1280 && p.height >= 720,
+      )
+      if (!photo) continue
+      const file = await fetch(photo.src.large2x || photo.src.original, {
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (!file.ok) throw new Error(`Pexels download ${file.status}`)
+      const data = await sharp(Buffer.from(await file.arrayBuffer()))
+        // Always exactly 1280×720: `postMetadata` declares that size to
+        // Open Graph. `attention` keeps the busiest part of the frame.
+        .resize({ width: 1280, height: 720, fit: 'cover', position: sharp.strategy.attention })
+        .webp({ quality: 82 })
+        .toBuffer()
+      console.log(`cover: Pexels ${photo.id} for "${q}"`)
+      return {
+        data,
+        sourceId: `pexels:${photo.id}`,
+        credit: photo.photographer,
+        creditUrl: photo.url,
       }
-      lastError = res.ok
-        ? 'no image in response'
-        : `${res.status} ${(await res.text()).slice(0, 200)}`
-      // Gemini image requests are sometimes routed to an upstream that rejects
-      // the region; those are not billed, so retrying is the fix.
-      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)))
     }
-    console.warn(`cover: gave up (${lastError}); the post ships without one`)
+    console.warn(`cover: nothing unused for "${query}"; the post ships without one`)
   } catch (error) {
     console.warn(`cover: ${error.message}; the post ships without one`)
   }
@@ -251,11 +270,12 @@ export function pickTopic(ready) {
 }
 
 /**
- * @param {{ topic: any, known: Set<string>, earlier: string[], taken: Set<string> }} input
+ * @param {{ topic: any, known: Set<string>, earlier: string[], taken: Set<string>, usedPhotos?: Set<string> }} input
  *   `known`: every real path (`knownPaths`); `earlier`: published posts as
- *   prompt lines; `taken`: slugs already used, so a new post never collides.
+ *   prompt lines; `taken`: slugs already used, so a new post never collides;
+ *   `usedPhotos`: stock photo ids already on the site (`pexels:<id>`).
  */
-export async function draftPost({ topic, known, earlier, taken }) {
+export async function draftPost({ topic, known, earlier, taken, usedPhotos = new Set() }) {
   const VOICE = voice(earlier)
   console.log(`blog: drafting "${topic.title}" (${topic.archetype})`)
   const found = await searxng([topic.targetQuery, ...(topic.keywords ?? [])].join(' '))
@@ -349,7 +369,7 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
   checkLinks(enBody, 'en', known)
   checkLinks(arBody, 'ar', known)
 
-  const coverImage = await cover(en.imagePrompt || `A visual metaphor for "${en.title}"`)
+  const coverImage = await cover(en.photoQuery, usedPhotos)
 
   return {
     slug,

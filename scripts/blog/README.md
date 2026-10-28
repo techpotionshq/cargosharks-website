@@ -8,7 +8,7 @@ the spot, Slack gets the links, and IndexNow gets the URLs.
 ```
 Coolify, daily  → node scripts/cron.mjs → POST /cron/blog/ (Bearer CRON_SECRET)
 /cron/blog      → fewer than 3 ready topics? ideate.mjs proposes more  → Topics
-                → generate.mjs drafts EN + AR + cover → a draft in Posts → Slack: Preview / Edit
+                → generate.mjs drafts EN + AR, a Pexels cover → a draft in Posts → Slack: Preview / Edit
 You             → /admin: read, edit, Publish
 Publish         → revalidateTag('blog') → live, no rebuild → Slack + IndexNow
 ```
@@ -36,6 +36,10 @@ Publish         → revalidateTag('blog') → live, no rebuild → Slack + Index
 - **Comparison, alternatives and use-case topics need an `expertNote`**:
   first-hand detail from the team. Without one they are skipped, because a
   model must not invent it.
+- **Covers are stock photographs from Pexels**, chosen from a search the
+  model writes for the post, never one already used on the site, and credited
+  under the cover. Swap one by uploading a different image to the post's
+  Cover field.
 - **Preview** from the post's Preview button, or the Slack message's link.
   It needs an admin login; the public never sees a draft.
 
@@ -52,7 +56,8 @@ node scripts/cron.mjs
 1. A PostgreSQL resource with a database for the CMS.
 2. On the website application, **Environment Variables**: `DATABASE_URL`,
    `PAYLOAD_SECRET` (random, 32+ bytes), `CRON_SECRET` (random),
-   `SITE_URL=https://cargosharks.com`, `OPENROUTER_API_KEY`, and optionally
+   `SITE_URL=https://cargosharks.com`, `OPENROUTER_API_KEY`, `PEXELS_API_KEY`
+   (cover photos), and optionally
    `SLACK_BOT_TOKEN`, `SLACK_BLOG_CHANNEL`, `SEARXNG_URL`, `OPENROUTER_MODEL`.
 3. **Storages**: a volume mounted at `/app/media`, or uploads vanish on deploy.
 4. **Scheduled Tasks**: `node scripts/cron.mjs`, daily at `0 3 * * *` (06:00

@@ -15,5 +15,22 @@ export const Media: CollectionConfig = {
     mimeTypes: ['image/*'],
     formatOptions: { format: 'webp', options: { quality: 85 } },
   },
-  fields: [{ name: 'alt', type: 'text', localized: true }],
+  fields: [
+    { name: 'alt', type: 'text', localized: true },
+    // Stock photos: who took it, shown under the cover as "Photo by … on
+    // Pexels", and the source's own id, which the drafting run reads so it
+    // never picks a photo the site already uses.
+    {
+      name: 'credit',
+      type: 'text',
+      admin: { description: 'Photographer, shown under the cover.' },
+    },
+    { name: 'creditUrl', type: 'text', admin: { description: 'The photo page on Pexels.' } },
+    {
+      name: 'sourceId',
+      type: 'text',
+      index: true,
+      admin: { readOnly: true, description: 'e.g. pexels:12345. Set by the drafting run.' },
+    },
+  ],
 }

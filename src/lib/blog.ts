@@ -43,6 +43,8 @@ export type PostMeta = {
   tags: string[]
   /** The cover's URL, as Payload serves it. */
   cover?: string
+  /** Who took the cover, for a stock photo: shown under it. */
+  coverCredit?: { name: string; url?: string }
   source: 'ai' | 'human'
   en?: PostCopy
   ar?: PostCopy
@@ -74,8 +76,8 @@ function copyIn(doc: PostDoc, lang: Lang): PostCopy | undefined {
 function toMeta(doc: PostDoc): PostMeta {
   // Payload hands back the file URL with the site's trailing slash, which
   // Next then 308s to the bare file name: one wasted round trip per image.
-  const cover =
-    typeof doc.cover === 'object' ? (doc.cover as Media | null)?.url?.replace(/\/$/, '') : undefined
+  const media = typeof doc.cover === 'object' ? (doc.cover as Media | null) : null
+  const cover = media?.url?.replace(/\/$/, '')
   return {
     slug: doc.slug,
     publishedAt: (doc.publishedAt ?? doc.updatedAt).slice(0, 10),
@@ -83,6 +85,9 @@ function toMeta(doc: PostDoc): PostMeta {
     author: doc.author ?? 'CargoSharks',
     tags: doc.tags ?? [],
     cover: cover ?? undefined,
+    coverCredit: media?.credit
+      ? { name: media.credit, url: media.creditUrl ?? undefined }
+      : undefined,
     source: doc.source ?? 'human',
     en: copyIn(doc, 'en'),
     ar: copyIn(doc, 'ar'),

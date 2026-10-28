@@ -40,6 +40,8 @@ const T = {
   },
   read: { en: 'Read', ar: 'اقرؤوا' },
   minutes: { en: 'min read', ar: 'دقائق قراءة' },
+  photoBy: { en: 'Photo by', ar: 'تصوير' },
+  onPexels: { en: 'on Pexels', ar: 'على Pexels' },
   faqEyebrow: { en: 'Questions', ar: 'أسئلة' },
   faqHeading: { en: 'Asked about this', ar: 'أسئلة عن هذا الموضوع' },
   faqLead: {
@@ -230,7 +232,24 @@ export function PostContent({ post }: { post: Post }) {
       <section className="band band--white">
         <div className="shell post">
           {post.cover ? (
-            <img className="post__cover" src={post.cover} alt="" width={1280} height={720} />
+            <figure className="post__figure">
+              <img className="post__cover" src={post.cover} alt="" width={1280} height={720} />
+              {/* Pexels asks for this, and a named photographer reads as a
+                  real photograph rather than an illustration. */}
+              {post.coverCredit ? (
+                <figcaption className="post__credit">
+                  {T.photoBy[lang]}{' '}
+                  {post.coverCredit.url ? (
+                    <a href={post.coverCredit.url} rel="noopener nofollow">
+                      {post.coverCredit.name}
+                    </a>
+                  ) : (
+                    post.coverCredit.name
+                  )}{' '}
+                  {T.onPexels[lang]}
+                </figcaption>
+              ) : null}
+            </figure>
           ) : null}
           <article className="post__body" dangerouslySetInnerHTML={{ __html: post.html }} />
         </div>
