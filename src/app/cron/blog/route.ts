@@ -28,12 +28,26 @@ export const maxDuration = 900
 
 const LOW_WATER = 3
 
+// One run at a time. Two overlapping runs both pick the oldest ready topic and
+// draft it twice (a retried task, or a manual run during the scheduled one).
+// One container serves the site, so a module flag is the whole lock.
+let running = false
+
 export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET
   if (!secret) return Response.json({ error: 'CRON_SECRET is not set' }, { status: 503 })
   if (request.headers.get('authorization') !== `Bearer ${secret}`)
     return Response.json({ error: 'unauthorised' }, { status: 401 })
+  if (running) return Response.json({ error: 'a run is already in progress' }, { status: 409 })
+  running = true
+  try {
+    return await run()
+  } finally {
+    running = false
+  }
+}
 
+async function run() {
   const payload = await getPayload({ config })
   const posts = await allPosts()
   const { docs: topics } = await payload.find({

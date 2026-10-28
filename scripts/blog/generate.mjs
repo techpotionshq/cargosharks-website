@@ -11,9 +11,12 @@
  *   2. The English article through OpenRouter with a strict JSON schema, then
  *      the Arabic one written from it, for Arabic readers rather than
  *      translated line by line.
- *   3. Both FAQs checked (`ensureFaqs`), links to pages that do not exist
- *      unlinked, Arabic links moved to their /ar/ twins.
- *   4. A cover photograph from Pexels, found with a search query the model
+ *   3. The English claims fact-checked against SearXNG and GULF_FACTS
+ *      (`factcheck.mjs`) before the Arabic is written from it.
+ *   4. Both FAQs checked (`ensureFaqs`), dashes and "the article says"
+ *      scrubbed (`scrub`), links to pages that do not exist unlinked, Arabic
+ *      links moved to their /ar/ twins.
+ *   5. A cover photograph from Pexels, found with a search query the model
  *      writes, cropped to 1280x720 WebP and credited. Best effort.
  *
  * Needs `OPENROUTER_API_KEY`. Optional: `OPENROUTER_MODEL`, `SEARXNG_URL`,
@@ -21,6 +24,7 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { factCheck, GULF_FACTS } from './factcheck.mjs'
 import { join } from 'node:path'
 import {
   complete,
@@ -30,6 +34,7 @@ import {
   checkLinks,
   ensureFaqs,
   MIN_FAQS,
+  scrub,
   unlinkMissing,
   usableFaqs,
 } from './lib.mjs'
@@ -51,7 +56,12 @@ function voice(earlier) {
   return `You write for the CargoSharks blog. CargoSharks makes freight forwarding and customs brokerage software for Kuwait and the Gulf.
 Readers: owners, operations, pricing, customs and finance staff at freight forwarders and customs brokers in Kuwait, the UAE and Saudi Arabia. They know the trade; do not explain what a forwarder is.
 Voice: plain, specific and calm. Short sentences. Say what something is, when it happens and who does it. No hype, no "in today's fast-paced world", no "revolutionise", no exclamation marks, no em dashes.
-Honesty: never invent statistics, rates, fees, dates, regulations, quotes, customer names or results. If the sources do not support a specific figure, stay qualitative and say the terms vary. When a regulation or date matters, link the official source.
+Honesty: never invent statistics, rates, fees, dates, regulations, quotes, customer names or results. If the sources do not support a specific figure, stay qualitative and say the terms vary. When a regulation or date matters, link the official source. Never state a tax, duty or excise rate that is not in GULF FACTS or the sources.
+Scope: Gulf trade lanes and Gulf practice. Leave out what does not apply here (ice-class or winter surcharges, US or EU-only rules).
+Links: the anchor is a phrase in your own sentence, never "X like [X]".
+
+GULF FACTS (settled, use as given):
+${GULF_FACTS}
 The product: mention CargoSharks at most twice, near the end, and only in the terms of the PRODUCT FACTS below. Never claim a feature that is not listed there. If a product limit is relevant, state it.
 
 PRODUCT FACTS:
@@ -78,6 +88,10 @@ const ARCHETYPE = {
   'use-case':
     'USE CASE. What this kind of operation involves, its real constraints from the expert note, and what doing it well looks like.',
 }
+// Searches for a thing rather than about one: the reader wants a template to
+// copy, not an essay on templates.
+const WANTS_ARTIFACT = /\b(template|sample|example|format|form|checklist)s?\b/i
+
 const PROOF_REQUIRED = new Set(['comparison', 'alternatives', 'use-case'])
 
 // --- schemas ---------------------------------------------------------------
@@ -85,11 +99,13 @@ const PROOF_REQUIRED = new Set(['comparison', 'alternatives', 'use-case'])
 const copyProps = {
   title: {
     type: 'string',
-    description: 'At most 60 characters, no colon-and-subtitle, no date, no brand name',
+    description:
+      '45-60 characters. Starts with, or contains near the start, the focusKeyword in its natural wording. No date, no brand name.',
   },
   excerpt: {
     type: 'string',
-    description: 'Plain-text summary for the page header and cards, at most 240 characters',
+    description:
+      'Plain-text summary for the page header and cards, at most 240 characters. It is shown directly above the article, so the article must not open with the same sentence.',
   },
   metaDescription: {
     type: 'string',
@@ -107,7 +123,7 @@ const copyProps = {
   faqs: {
     type: 'array',
     description:
-      '2-4 real questions a reader would search, each answered in 1-3 sentences. Not repeated in the markdown; the page renders them.',
+      '2-4 real questions a reader would search, each answered in 1-3 sentences, directly, as the publication. Never refer to "the article", "this post" or "the guide". Not repeated in the markdown; the page renders them.',
     items: {
       type: 'object',
       additionalProperties: false,
@@ -306,7 +322,11 @@ ARCHETYPE: ${ARCHETYPE[topic.archetype] ?? ARCHETYPE.guide}
 SEO rules:
 - The target query "${topic.targetQuery}" appears in the first sentence, in at least one ## heading, and naturally after that. No stuffing.
 - ## headings phrased the way people search. Lead every section with the answer.
-- 900-1500 words. Tables and lists where they help a reader scan.`,
+- 900-1500 words. Tables and lists where they help a reader scan.${
+      WANTS_ARTIFACT.test(topic.targetQuery)
+        ? `\n- "${topic.targetQuery}" asks for the thing itself: include it, as a Markdown table a reader can copy, in the first third of the article.`
+        : ''
+    }`,
   })
 
   /*
@@ -326,10 +346,12 @@ SEO rules:
       model: MODEL,
       schema: FAQ_SCHEMA,
       system,
-      user: `THE ARTICLE:\n\nTitle: ${copy.title}\n\n${copy.markdown}\n\nWrite its FAQ in the article's language: ${MIN_FAQS}-4 real questions a reader would search, each answered in 1-3 sentences from what the article says. Return them in "faqs".`,
+      user: `THE ARTICLE:\n\nTitle: ${copy.title}\n\n${copy.markdown}\n\nWrite its FAQ in the article's language: ${MIN_FAQS}-4 real questions a reader would search, each answered directly in 1-3 sentences using what the article says. Answer as the publication; never write "the article says" or refer to the article at all. Return them in "faqs".`,
     }).then((reply) => reply.faqs)
 
   en = await ensureFaqs('en', en, askForFaqs(VOICE))
+  // Before the Arabic is written, so a corrected claim reaches both editions.
+  ;({ copy: en } = await factCheck(en, { model: MODEL, system: VOICE }))
 
   const AR_SYSTEM = `${VOICE}
 
@@ -353,14 +375,21 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
   for (let n = 2; taken.has(slug); n++) slug = `${slugify(en.slug || en.title)}-${n}`
 
   const pick = (c) => ({
-    title: String(c.title).trim(),
-    excerpt: String(c.excerpt).trim(),
-    metaDescription: String(c.metaDescription).trim(),
+    title: scrub(String(c.title).trim()),
+    excerpt: scrub(String(c.excerpt).trim()),
+    metaDescription: scrub(String(c.metaDescription).trim()),
     focusKeyword: String(c.focusKeyword).trim(),
-    faqs: usableFaqs(c),
+    faqs: usableFaqs(c).map((f) => ({ question: scrub(f.question), answer: scrub(f.answer) })),
   })
-  const enLinks = unlinkMissing(clean(en.markdown), known)
-  const arLinks = unlinkMissing(arabicTwins(clean(ar.markdown), known), known)
+  for (const [lang, c] of [
+    ['en', en],
+    ['ar', ar],
+  ]) {
+    if (!String(c.title).toLowerCase().includes(String(c.focusKeyword).toLowerCase()))
+      console.warn(`${lang}: the title does not contain the focus keyword "${c.focusKeyword}"`)
+  }
+  const enLinks = unlinkMissing(scrub(clean(en.markdown)), known)
+  const arLinks = unlinkMissing(arabicTwins(scrub(clean(ar.markdown)), known), known)
   const enBody = enLinks.markdown
   const arBody = arLinks.markdown
   const unlinked = [...new Set([...enLinks.removed, ...arLinks.removed])]

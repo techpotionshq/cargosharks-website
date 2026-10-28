@@ -4,9 +4,16 @@
  *   node scripts/cron.mjs
  *
  * Calls the app's own `/cron/blog/` with `CRON_SECRET`, so the run happens in
- * the server process that already holds the CMS connection. Node's `fetch`,
- * nothing to install. Exits non-zero when the run fails, so Coolify shows it.
+ * the server process that already holds the CMS connection. Exits non-zero
+ * when the run fails, so Coolify shows it.
+ *
+ * `node:http` rather than `fetch`: fetch gives up on a response whose headers
+ * take over five minutes (undici's `headersTimeout`), and a draft in two
+ * languages takes longer than that. The run finished on the server; the task
+ * reported a failure.
  */
+import { request } from 'node:http'
+
 const port = process.env.PORT || 3002
 const secret = process.env.CRON_SECRET
 if (!secret) {
@@ -14,11 +21,27 @@ if (!secret) {
   process.exit(1)
 }
 
-const res = await fetch(`http://127.0.0.1:${port}/cron/blog/`, {
-  method: 'POST',
-  headers: { authorization: `Bearer ${secret}` },
-  signal: AbortSignal.timeout(15 * 60_000),
+const { status, body } = await new Promise((resolve, reject) => {
+  const req = request(
+    {
+      host: '127.0.0.1',
+      port,
+      path: '/cron/blog/',
+      method: 'POST',
+      headers: { authorization: `Bearer ${secret}` },
+    },
+    (res) => {
+      let data = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => (data += chunk))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: data }))
+    },
+  )
+  // The route's own `maxDuration` is 15 minutes; a minute more here, so the
+  // server's answer, not this timer, says how a long run ended.
+  req.setTimeout(16 * 60_000, () => req.destroy(new Error('no answer in 16 minutes')))
+  req.on('error', reject)
+  req.end()
 })
-const body = await res.text()
-console.log(`cron: ${res.status} ${body}`)
-process.exit(res.ok ? 0 : 1)
+console.log(`cron: ${status} ${body}`)
+process.exit(status >= 200 && status < 300 ? 0 : 1)
