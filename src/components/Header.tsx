@@ -381,7 +381,7 @@ export function Header({
             */}
             <a
               href={DEMO_URL}
-              className="group hidden items-center gap-2 rounded-lg bg-blue px-4 py-2.5 text-[0.88rem] font-semibold leading-none text-on-brand transition-opacity duration-200 hover:opacity-90 sm:flex"
+              className="tracked group hidden items-center gap-2 rounded-lg bg-blue px-4 py-2.5 text-[0.6rem] leading-none text-on-brand transition-opacity duration-200 hover:opacity-90 sm:flex"
             >
               {lang === 'ar' ? 'النسخة التجريبية' : 'Live demo'}
               <ArrowRight
@@ -673,7 +673,7 @@ export function Header({
                 <a
                   href={DEMO_URL}
                   onClick={() => setOpen(false)}
-                  className="mt-2 rounded-lg bg-blue px-4 py-3.5 text-center text-[0.95rem] font-semibold text-on-brand"
+                  className="tracked mt-2 rounded-lg bg-blue px-4 py-3.5 text-center text-[0.62rem] text-on-brand "
                 >
                   {lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}
                 </a>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { SectionHead } from '@/components/Section'
+import { Reveal } from '@/components/Reveal'
 import { calculator, type Lang } from '@/content/copy'
 
 /**
@@ -73,13 +73,15 @@ export function Calculator({ lang }: { lang: Lang }) {
       id="calculator"
       className="scroll-mt-28 border-t border-line bg-paper-sunk py-band-sm lg:py-band"
     >
-      <div className="shell">
-        <SectionHead
-          eyebrow={calculator.eyebrow[lang]}
-          title={calculator.title[lang]}
-          sub={calculator.sub[lang]}
-        />
-      </div>
+      <Reveal className="shell flex flex-col items-center text-center">
+        <p className="tracked text-[0.62rem] text-ink-faint">{calculator.eyebrow[lang]}</p>
+        <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
+          {calculator.title[lang]}
+        </h2>
+        <p className="mt-5 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.65] text-ink-dim">
+          {calculator.sub[lang]}
+        </p>
+      </Reveal>
 
       <div className="shell mt-12 grid items-start gap-6 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-7">
@@ -137,13 +139,13 @@ export function Calculator({ lang }: { lang: Lang }) {
           because a figure this size on the same paper as the sliders reads as
           another form field.
         */}
-        <div className="rounded-3xl bg-void p-8 shadow-xl lg:col-span-5 lg:p-10">
-          <p className="text-[0.9rem] font-medium text-on-void-dim">
-            {calculator.resultLabel[lang]}
-          </p>
+        <div className="rounded-2xl bg-void p-8 lg:col-span-5 lg:p-10">
+          <p className="tracked text-[0.6rem] text-on-void-faint">{calculator.resultLabel[lang]}</p>
 
           <p className="figures mt-5 flex flex-wrap items-baseline gap-x-2.5 font-mono leading-none text-on-void">
-            <span className="text-[0.8rem] text-on-void-faint">{calculator.currency[lang]}</span>
+            <span className="tracked text-[0.7rem] text-on-void-faint">
+              {calculator.currency[lang]}
+            </span>
             <span className={`font-medium tracking-[-0.02em] text-amber ${size}`}>{headline}</span>
           </p>
 
