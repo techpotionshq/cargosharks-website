@@ -102,32 +102,6 @@ export function PrivacyContent() {
             </nav>
 
             <div className="doc__body">
-              <div className="draft-card">
-                <h2>Read this before you read anything else</h2>
-                <p>
-                  This notice was assembled from the CargoSharks codebase &mdash; the database
-                  schema, the migrations, the integration adapters and the deployment documentation
-                  &mdash; by reading what they do and writing it down. That makes it unusually
-                  specific about mechanism.
-                </p>
-                <p>Two rules were followed while writing it, and both still hold:</p>
-                <ul>
-                  <li>
-                    <b>No certification is claimed.</b> CargoSharks holds no SOC 2 report, no ISO
-                    27001 certificate and no third-party audit attestation, and does not describe
-                    itself as &ldquo;GDPR compliant&rdquo;. What is described below is what the
-                    software does. Whether that satisfies any particular law is a question for
-                    counsel and for the customer&rsquo;s own assessment.
-                  </li>
-                  <li>
-                    <b>Where the code and a conventional clause disagreed, the code won</b> &mdash;
-                    and the disagreement was written down rather than smoothed over. Section&nbsp;09
-                    is the clearest example: records are corrected in place rather than erased,
-                    because the data is yours and the history behind a figure is part of what you
-                    are keeping.
-                  </li>
-                </ul>
-              </div>
 
               <section id="scope">
                 <h2>
@@ -139,9 +113,9 @@ export function PrivacyContent() {
                 </p>
                 <ul className="bullets">
                   <li>
-                    <strong>This website</strong> &mdash; <code>cargosharks.com</code>, the seven
-                    static pages you are reading. Sections&nbsp;03 and 04 are about this and only
-                    this.
+                    <strong>This website</strong> &mdash; <code>cargosharks.com</code>, including
+                    its blog and the form for asking about a pilot. Sections&nbsp;03 and 04 are
+                    about this and only this.
                   </li>
                   <li>
                     <strong>The CargoSharks software</strong>, running in a deployment operated for
@@ -156,6 +130,12 @@ export function PrivacyContent() {
                   which runs on invented data and holds no real record of anybody. It runs on
                   fixtures with no database behind it, so nothing done there is recorded in any
                   customer deployment.
+                </p>
+                <p>
+                  No certification is claimed. CargoSharks holds no SOC&nbsp;2 report, no
+                  ISO&nbsp;27001 certificate and no third-party audit attestation. What follows
+                  describes what the software does; whether that satisfies a particular law is a
+                  question for counsel and for the customer&rsquo;s own assessment.
                 </p>
               </section>
 

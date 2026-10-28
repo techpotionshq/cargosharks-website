@@ -93,7 +93,12 @@ export const nav: {
    * A photograph also has no language, which is why there is no `-ar` variant
    * to reach for here the way the captures need one.
    */
-  image?: { src: string; alt: Bi }
+  image?: {
+    src: string
+    alt: Bi
+    /** CSS `object-position` for the crop; the panel crops to the top by default. */
+    position?: string
+  }
   /**
    * `hrefAr` is the Arabic twin of a link, where the page has one. The
    * header sends an Arabic reader there and an English reader to `href`.
@@ -338,12 +343,17 @@ export const nav: {
     id: 'blog',
     label: { en: 'Blog', ar: 'المدونة' },
     section: '/blog/',
+    // Shown only until a post with a cover is published: the panel uses the
+    // newest post's cover in its place. A portrait shot with the containers in
+    // its lower half, so the crop is anchored low; anchored at the top, as the
+    // other panels are, it was a rectangle of sky.
     image: {
       src: '/pic/photos/containers-stack.webp',
       alt: {
         en: 'Shipping containers stacked high in a yard',
         ar: 'حاويات شحن مرصوفة عالياً في ساحة',
       },
+      position: '50% 78%',
     },
     intro: {
       en: 'Quoting, customs, free time, documents and getting paid, written for the people who do the work.',
