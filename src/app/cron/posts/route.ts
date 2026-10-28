@@ -12,6 +12,7 @@ import { getPayload } from 'payload'
  *
  *   GET  ?slug=<slug>                                  both languages, as JSON
  *   POST { slug, action: 'edit', en?: {…}, ar?: {…} }  set fields on the draft
+ *                                                      (en.slug too, until it is published)
  *   POST { slug, action: 'publish' }                   publish the latest draft
  */
 export const dynamic = 'force-dynamic'
@@ -63,6 +64,10 @@ export async function POST(request: Request) {
       const data = Object.fromEntries(
         Object.entries(fields).filter(([key]) => (EDITABLE as readonly string[]).includes(key)),
       )
+      // The address can change only before anyone has it: a published post's
+      // slug is in search results, the sitemap and other sites' links.
+      if (locale === 'en' && typeof fields.slug === 'string' && post._status !== 'published')
+        data.slug = fields.slug
       // Edits land on the draft; a published post keeps its live version
       // until it is published again.
       await payload.update({ collection: 'posts', id: post.id, locale, draft: true, data })

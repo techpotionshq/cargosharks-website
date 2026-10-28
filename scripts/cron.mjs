@@ -1,7 +1,8 @@
 /**
  * The blog's daily run, as a Coolify scheduled task in this container:
  *
- *   node scripts/cron.mjs
+ *   node scripts/cron.mjs          daily: draft one post (/cron/blog/)
+ *   node scripts/cron.mjs topics   Sundays: queue the week's topics (/cron/topics/)
  *
  * Calls the app's own `/cron/blog/` with `CRON_SECRET`, so the run happens in
  * the server process that already holds the CMS connection. Exits non-zero
@@ -15,6 +16,7 @@
 import { request } from 'node:http'
 
 const port = process.env.PORT || 3002
+const job = process.argv[2] === 'topics' ? 'topics' : 'blog'
 const secret = process.env.CRON_SECRET
 if (!secret) {
   console.error('cron: CRON_SECRET is not set')
@@ -26,7 +28,7 @@ const { status, body } = await new Promise((resolve, reject) => {
     {
       host: '127.0.0.1',
       port,
-      path: '/cron/blog/',
+      path: `/cron/${job}/`,
       method: 'POST',
       headers: { authorization: `Bearer ${secret}` },
     },

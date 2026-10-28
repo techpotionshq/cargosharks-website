@@ -1,8 +1,8 @@
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import { draftPost, pickTopic } from '../../../../scripts/blog/generate.mjs'
-import { proposeTopics } from '../../../../scripts/blog/ideate.mjs'
 import { earlierPosts, knownPaths } from '../../../../scripts/blog/lib.mjs'
+import { queueTopics } from '@/cms/ideation'
 import { SITE_URL, slack } from '@/cms/notify'
 import { allPosts } from '@/lib/blog'
 
@@ -14,8 +14,8 @@ import { allPosts } from '@/lib/blog'
  * opened a pull request; now a draft is a row in `posts`, reviewed and
  * published in `/admin`.
  *
- *   1. Fewer than three topics ready: propose new ones from search signals and
- *      save them as `ready`. An admin rejects any that should not be written.
+ *   1. Topics come from `/cron/topics/` every Sunday. Only an empty queue
+ *      makes this run propose a few itself.
  *   2. Draft one post from the oldest ready topic, in English and Arabic, and
  *      save it as a draft with its cover. The topic becomes `written`.
  *   3. Tell Slack, with links to preview it and to edit it.
@@ -26,7 +26,8 @@ import { allPosts } from '@/lib/blog'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 900
 
-const LOW_WATER = 3
+/** Topics proposed when the queue is found empty on a weekday. */
+const FALLBACK_TOPICS = 3
 
 // One run at a time. Two overlapping runs both pick the oldest ready topic and
 // draft it twice (a retried task, or a manual run during the scheduled one).
@@ -67,46 +68,11 @@ async function run() {
 
   try {
     let ready = topics.filter((t) => t.status === 'ready')
-    if (ready.length < LOW_WATER) {
-      const fresh = await proposeTopics({
-        known,
-        taken: [
-          ...posts.flatMap((post) => [post.en?.title, post.ar?.title]),
-          ...topics.flatMap((t) => [t.title, t.targetQuery]),
-        ].filter((title): title is string => Boolean(title)),
-        existingKeys: new Set(
-          topics.map((t) => t.key).filter((key): key is string => Boolean(key)),
-        ),
-      })
-      for (const t of fresh) {
-        await payload.create({
-          collection: 'topics',
-          data: {
-            key: t.id,
-            title: t.title,
-            status: 'ready',
-            archetype: t.archetype,
-            targetQuery: t.targetQuery,
-            audience: t.audience,
-            angle: t.angle,
-            keywords: t.keywords ?? [],
-            internalLinks: t.internalLinks ?? [],
-          },
-        })
-      }
-      result.ideated = fresh.length
-      if (fresh.length) {
-        void slack(
-          `:compass: *${fresh.length} new blog topics queued*\n${fresh.map((t: { title: string }) => `• ${t.title}`).join('\n')}\nDrafted one a day, oldest first. Set a topic to *rejected* in ${SITE_URL}/admin/collections/topics to skip it.`,
-        )
-        const { docs } = await payload.find({
-          collection: 'topics',
-          where: { status: { equals: 'ready' } },
-          limit: 1000,
-          sort: 'createdAt',
-        })
-        ready = docs
-      }
+    // The week's topics arrive on Sunday (`/cron/topics/`). Refilling here is
+    // only the fallback for an empty queue, so a day is never skipped.
+    if (!ready.length) {
+      ready = await queueTopics(payload, { count: FALLBACK_TOPICS, known, posts, topics })
+      result.ideated = ready.length
     }
 
     const { topic, reason, duplicates } = pickTopic(ready, known)
