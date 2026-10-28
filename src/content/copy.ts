@@ -1000,6 +1000,10 @@ export const pilot = {
       en: 'Please fill in your name, company and a work email.',
       ar: 'يرجى إدخال الاسم والشركة وبريد العمل.',
     },
+    email: {
+      en: 'Please use a valid work email. That address cannot receive mail, or it is a temporary inbox.',
+      ar: 'يرجى استخدام بريد عمل صالح. هذا العنوان لا يستقبل البريد، أو أنه بريد مؤقت.',
+    },
     busy: {
       en: 'Too many requests from here. Please try again in an hour, or email us.',
       ar: 'طلبات كثيرة من هذا العنوان. يرجى المحاولة بعد ساعة، أو مراسلتنا بالبريد.',
