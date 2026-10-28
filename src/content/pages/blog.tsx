@@ -40,6 +40,7 @@ const T = {
   },
   read: { en: 'Read', ar: 'اقرؤوا' },
   minutes: { en: 'min read', ar: 'دقائق قراءة' },
+  more: { en: 'More from the blog', ar: 'المزيد من المدونة' },
   photoBy: { en: 'Photo by', ar: 'تصوير' },
   onPexels: { en: 'on Pexels', ar: 'على Pexels' },
   faqEyebrow: { en: 'Questions', ar: 'أسئلة' },
@@ -157,6 +158,48 @@ function Masthead({
   )
 }
 
+/** Minutes to read a post's body, as the post page reckons it (200 words a minute). */
+const minutes = (body: string) => Math.max(1, Math.round(body.split(/\s+/).filter(Boolean).length / 200))
+
+/**
+ * One post as a card, on the index and under every post.
+ *
+ * The photograph runs to the card's edges and the text sits below it: the
+ * cover is the strongest thing a post has, and framing it inside padding made
+ * every card look like a form with a picture attached. Title and summary are
+ * clamped so a row of cards ends level whatever the model wrote. A post with
+ * no cover gets a drawn panel in the brand's colours rather than a hole.
+ * `featured` lays the newest post out wide, picture beside text.
+ */
+function PostCard({ post, lang, featured = false }: { post: PostMeta; lang: Lang; featured?: boolean }) {
+  const copy = post[lang]!
+  return (
+    <a href={blogPath(lang, post.slug)} className={`post-card${featured ? ' post-card--featured' : ''}`}>
+      <span className="post-card__media">
+        {post.cover ? (
+          <img src={post.cover} alt="" width={1280} height={720} loading={featured ? 'eager' : 'lazy'} />
+        ) : (
+          <span className="post-card__placeholder" aria-hidden="true" />
+        )}
+      </span>
+      <span className="post-card__text">
+        <span className="post-card__date">
+          <time dateTime={post.publishedAt}>{date(post.publishedAt, lang)}</time>
+          <span aria-hidden="true">·</span>
+          <span>
+            {minutes(copy.body)} {T.minutes[lang]}
+          </span>
+        </span>
+        {featured ? <h2 className="h2">{copy.title}</h2> : <h3 className="h3">{copy.title}</h3>}
+        <p>{copy.excerpt}</p>
+        <span className="post-card__more">
+          {T.read[lang]} <span aria-hidden="true">→</span>
+        </span>
+      </span>
+    </a>
+  )
+}
+
 export function BlogIndexContent({ posts, lang }: { posts: PostMeta[]; lang: Lang }) {
   return (
     <div dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -165,34 +208,23 @@ export function BlogIndexContent({ posts, lang }: { posts: PostMeta[]; lang: Lan
       <section className="band band--paper">
         <div className="shell">
           {posts.length ? null : <p className="lead">{T.empty[lang]}</p>}
-          <ul className="post-list">
-            {posts.map((post) => {
-              const copy = post[lang]!
-              const href = blogPath(lang, post.slug)
-              return (
+          {posts[0] ? <PostCard post={posts[0]} lang={lang} featured /> : null}
+          {posts.length > 1 ? (
+            <ul className="post-list">
+              {posts.slice(1).map((post) => (
                 <li key={post.slug}>
-                  <a href={href} className="post-card">
-                    {post.cover ? (
-                      <img src={post.cover} alt="" width={640} height={360} loading="lazy" />
-                    ) : null}
-                    <span className="post-card__date">
-                      <time dateTime={post.publishedAt}>{date(post.publishedAt, lang)}</time>
-                    </span>
-                    <h2 className="h3">{copy.title}</h2>
-                    <p>{copy.excerpt}</p>
-                    <span className="post-card__more">{T.read[lang]} →</span>
-                  </a>
+                  <PostCard post={post} lang={lang} />
                 </li>
-              )
-            })}
-          </ul>
+              ))}
+            </ul>
+          ) : null}
         </div>
       </section>
     </div>
   )
 }
 
-export function PostContent({ post }: { post: Post }) {
+export function PostContent({ post, more = [] }: { post: Post; more?: PostMeta[] }) {
   const { lang, copy } = post
   const path = blogPath(lang, post.slug)
   const home = lang === 'ar' ? '/ar/' : '/'
@@ -282,6 +314,25 @@ export function PostContent({ post }: { post: Post }) {
                 </details>
               ))}
             </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Three more posts, so a reader who finished this one has somewhere to
+          go other than the back button. Newest first, this one left out. */}
+      {more.length ? (
+        <section className="band band--paper">
+          <div className="shell">
+            <div className="section-head">
+              <h2 className="h2">{T.more[lang]}</h2>
+            </div>
+            <ul className="post-list">
+              {more.map((other) => (
+                <li key={other.slug}>
+                  <PostCard post={other} lang={lang} />
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       ) : null}

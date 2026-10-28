@@ -4633,9 +4633,8 @@
 .doc-page .post-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   height: 100%;
-  padding: 24px;
+  overflow: hidden;
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -4643,18 +4642,109 @@
   text-decoration: none;
   transition:
     border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
 }
 .doc-page .post-card:hover {
-  border-color: var(--blue);
-  box-shadow: var(--shadow-sm);
+  border-color: color-mix(in oklab, var(--blue) 45%, var(--line));
+  box-shadow: 0 14px 34px -14px color-mix(in oklab, var(--navy) 35%, transparent);
+  transform: translateY(-3px);
 }
-.doc-page .post-card img {
-  width: 100%;
-  height: auto;
+/* The picture runs to the card's edges; the zoom is inside its own box so the
+   card's outline does not move. */
+.doc-page .post-card__media {
+  display: block;
+  overflow: hidden;
   aspect-ratio: 16 / 9;
+  background: var(--navy);
+}
+.doc-page .post-card__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  border-radius: var(--radius);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.doc-page .post-card:hover .post-card__media img {
+  transform: scale(1.04);
+}
+.doc-page .post-card__placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(
+      120% 90% at 85% 10%,
+      color-mix(in oklab, var(--blue) 55%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(160deg, var(--navy), color-mix(in oklab, var(--navy) 70%, black));
+}
+.doc-page .post-card__date {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.doc-page .post-card__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 24px 24px;
+}
+.doc-page .post-card .h3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  margin: 0;
+}
+.doc-page .post-card p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.doc-page .post-card__more {
+  margin-top: auto;
+  padding-top: 6px;
+  font-weight: 700;
+  color: var(--blue);
+}
+.doc-page .post-card__more span {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+.doc-page .post-card:hover .post-card__more span {
+  transform: translateX(4px);
+}
+.doc-page [dir='rtl'] .post-card__more span {
+  transform: scaleX(-1);
+}
+.doc-page [dir='rtl'] .post-card:hover .post-card__more span {
+  transform: scaleX(-1) translateX(4px);
+}
+/* The newest post, wide: picture and text side by side above the grid. */
+.doc-page .post-card--featured {
+  margin-bottom: 28px;
+}
+.doc-page .post-card--featured .h2 {
+  margin: 0;
+}
+@media (min-width: 900px) {
+  .doc-page .post-card--featured {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+  .doc-page .post-card--featured .post-card__media {
+    aspect-ratio: auto;
+    min-height: 340px;
+  }
+  .doc-page .post-card--featured .post-card__text {
+    justify-content: center;
+    gap: 14px;
+    padding: 40px;
+  }
 }
 .doc-page .post-card__date,
 .doc-page .post__meta {
@@ -4665,11 +4755,6 @@
 .doc-page .post-card p {
   color: var(--ink-muted);
   margin: 0;
-}
-.doc-page .post-card__more {
-  margin-top: auto;
-  font-weight: 700;
-  color: var(--blue);
 }
 .doc-page .post__meta {
   display: flex;

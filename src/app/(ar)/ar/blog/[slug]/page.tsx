@@ -3,7 +3,7 @@ import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { DocPage } from '@/components/DocPage'
 import { PostContent, postMetadata } from '@/content/pages/blog'
-import { blogPath, getMeta, getPost } from '@/lib/blog'
+import { blogPath, getMeta, getPost, postsIn } from '@/lib/blog'
 
 /**
  * `/ar/blog/<slug>/`, the Arabic twin of `(en)/blog/[slug]`. An unknown slug is a real 404. With preview on (`/preview`, admins
@@ -24,9 +24,10 @@ export default async function Page({ params }: Props) {
   const draft = (await draftMode()).isEnabled
   const post = await getPost((await params).slug, 'ar', { draft })
   if (!post) notFound()
+  const more = (await postsIn('ar')).filter((other) => other.slug !== post.slug).slice(0, 3)
   return (
     <DocPage lang="ar" alternate={post.en ? blogPath('en', post.slug) : blogPath('en')}>
-      <PostContent post={post} />
+      <PostContent post={post} more={more} />
     </DocPage>
   )
 }
