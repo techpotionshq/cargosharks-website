@@ -107,13 +107,17 @@ const MAX_CLAIMS = 10
 export async function factCheck(copy, { model, system }) {
   try {
     const text = [copy.markdown, ...(copy.faqs ?? []).map((f) => f.answer)].join('\n\n')
-    const { claims = [] } = await complete({
+    let { claims = [] } = await complete({
       model,
       schema: CLAIMS_SCHEMA,
       system,
-      user: `THE ARTICLE:\n\n${text}\n\nList every checkable factual claim in it: a tax or duty rate, a fee or amount, a deadline or date, what a law or authority requires, a statistic, and any statement that something has NOT been announced, published or decided (those go stale fastest). Not advice, not general practice. Copy each exactly as written. At most ${MAX_CLAIMS}, the most specific first. Return [] if there are none.`,
+      user: `THE ARTICLE:\n\n${text}\n\nList every checkable factual claim in it: a tax or duty rate, a fee or amount, a deadline or date, what a law or authority requires, a statistic, and any statement that something has NOT been announced, published or decided (those go stale fastest). Not advice, not general practice, and nothing about CargoSharks itself (those are held to PRODUCT FACTS, not the web). Copy each exactly as written. At most ${MAX_CLAIMS}, the most specific first. Return [] if there are none.`,
     })
-    if (!claims.length) return { copy, fixed: [] }
+    // Product claims are bound by PRODUCT FACTS in the voice; the web knows
+    // nothing about them, so a search "fails" and the checker rewrote true
+    // statements about what CargoSharks does.
+    claims = claims.filter((c) => !/cargosharks/i.test(c.quote))
+    if (!claims.length) return { copy, fixed: [], flagged: [] }
 
     const evidence = []
     for (const [i, claim] of claims.slice(0, MAX_CLAIMS).entries()) {
