@@ -12,8 +12,11 @@ type State = 'idle' | 'sending' | 'done' | 'missing' | 'busy' | 'failed'
  * The pilot request form. Posts to `/contact/`, which saves a lead and tells
  * Slack; nothing is mailed to the address typed here.
  *
- * `startedAt` is when the form first rendered: the route turns away anything
- * sent faster than a person can type. `website` is a field no person sees.
+ * `elapsedMs` is how long the form was open before it was sent, measured here
+ * on one clock: the route turns away anything sent faster than a person can
+ * type. It used to send the start time and let the server subtract, which
+ * compared this device's clock with the server's: a phone running a minute
+ * fast looked like a bot, and its lead was dropped behind a "thank you". `website` is a field no person sees.
  * Both answer bots without a captcha a forwarder's sales manager has to solve.
  */
 export function LeadForm({ lang }: { lang: Lang }) {
@@ -30,7 +33,12 @@ export function LeadForm({ lang }: { lang: Lang }) {
       const res = await fetch('/contact/', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...data, startedAt, lang, page: window.location.pathname }),
+        body: JSON.stringify({
+          ...data,
+          elapsedMs: Date.now() - startedAt,
+          lang,
+          page: window.location.pathname,
+        }),
       })
       setState(
         res.ok ? 'done' : res.status === 429 ? 'busy' : res.status === 400 ? 'missing' : 'failed',

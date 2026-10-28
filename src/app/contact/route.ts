@@ -48,8 +48,10 @@ export async function POST(request: Request) {
 
   // A bot that filled the hidden field, or answered faster than anyone can
   // type, gets the same "thanks" as a person: telling it why only teaches it.
-  const startedAt = Number(body.startedAt)
-  if (text(body.website, 200) || !startedAt || Date.now() - startedAt < MIN_FILL_MS)
+  // Measured by the browser on its own clock (see LeadForm), so a device whose
+  // clock is wrong is not mistaken for a bot.
+  const elapsed = Number(body.elapsedMs)
+  if (text(body.website, 200) || !Number.isFinite(elapsed) || elapsed < MIN_FILL_MS)
     return Response.json({ ok: true })
 
   const ip =
