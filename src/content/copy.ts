@@ -77,6 +77,11 @@ export const nav: {
   hrefAr?: string
   intro?: Bi
   /**
+   * A path prefix whose pages light this group in the bar, for a group that
+   * stands for a section rather than a page (Blog: every post under /blog/).
+   */
+  section?: string
+  /**
    * The panel's left column.
    *
    * Photographs, not product captures. The site already shows the software in
@@ -326,8 +331,50 @@ export const nav: {
       },
     ],
   },
-  // A plain link, not a panel: one destination, so nothing to choose between.
-  { id: 'blog', label: { en: 'Blog', ar: 'المدونة' }, href: '/blog/', hrefAr: '/ar/blog/' },
+  // A panel since posts arrive daily: the header lists the newest ones beside
+  // these links, fetched when it opens (`/blog/latest.json`), so the menu is
+  // current without a rebuild.
+  {
+    id: 'blog',
+    label: { en: 'Blog', ar: 'المدونة' },
+    section: '/blog/',
+    image: {
+      src: '/pic/photos/containers-stack.webp',
+      alt: {
+        en: 'Shipping containers stacked high in a yard',
+        ar: 'حاويات شحن مرصوفة عالياً في ساحة',
+      },
+    },
+    intro: {
+      en: 'Quoting, customs, free time, documents and getting paid, written for the people who do the work.',
+      ar: 'التسعير والتخليص ووقت السماح والمستندات والتحصيل، مكتوبة لمن يقوم بالعمل.',
+    },
+    columns: [
+      {
+        heading: { en: 'Browse', ar: 'تصفّحوا' },
+        links: [
+          {
+            href: '/blog/',
+            hrefAr: '/ar/blog/',
+            label: { en: 'All posts', ar: 'كل المقالات' },
+            blurb: {
+              en: 'Every article, newest first',
+              ar: 'كل المقالات، الأحدث أولاً',
+            },
+          },
+          {
+            href: '/#calculator',
+            hrefAr: '/ar/#calculator',
+            label: { en: 'Free time calculator', ar: 'حاسبة وقت السماح' },
+            blurb: {
+              en: 'What overruns cost your desk in a month',
+              ar: 'ما تكلّفه التجاوزات مكتبكم في الشهر',
+            },
+          },
+        ],
+      },
+    ],
+  },
   {
     id: 'trust',
     label: { en: 'Trust', ar: 'الثقة' },

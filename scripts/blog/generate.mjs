@@ -194,7 +194,7 @@ const FALLBACK_QUERIES = ['container port', 'cargo ship', 'freight logistics war
  * `used` holds the Pexels ids already on the site, so two posts never share a
  * cover. Returns undefined, and the post ships without one, on any failure.
  */
-async function cover(query, used) {
+export async function cover(query, used) {
   const key = process.env.PEXELS_API_KEY
   if (!key) {
     console.warn('cover: PEXELS_API_KEY is not set; the post ships without one')

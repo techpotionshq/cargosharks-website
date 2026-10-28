@@ -7,6 +7,39 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowRight, CaretDown, List, X } from '@phosphor-icons/react/dist/ssr'
 import { DEMO_URL, hrefFor, type Lang, languageSwitch, nav } from '@/content/copy'
 
+/** A post as `/blog/latest.json` lists it. */
+type Latest = {
+  slug: string
+  publishedAt: string
+  en: { title: string } | null
+  ar: { title: string } | null
+}
+
+/**
+ * The newest posts, fetched the first time the Blog menu or the sheet opens.
+ *
+ * Not at build time: the header is on prerendered pages that have no
+ * database. Not on every page load either: most readers never open the menu,
+ * and a request each would be a query nobody asked for. Posts in only one
+ * language are left out of the other language's list.
+ */
+function useLatestPosts(wanted: boolean, lang: Lang) {
+  const [posts, setPosts] = useState<Latest[] | null>(null)
+  const asked = useRef(false)
+  useEffect(() => {
+    if (!wanted || asked.current) return
+    asked.current = true
+    fetch('/blog/latest.json')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((all: Latest[]) => setPosts(all))
+      .catch(() => setPosts([]))
+  }, [wanted])
+  return (posts ?? []).filter((post) => post[lang])
+}
+
+const postHref = (slug: string, lang: Lang) =>
+  lang === 'ar' ? `/ar/blog/${slug}/` : `/blog/${slug}/`
+
 /**
  * The pill that slides between nav items.
  *
@@ -173,8 +206,26 @@ export function Header({
    * panel keeps the trigger lit for as long as its contents are on screen,
    * which is also what a reader would expect it to mean.
    */
+  const inSection = (item: (typeof nav)[number]) => {
+    if (!item.section) return false
+    const path = (pathname ?? '').replace(/^\/ar(?=\/)/, '')
+    return path.startsWith(item.section)
+  }
   const lit =
-    hovered ?? panel ?? nav.find((item) => (item.href ? here(linkOf(item)!) : false))?.id ?? null
+    hovered ??
+    panel ??
+    nav.find((item) => (item.href ? here(linkOf(item)!) : inSection(item)))?.id ??
+    null
+
+  const latest = useLatestPosts(panel === 'blog' || open, lang)
+  const latestHeading = lang === 'ar' ? 'أحدث المقالات' : 'Latest posts'
+  const date = (iso: string) =>
+    new Date(iso).toLocaleDateString(lang === 'ar' ? 'ar-KW' : 'en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      numberingSystem: 'latn',
+    })
 
   const panelItem = nav.find((item) => item.id === panel && item.columns) ?? null
 
@@ -452,6 +503,31 @@ export function Header({
                 </div>
 
                 <div className="grid gap-8 sm:grid-cols-2 lg:col-span-8 lg:gap-10">
+                  {panelItem.id === 'blog' && latest.length ? (
+                    <div>
+                      <p className="tracked text-on-void-dim text-[0.55rem] opacity-70">
+                        {latestHeading}
+                      </p>
+                      <ul className="mt-4 space-y-1">
+                        {latest.map((post) => (
+                          <li key={post.slug}>
+                            <a
+                              href={postHref(post.slug, lang)}
+                              onClick={() => setPanel(null)}
+                              className="bar-hover -mx-3 block rounded-lg px-3 py-2.5 transition-colors duration-150"
+                            >
+                              <span className="block text-on-void text-[0.9rem] font-medium leading-[1.4]">
+                                {post[lang]!.title}
+                              </span>
+                              <span className="mt-0.5 block text-on-void-dim text-[0.8rem] opacity-80">
+                                {date(post.publishedAt)}
+                              </span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {(panelItem.columns ?? []).map((column) => (
                     <div key={column.heading.en}>
                       <p className="tracked text-on-void-dim text-[0.55rem] opacity-70">
@@ -533,6 +609,23 @@ export function Header({
                       </p>
                     )}
 
+                    {group.id === 'blog'
+                      ? latest.map((post) => (
+                          <a
+                            key={post.slug}
+                            href={postHref(post.slug, lang)}
+                            onClick={() => setOpen(false)}
+                            className="mt-1 block rounded-lg px-3 py-2.5"
+                          >
+                            <span className="block text-on-void text-[0.95rem] font-medium">
+                              {post[lang]!.title}
+                            </span>
+                            <span className="mt-0.5 block text-on-void-dim text-[0.8rem] opacity-80">
+                              {date(post.publishedAt)}
+                            </span>
+                          </a>
+                        ))
+                      : null}
                     {(group.columns ?? [])
                       .flatMap((column) => column.links)
                       .map((link) => (
