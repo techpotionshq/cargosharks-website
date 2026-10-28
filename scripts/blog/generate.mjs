@@ -194,6 +194,38 @@ const FALLBACK_QUERIES = ['container port', 'cargo ship', 'freight logistics war
  * `used` holds the Pexels ids already on the site, so two posts never share a
  * cover. Returns undefined, and the post ships without one, on any failure.
  */
+/** A Pexels photo as a cover: downloaded, cropped to 1280x720 WebP, credited. */
+async function prepare(photo, sharp) {
+  const file = await fetch(photo.src.large2x || photo.src.original, {
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!file.ok) throw new Error(`Pexels download ${file.status}`)
+  const data = await sharp(Buffer.from(await file.arrayBuffer()))
+    // Always exactly 1280×720: `postMetadata` declares that size to
+    // Open Graph. `attention` keeps the busiest part of the frame.
+    .resize({ width: 1280, height: 720, fit: 'cover', position: sharp.strategy.attention })
+    .webp({ quality: 82 })
+    .toBuffer()
+  return { data, sourceId: `pexels:${photo.id}`, credit: photo.photographer, creditUrl: photo.url }
+}
+
+/**
+ * One particular Pexels photo as a cover, for when a person has picked it: the
+ * search sometimes lands on the wrong sense of a word ("freight rate" gave a
+ * stock-market chart). Throws, unlike `cover`, because a person is waiting.
+ */
+export async function coverById(id) {
+  const key = process.env.PEXELS_API_KEY
+  if (!key) throw new Error('PEXELS_API_KEY is not set')
+  const res = await fetch(`https://api.pexels.com/v1/photos/${encodeURIComponent(id)}`, {
+    headers: { Authorization: key },
+    signal: AbortSignal.timeout(20_000),
+  })
+  if (!res.ok) throw new Error(`Pexels ${res.status}`)
+  const { default: sharp } = await import('sharp')
+  return prepare(await res.json(), sharp)
+}
+
 export async function cover(query, used) {
   const key = process.env.PEXELS_API_KEY
   if (!key) {
@@ -221,23 +253,8 @@ export async function cover(query, used) {
         (p) => !used.has(`pexels:${p.id}`) && p.width >= 1280 && p.height >= 720,
       )
       if (!photo) continue
-      const file = await fetch(photo.src.large2x || photo.src.original, {
-        signal: AbortSignal.timeout(30_000),
-      })
-      if (!file.ok) throw new Error(`Pexels download ${file.status}`)
-      const data = await sharp(Buffer.from(await file.arrayBuffer()))
-        // Always exactly 1280×720: `postMetadata` declares that size to
-        // Open Graph. `attention` keeps the busiest part of the frame.
-        .resize({ width: 1280, height: 720, fit: 'cover', position: sharp.strategy.attention })
-        .webp({ quality: 82 })
-        .toBuffer()
       console.log(`cover: Pexels ${photo.id} for "${q}"`)
-      return {
-        data,
-        sourceId: `pexels:${photo.id}`,
-        credit: photo.photographer,
-        creditUrl: photo.url,
-      }
+      return await prepare(photo, sharp)
     }
     console.warn(`cover: nothing unused for "${query}"; the post ships without one`)
   } catch (error) {
