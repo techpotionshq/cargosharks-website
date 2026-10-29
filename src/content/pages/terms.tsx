@@ -473,12 +473,12 @@ export function TermsContent() {
                     nothing, and that is a decision rather than a gap.
                   </li>
                   <li>
-                    <strong>It does not transmit e-invoices.</strong> Invoice data carries tax
-                    treatment and rate per line, and the hand-off to an accredited provider is built
-                    as a plug. No provider has been appointed and the mandated document format is
-                    not generated. The UAE timetable in the specification is a provider appointment
-                    due 30 October 2026 and go-live on 1 January 2027 for the largest filers; the
-                    Saudi ZATCA path carries no date.
+                    <strong>It is not an accredited service provider.</strong> Saudi tax invoices,
+                    credit notes and debit notes are issued as signed XML with the QR code and
+                    cleared with ZATCA as they are issued. UAE invoices are issued in the PINT AE
+                    format and sent to the accredited service provider you appoint; we are not one,
+                    and appointing one stays with you. Kuwaiti branches invoice as before. ZATCA
+                    does not certify software, and nothing here says it has.
                   </li>
                   <li>
                     <strong>It does not issue master carrier documents.</strong> A master bill is

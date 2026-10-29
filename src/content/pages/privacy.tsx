@@ -501,6 +501,18 @@ export function PrivacyContent() {
                         <td>Currency codes. Nothing else.</td>
                       </tr>
                       <tr>
+                        <th scope="row">E-invoicing</th>
+                        <td>
+                          For Saudi branches, ZATCA&rsquo;s Fatoora platform, which clears each
+                          invoice as it is issued. For UAE branches, the accredited service provider
+                          the customer appoints; we are not one and do not choose it.
+                        </td>
+                        <td>
+                          Each tax invoice, credit note and debit note as issued: the seller and
+                          buyer, their tax numbers and addresses, the lines, VAT and totals.
+                        </td>
+                      </tr>
+                      <tr>
                         <th scope="row">Webhooks you configure</th>
                         <td>
                           Signed outbound webhooks to URLs the customer chooses, retried and logged.
@@ -531,10 +543,6 @@ export function PrivacyContent() {
                   <li>
                     <strong>No error-reporting service.</strong> No Sentry, no Datadog, no Bugsnag.
                     Errors are written to the container&rsquo;s log as structured JSON.
-                  </li>
-                  <li>
-                    <strong>No e-invoicing provider.</strong> The hand-off is built; no accredited
-                    provider has been appointed, so nothing is transmitted.
                   </li>
                   <li>
                     <strong>No WhatsApp.</strong> The webhook verifies signatures and nothing
