@@ -51,13 +51,17 @@
   --navy-ink: var(--qb-neutral-50);
   --navy-ink-muted: color-mix(in oklab, var(--qb-primary-200) 46%, var(--qb-neutral-400));
 
-  --paper: var(--qb-neutral-50);
-  --paper-raised: var(--qb-neutral-50);
-  --ink: var(--qb-primary-950);
-  --ink-muted: var(--qb-neutral-600);
-  --ink-subtle: var(--qb-neutral-500);
-  --line: var(--qb-neutral-200);
-  --line-strong: var(--qb-neutral-300);
+  /* The ground, the secondary inks and the hairlines are the design system's
+     own (`palette.css`), so a page still on this stylesheet sits on the same
+     paper as the pages rebuilt on Tailwind. `--ink` stays the brand navy: it is
+     what every heading here inherits, and headings on paper are navy. */
+  --paper: var(--pg-paper);
+  --paper-raised: var(--pg-paper-lift);
+  --ink: var(--pg-heading);
+  --ink-muted: var(--pg-ink-dim);
+  --ink-subtle: var(--pg-ink-faint);
+  --line: var(--pg-line);
+  --line-strong: var(--pg-line-strong);
 
   --amber: var(--qb-caution);
   /* The same amber, lifted for a navy ground — var(--qb-caution) on navy is mud. */
@@ -98,9 +102,12 @@
     six one-line entries does not need the air that a section carrying a
     1440-wide screenshot needs.
   */
-  --band: clamp(64px, 7.5vw, 108px);
-  --band-tight: clamp(48px, 5vw, 72px);
-  --band-wide: clamp(88px, 11vw, 156px);
+  /* The values are `Section`'s (`ui/section.tsx`): 64 / 80 / 96px by default,
+     48–56px tight. `wide` was 88–156px and is the default now; nothing on a
+     page needs more air than a section with a heading and real content. */
+  --band: clamp(64px, 6.7vw, 96px);
+  --band-tight: clamp(48px, 4vw, 56px);
+  --band-wide: clamp(64px, 6.7vw, 96px);
   /*
     Two radii, and the split is the point.
 
@@ -134,8 +141,9 @@
   background: var(--paper);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 17px;
-  line-height: 1.62;
+  /* `text-body`: 16px at 1.65, the same running text as the rebuilt pages. */
+  font-size: 1rem;
+  line-height: 1.65;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
 }
@@ -213,34 +221,38 @@
   color: var(--white);
 }
 
-/* --- type scale ---------------------------------------------------------- */
+/* --- type scale ----------------------------------------------------------
+   The design system's steps (`--text-*` in `globals.css`, DESIGN.md), written
+   out because this stylesheet is not Tailwind: display 35–54px, h2 26–37px,
+   h3 18–22px at 700, lede 18px, body 16px, small 14px, label 13px. */
 .doc-page .display {
-  font-size: clamp(2.2rem, 4.4vw, 3.4rem);
+  font-size: clamp(2.2rem, 1.45rem + 2.6vw, 3.4rem);
   letter-spacing: -0.03em;
   line-height: 1.06;
 }
 .doc-page .h2 {
-  font-size: clamp(1.6rem, 2.7vw, 2.3rem);
+  font-size: clamp(1.6rem, 1.2rem + 1.3vw, 2.3rem);
   letter-spacing: -0.026em;
   line-height: 1.16;
 }
 .doc-page .h3 {
-  font-size: clamp(1.15rem, 1.6vw, 1.35rem);
+  font-size: clamp(1.15rem, 1rem + 0.4vw, 1.35rem);
   letter-spacing: -0.016em;
+  line-height: 1.3;
   font-weight: 700;
 }
 .doc-page .lead {
-  font-size: clamp(1.06rem, 1.5vw, 1.28rem);
-  line-height: 1.55;
+  font-size: 1.125rem;
+  line-height: 1.6;
   color: var(--ink-muted);
-  font-weight: 500;
+  font-weight: 400;
 }
 .doc-page .band--navy .lead {
   color: var(--navy-ink-muted);
 }
 .doc-page .small {
-  font-size: 0.94rem;
-  line-height: 1.6;
+  font-size: 0.875rem;
+  line-height: 1.55;
 }
 .doc-page .muted {
   color: var(--ink-muted);
@@ -288,16 +300,24 @@
 .doc-page .band--navy .eyebrow {
   color: var(--blue-light);
 }
+/* Taken out of the pages that still use them. Every one restated its own
+   heading ("01 — The case for us" over "The case for us"), and DESIGN.md has
+   no uppercase tracked labels above headings. Hidden here rather than deleted
+   from the markup, so the pages that are moving to Tailwind can drop them as
+   they go; the rules above stay for that markup until then. */
+.doc-page .eyebrow {
+  display: none;
+}
 
 .doc-page .section-head {
   max-width: 760px;
-  margin-bottom: clamp(40px, 5vw, 64px);
+  margin-bottom: clamp(40px, 4vw, 48px);
 }
 .doc-page .section-head .lead {
-  margin-top: 18px;
+  margin-top: 16px;
 }
 .doc-page .h2 + .lead {
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 /* --- fin motif: the three ascending sails from the mark, reused as a rule -- */
@@ -566,8 +586,10 @@
 --------------------------------------------------------------------------- */
 .doc-page .hero {
   position: relative;
-  background: var(--navy-900);
-  color: var(--navy-ink);
+  /* The rebuilt pages' masthead colour (`bg-void`), so moving between a page on
+     this stylesheet and one on Tailwind does not change the header's ground. */
+  background: var(--pg-void);
+  color: var(--pg-on-void);
   padding-block: clamp(96px, 11vh, 132px) 0;
   overflow: hidden;
 }
@@ -576,29 +598,17 @@
   inset: 0;
   pointer-events: none;
 }
+/* The grid is decoration the rebuilt mastheads do not carry; a flat void is
+   what the Kuwait page and the blog open on. */
+.doc-page .hero--page .hero__field {
+  display: none;
+}
 /* A document grid at 1px and 4% — invisible as lines, visible as the absence of
    a flat field. The mask fades it out before it reaches the copy. */
+/* Hidden: a drawn grid behind the masthead is decoration the rebuilt pages
+   dropped, and the legal pages keep the same flat dark masthead. */
 .doc-page .hero__grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(
-      to right,
-      color-mix(in oklab, var(--qb-primary-300) 9%, transparent) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in oklab, var(--qb-primary-300) 9%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: clamp(48px, 6vw, 86px) clamp(48px, 6vw, 86px);
-  mask-image: radial-gradient(
-    120% 90% at 18% 12%,
-    var(--qb-neutral-950) 0%,
-    rgba(0, 0, 0, 0.35) 46%,
-    transparent 78%
-  );
+  display: none !important;
 }
 /* The mark at watermark scale, bled off the trailing edge. It reads as the
    letterhead it is rather than as a logo dropped into a corner. */
@@ -623,20 +633,21 @@
   product below are read in the same breath.
 */
 .doc-page .hero .display {
-  color: var(--white);
+  color: var(--pg-on-void);
   max-width: 24ch;
   text-wrap: balance;
-  font-size: clamp(2rem, 4.2vw, 3.15rem);
+  font-size: clamp(2.2rem, 1.45rem + 2.6vw, 3.4rem);
   letter-spacing: -0.03em;
-  line-height: 1.08;
+  line-height: 1.06;
 }
+/* `text-lede` in `text-on-void-dim`, as under the rebuilt mastheads. */
 .doc-page .hero__sub {
-  margin: clamp(18px, 2vw, 24px) 0 0;
-  max-width: 52ch;
-  color: rgba(232, 239, 249, 0.74);
-  font-size: clamp(1rem, 1.2vw, 1.12rem);
+  margin: 24px 0 0;
+  max-width: 58ch;
+  color: var(--pg-on-void-dim);
+  font-size: 1.125rem;
   line-height: 1.6;
-  font-weight: 500;
+  font-weight: 400;
   text-wrap: pretty;
 }
 /* Mono, with a rule that runs out of the letters — the product's own label
@@ -669,6 +680,11 @@
     display: none;
   }
 }
+/* Gone, like `.eyebrow`: a mono uppercase label over the H1 that restated it
+   ("Comparison" over a comparison). The rules above stay for the markup. */
+.doc-page .hero__kicker {
+  display: none;
+}
 
 .doc-page .hero__actions {
   margin-top: clamp(30px, 3.6vw, 44px);
@@ -682,7 +698,7 @@
 /* The doubt the button raises, answered on the button. */
 .doc-page .btn__hint {
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -730,7 +746,7 @@
 }
 .doc-page .manifest__cell span {
   font-family: var(--mono);
-  font-size: 0.62rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: color-mix(in oklab, var(--qb-primary-200) 72%, transparent);
@@ -762,7 +778,7 @@
 .doc-page .manifest__cell--live u {
   text-decoration: none;
   color: color-mix(in oklab, var(--qb-primary-200) 80%, transparent);
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
 }
 /* The digits are tabular so the number does not jitter sideways as it counts. */
 .doc-page .manifest__cell--live output {
@@ -900,7 +916,7 @@
 }
 .doc-page .leak__n {
   font-family: var(--mono);
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.13em;
   color: var(--blue-light);
   display: block;
@@ -932,8 +948,8 @@
 .doc-page .pull {
   margin-top: clamp(44px, 5vw, 72px);
   padding-inline-start: clamp(18px, 2vw, 28px);
-  border-inline-start: 3px solid transparent;
-  border-image: linear-gradient(to bottom, var(--blue-light), var(--blue)) 1;
+  /* A hairline, not a gradient stripe (DESIGN.md: no coloured side bars). */
+  border-inline-start: 1px solid var(--pg-line-strong);
   font-size: clamp(1.25rem, 2.3vw, 1.85rem);
   font-weight: 700;
   letter-spacing: -0.022em;
@@ -1200,7 +1216,7 @@
 .doc-page .pair figcaption {
   margin-top: 16px;
   font-family: var(--mono);
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--navy-ink-muted);
@@ -1267,7 +1283,7 @@
 }
 .doc-page .scope__title {
   font-family: var(--mono);
-  font-size: 0.74rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   margin-bottom: 20px;
@@ -1323,7 +1339,7 @@
   align-items: center;
   gap: 7px;
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-weight: 500;
@@ -1621,7 +1637,7 @@
    anybody needs to read twice. */
 .doc-page .ledger__acct {
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: color-mix(in oklab, var(--qb-primary-200) 60%, transparent);
@@ -1659,7 +1675,7 @@
 }
 .doc-page .spec dt {
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--blue-light);
@@ -1703,7 +1719,7 @@
 }
 .doc-page .verified__lede {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: color-mix(in oklab, var(--qb-primary-200) 72%, transparent);
@@ -1766,7 +1782,7 @@
   align-items: center;
   gap: 8px;
   font-family: var(--mono);
-  font-size: 0.66rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-subtle);
@@ -2065,7 +2081,7 @@
 }
 .doc-page .field label {
   font-family: var(--mono);
-  font-size: 0.71rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--navy-ink-muted);
@@ -2272,7 +2288,7 @@
 }
 .doc-page .site-footer h4 {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--blue-light);
@@ -2500,60 +2516,51 @@
    back-to-top button appears, and a page with no `.hero` throws there before
    anything else on the page has run.
 --------------------------------------------------------------------------- */
+/* The rebuilt masthead's proportions (`pt-32 pb-16`, `lg:pt-36 lg:pb-20`):
+   room for the fixed header bar above the H1, then 64–80px under the copy. */
 .doc-page .hero--page {
-  padding-block: clamp(112px, 13vh, 150px) clamp(52px, 6vw, 84px);
+  padding-block: 128px 64px;
+}
+@media (min-width: 1024px) {
+  .doc-page .hero--page {
+    padding-block: 144px 80px;
+  }
 }
 .doc-page .hero--page .display {
-  font-size: clamp(2.15rem, 4.6vw, 3.5rem);
+  font-size: clamp(2.2rem, 1.45rem + 2.6vw, 3.4rem);
   letter-spacing: -0.03em;
-  max-width: 20ch;
+  max-width: 22ch;
 }
 .doc-page .hero--page .hero__sub {
   max-width: 62ch;
-  margin-top: clamp(18px, 2.2vw, 26px);
+  margin-top: 24px;
 }
-/* The masthead's own trailing rule: the page has no manifest strip under it,
-   and without an edge the navy simply stops. */
-.doc-page .hero--page::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  inset-block-end: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklab, var(--qb-primary-300) 34%, transparent) 22%,
-    color-mix(in oklab, var(--qb-primary-300) 34%, transparent) 78%,
-    transparent
-  );
-}
-/* A run of links under the masthead copy — "back to the home page", the demo,
-   the sibling documents. Set as a row of quiet mono links rather than buttons:
-   these are navigation, and three buttons in a row is a page asking to be
-   clicked rather than read. */
+/* A run of links under the masthead copy — the sibling documents, the demo.
+   Quiet text links rather than buttons: these are navigation, and three
+   buttons in a row is a page asking to be clicked rather than read. In the
+   reading face at `text-small`; mono is for data. */
 .doc-page .hero__ways {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 26px;
-  margin-top: clamp(26px, 3vw, 36px);
-  font-family: var(--mono);
-  font-size: 0.79rem;
-  letter-spacing: 0.06em;
+  gap: 4px 28px;
+  margin-top: 28px;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 .doc-page .hero__ways a {
-  color: var(--blue-light);
+  color: var(--pg-blue-lit);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 40px;
 }
 .doc-page .hero__ways a::before {
   content: '→';
   opacity: 0.6;
 }
 .doc-page .hero__ways a:hover {
-  color: var(--white);
+  color: var(--pg-on-void);
 }
 .doc-page .hero__ways a:hover::before {
   opacity: 1;
@@ -2662,7 +2669,7 @@
 }
 .doc-page .err__tag {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--blue-light);
@@ -2678,7 +2685,7 @@
 --------------------------------------------------------------------------- */
 .doc-page .doc {
   display: grid;
-  gap: clamp(34px, 4vw, 72px);
+  gap: clamp(32px, 4vw, 64px);
   align-items: start;
 }
 /* Grid items default to `min-width:auto`, so the widest thing inside the
@@ -2695,8 +2702,16 @@
   }
 }
 
+/* On a phone and a tablet the contents are a panel at the top of the
+   document: a hairline box, so it reads as the document's index rather than
+   as its first section, and two columns once there is room so seventeen
+   entries do not cost two screens. From 1040px it is the sticky column. */
 .doc-page .doc__toc {
   position: relative;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-raised);
 }
 @media (min-width: 1040px) {
   .doc-page .doc__toc {
@@ -2704,102 +2719,124 @@
     inset-block-start: 96px;
     max-height: calc(100vh - 130px);
     overflow-y: auto;
-    padding-block-end: 20px;
+    padding: 0 0 20px;
+    border: 0;
+    border-radius: 0;
+    background: none;
   }
 }
 .doc-page .doc__toc h2 {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-subtle);
-  margin-bottom: 16px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.4;
+  color: var(--ink);
+  margin-bottom: 12px;
 }
 .doc-page .doc__toc ol {
   list-style: none;
   counter-reset: toc;
   display: grid;
-  gap: 1px;
+  gap: 0 24px;
+  padding: 0;
+  margin: 0;
+}
+@media (min-width: 640px) and (max-width: 1039px) {
+  .doc-page .doc__toc ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .doc-page .doc__toc li {
   counter-increment: toc;
 }
 .doc-page .doc__toc a {
   display: grid;
-  grid-template-columns: 2.1em 1fr;
+  grid-template-columns: 2em 1fr;
   gap: 8px;
   align-items: baseline;
   padding-block: 7px;
   text-decoration: none;
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-size: 0.875rem;
+  line-height: 1.45;
   color: var(--ink-muted);
-  border-block-end: 1px solid transparent;
-  transition: color 0.16s ease;
+  transition: color 0.15s ease;
 }
+/* The number is the section's own (the headings carry it too), so it stays,
+   tabular so the column of them lines up. */
 .doc-page .doc__toc a::before {
   content: counter(toc, decimal-leading-zero);
-  font-family: var(--mono);
-  font-size: 0.74rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-subtle);
-  letter-spacing: 0.04em;
 }
 .doc-page .doc__toc a:hover {
-  color: var(--blue);
+  color: var(--pg-blue-ink);
 }
 .doc-page .doc__toc a:hover::before {
-  color: var(--blue);
+  color: var(--pg-blue-ink);
 }
 
+/* Running text at `text-body`, at a 68ch measure. */
 .doc-page .doc__body {
   max-width: 68ch;
 }
 .doc-page .doc__body > section {
   scroll-margin-top: 96px;
-  padding-block: clamp(30px, 3.4vw, 44px) 0;
+  padding-block: 40px 0;
+}
+.doc-page .doc__body > section:first-child {
+  padding-block-start: 0;
 }
 .doc-page .doc__body > section + section {
   border-block-start: 1px solid var(--line);
-  margin-block-start: clamp(30px, 3.4vw, 44px);
+  margin-block-start: 40px;
 }
 /* The section number sits in the heading rather than in a margin: at a 68ch
    measure inside a 1200px shell there is no margin to put it in, and a number
-   floated into the gutter collides with the contents column. */
+   floated into the gutter collides with the contents column. The heading is
+   `text-h2`, navy at 800 like every section heading on the site. */
 .doc-page .doc__body h2 {
-  font-size: clamp(1.32rem, 2.1vw, 1.72rem);
-  letter-spacing: -0.022em;
-  line-height: 1.24;
+  font-size: clamp(1.6rem, 1.2rem + 1.3vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: -0.026em;
+  line-height: 1.16;
+  color: var(--ink);
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 14px;
   align-items: baseline;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   text-wrap: balance;
 }
+/* The clause number people quote back ("section 07"): information, so it
+   stays, at half the heading in the brand blue, never under 13px. */
 .doc-page .doc__body h2 .doc__n {
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  color: var(--blue);
-  padding-top: 0.25em;
+  font-size: max(0.8125rem, 0.5em);
+  font-weight: 700;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--pg-blue-ink);
 }
 .doc-page .doc__body h3 {
-  font-size: 1.03rem;
+  font-size: clamp(1.15rem, 1rem + 0.4vw, 1.35rem);
   font-weight: 700;
-  letter-spacing: -0.012em;
-  margin-top: clamp(24px, 2.6vw, 32px);
-  margin-bottom: 10px;
+  letter-spacing: -0.016em;
+  line-height: 1.3;
+  margin-top: 32px;
+  margin-bottom: 12px;
   scroll-margin-top: 96px;
 }
 .doc-page .doc__body p {
   font-size: 1rem;
-  line-height: 1.68;
+  line-height: 1.7;
   color: var(--ink-muted);
 }
 .doc-page .doc__body p + p {
-  margin-top: 14px;
+  margin-top: 16px;
+}
+/* A paragraph after a list, a table or a note sat flush against it. */
+.doc-page .doc__body :is(ul, ol, dl, .tablewrap, .doc__aside) + p {
+  margin-top: 16px;
 }
 .doc-page .doc__body p strong,
 .doc-page .doc__body li strong {
@@ -2807,7 +2844,8 @@
   font-weight: 700;
 }
 .doc-page .doc__body a:not(.btn) {
-  color: var(--blue);
+  /* `blue-ink`, the link blue that reads on paper (`blue` is about 3.4:1). */
+  color: var(--pg-blue-ink);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
@@ -2822,10 +2860,11 @@
 .doc-page .doc td code,
 .doc-page .doc th code {
   font-family: var(--mono);
-  font-size: 0.88em;
-  color: var(--ink);
-  background: color-mix(in oklab, var(--qb-primary-500) 7%, transparent);
-  border-radius: 5px;
+  /* Never under 13px, which 0.875em of a 14px table cell would be. */
+  font-size: max(0.8125rem, 0.875em);
+  color: var(--pg-ink);
+  background: var(--pg-paper-sunk);
+  border-radius: 4px;
   padding: 1px 5px;
   word-break: break-word;
 }
@@ -2870,18 +2909,18 @@
   position: relative;
   padding-inline-start: 3.6em;
   font-size: 1rem;
-  line-height: 1.66;
+  line-height: 1.7;
   color: var(--ink-muted);
 }
 .doc-page .clauses > li::before {
   content: attr(data-s) '.' counter(clause);
   position: absolute;
   inset-inline-start: 0;
-  inset-block-start: 0.3em;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  color: var(--ink-subtle);
-  letter-spacing: 0.03em;
+  inset-block-start: 0.2em;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
 }
 /* An unnumbered list, for the places where a clause is a set rather than a
    sequence — the categories of data, the things a customer may not do. */
@@ -2894,12 +2933,12 @@
 }
 .doc-page .doc__body ul.bullets li {
   display: list-item;
-  font-size: 0.985rem;
-  line-height: 1.62;
+  font-size: 1rem;
+  line-height: 1.7;
   color: var(--ink-muted);
 }
 .doc-page .doc__body ul.bullets li::marker {
-  color: var(--blue);
+  color: var(--ink-subtle);
 }
 
 /* Defined terms. A description list, set so the term and its definition stay on
@@ -2924,13 +2963,13 @@
 .doc-page .defs dt {
   font-weight: 700;
   color: var(--ink);
-  font-size: 0.97rem;
+  font-size: 1rem;
   line-height: 1.5;
 }
 .doc-page .defs dd {
   margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.6;
+  font-size: 1rem;
+  line-height: 1.65;
   color: var(--ink-muted);
 }
 
@@ -2943,7 +2982,7 @@
   -webkit-overflow-scrolling: touch;
   margin-top: 20px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 8px;
   background: var(--paper-raised);
 }
 /* Scoped to `.tablewrap` rather than to `.doc`, so the comparison table on
@@ -2953,20 +2992,18 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 560px;
-  font-size: 0.92rem;
+  font-size: 0.875rem;
 }
 .doc-page .tablewrap thead th {
   text-align: start;
   padding: 14px 16px;
   border-block-end: 1px solid var(--line-strong);
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-subtle);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--pg-ink);
   vertical-align: bottom;
-  background: var(--paper);
+  background: var(--pg-paper-sunk);
 }
 .doc-page .tablewrap tbody td {
   padding: 14px 16px;
@@ -3009,7 +3046,7 @@
   box-shadow: 1px 0 0 var(--line);
 }
 .doc-page .tablewrap thead th:first-child {
-  background: var(--paper);
+  background: var(--pg-paper-sunk);
   z-index: 3;
 }
 .doc-page [dir='rtl'] .tablewrap thead th:first-child,
@@ -3026,12 +3063,12 @@
    over. Blue rule, quieter type, never amber — amber means undecided. */
 .doc-page .doc__aside {
   margin-top: 18px;
-  padding: 16px 18px;
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--qb-primary-500) 5%, transparent);
-  border-inline-start: 3px solid var(--blue);
-  font-size: 0.92rem;
-  line-height: 1.6;
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: var(--pg-paper-sunk);
+  border: 1px solid var(--pg-line);
+  font-size: 1rem;
+  line-height: 1.65;
   color: var(--ink-muted);
 }
 .doc-page .doc__aside b {
@@ -3043,24 +3080,22 @@
   margin-top: clamp(40px, 5vw, 64px);
   padding-top: 24px;
   border-block-start: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  line-height: 1.9;
-  letter-spacing: 0.02em;
-  color: var(--ink-subtle);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--ink-muted);
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 .doc-page .doc__stamp b {
-  color: var(--ink-muted);
-  font-weight: 500;
+  color: var(--ink);
+  font-weight: 700;
 }
 
 /* The row of sibling documents at the foot of each legal page. */
 .doc-page .doc-switch {
   display: grid;
-  gap: 14px;
-  margin-top: clamp(36px, 4vw, 52px);
+  gap: 16px;
+  margin-top: 40px;
 }
 @media (min-width: 760px) {
   .doc-switch {
@@ -3071,34 +3106,30 @@
   display: block;
   padding: 20px 22px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 8px;
   background: var(--paper-raised);
   text-decoration: none;
-  transition:
-    border-color 0.18s ease,
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
+  transition: border-color 0.15s ease;
 }
 .doc-page .doc-switch a:hover {
   border-color: var(--line-strong);
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-md);
 }
 .doc-page .doc-switch a[aria-current] {
-  border-color: var(--blue);
-  background: color-mix(in oklab, var(--qb-primary-500) 4%, transparent);
+  border-color: var(--pg-blue);
 }
 .doc-page .doc-switch b {
   display: block;
-  font-size: 1rem;
+  font-family: var(--pg-font-display);
+  font-size: clamp(1.15rem, 1rem + 0.4vw, 1.35rem);
+  line-height: 1.3;
   font-weight: 700;
   color: var(--ink);
   margin-bottom: 6px;
 }
 .doc-page .doc-switch small {
   display: block;
-  font-size: 0.87rem;
-  line-height: 1.5;
+  font-size: 0.875rem;
+  line-height: 1.55;
   color: var(--ink-muted);
 }
 
@@ -3212,7 +3243,7 @@
 .doc-page .modes__name i {
   font-family: var(--mono);
   font-style: normal;
-  font-size: 0.74rem;
+  font-size: 0.8125rem;
   color: var(--blue);
   letter-spacing: 0.1em;
 }
@@ -3278,7 +3309,7 @@
 .doc-page .compare__mark {
   display: block;
   font-family: var(--mono);
-  font-size: 0.64rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--blue);
@@ -3542,7 +3573,7 @@
    a sentence rather than as chrome. */
 .doc-page .nav a:not(.nav-lang):not(.nav-cta) {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.8125rem;
   font-weight: 400;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -3597,211 +3628,6 @@
   display: none;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Comparison pages
-   ═══════════════════════════════════════════════════════════════════════════
-
-   The four `/compare/<slug>/` pages are generated from `comparisons.ts` and
-   share the rest of this stylesheet. These are the pieces they add.
-
-   The `.spec` list is deliberately not among them. It was used for the
-   questions block and it is a *navy-band* component — `--white`, `--navy-line`,
-   `--navy-ink-muted` — so on `band--paper` the questions rendered as pale blue
-   on near-white and the answers were barely there. That is what "broken
-   colours" looked like. The questions are a table now, which is what they
-   always were. */
-
-/* A figure: a drawing in a panel, then the sentence saying what it does not
-   claim.
-
-   Full width, not 640px. Capped, the drawings rattled around in a 1200px band
-   *and* scaled 2.6x when they did stretch — every stroke and every label with
-   them. They are drawn at a 1000-unit viewBox now, which renders near 1:1 in
-   this column, so a hairline is a hairline.
-
-   The panel is what makes it a figure rather than loose SVG on a background:
-   a surface, a hairline and real padding, square like everything else on these
-   pages that holds data. The caption stays at a reading measure underneath —
-   a 62ch line under a 1090px drawing is correct, because the drawing is a
-   picture and the caption is prose. */
-.doc-page .cmp-figure {
-  margin: clamp(32px, 3.8vw, 52px) 0 0;
-}
-.doc-page .cmp-panel {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--paper-raised);
-  padding: clamp(20px, 2.6vw, 34px) clamp(18px, 2.4vw, 32px);
-}
-/* Not `--navy-raised`.
-
-   That token is `--qb-primary-800`, a saturated mid-blue meant for a chip or a
-   badge, and as a full panel on the near-black band it came out as a bright
-   blue rectangle — the loudest thing on the page, holding the quietest content.
-   A surface raised off `--navy-900` should be *slightly* lighter than it and
-   nothing else, which is what mixing toward `--navy-800` gives. */
-.doc-page .band--navy .cmp-panel {
-  border-color: var(--navy-line);
-  background: color-mix(in oklab, var(--navy-800) 55%, var(--navy-900));
-}
-.doc-page .cmp-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
-}
-.doc-page .cmp-figure figcaption {
-  margin-top: 18px;
-  font-size: 0.9rem;
-  line-height: 1.65;
-  color: var(--ink-muted);
-  max-width: 62ch;
-}
-.doc-page .band--navy .cmp-figure figcaption {
-  color: var(--navy-ink-muted);
-}
-
-.doc-page .cmp-axis {
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-.doc-page .cmp-guide {
-  stroke: var(--line-strong);
-  stroke-width: 1;
-  stroke-dasharray: 3 5;
-}
-.doc-page .cmp-line {
-  stroke-width: 2.5;
-  stroke-linecap: round;
-}
-.doc-page .cmp-line--per {
-  stroke: var(--blue);
-}
-.doc-page .cmp-line--flat {
-  stroke: var(--ink-subtle);
-}
-.doc-page .cmp-dot {
-  fill: var(--blue);
-}
-
-.doc-page .cmp-axis-label,
-.doc-page .cmp-track-label,
-.doc-page .cmp-note,
-.doc-page .cmp-key {
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  fill: var(--ink-subtle);
-}
-.doc-page .cmp-track-label {
-  fill: var(--ink-muted);
-}
-.doc-page .cmp-note {
-  fill: var(--blue);
-}
-.doc-page .cmp-note--late,
-.doc-page .cmp-mark--late {
-  fill: var(--amber);
-}
-.doc-page .cmp-key--per {
-  fill: var(--blue);
-}
-.doc-page .cmp-key--flat {
-  fill: var(--ink-subtle);
-}
-
-.doc-page .cmp-track {
-  stroke: var(--blue);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-}
-.doc-page .cmp-track--late {
-  stroke: var(--amber);
-  stroke-width: 2.5;
-  stroke-dasharray: 5 6;
-}
-.doc-page .cmp-mark {
-  fill: var(--blue);
-}
-
-/* The questions table.
-
-   Three columns, all three filled. The third used to be a `--fill` box — a
-   ruled blank for the reader to complete — and on a screen a column of dashed
-   rectangles reads as a page that failed to load rather than as an invitation.
-   It carries "what a good answer sounds like" now, set quieter than our own
-   answer beside it because it is guidance rather than a claim. */
-.doc-page .cmp-ask th:nth-child(1) {
-  width: 24%;
-}
-.doc-page .cmp-ask th:nth-child(2) {
-  width: 38%;
-}
-.doc-page .cmp-tell {
-  color: var(--ink-subtle);
-  font-size: 0.88rem;
-}
-.doc-page .band--navy .cmp-tell {
-  color: color-mix(in oklab, var(--navy-ink-muted) 82%, transparent);
-}
-
-/* The verifiable-facts table: a claim, the figure, and how to check it. */
-.doc-page .cmp-facts td:nth-child(2) {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--ink);
-}
-
-/* The figures on a navy band.
-
-   `SurfaceTimeline` sits in §03, which is `band--navy`, and every colour above
-   is a light-page colour — `--ink-subtle` axis labels and `--line` guides came
-   out invisible against the navy. This is the same override pattern the rest of
-   this stylesheet uses for `.lead` and `.muted`, and it is needed for the same
-   reason: a component that names its own greys can only be right on one
-   surface. */
-.doc-page .band--navy .cmp-axis {
-  stroke: var(--navy-line);
-}
-.doc-page .band--navy .cmp-guide {
-  stroke: color-mix(in oklab, var(--navy-ink-muted) 34%, transparent);
-}
-.doc-page .band--navy .cmp-axis-label,
-.doc-page .band--navy .cmp-key {
-  fill: var(--navy-ink-muted);
-}
-.doc-page .band--navy .cmp-track-label {
-  fill: var(--navy-ink);
-}
-.doc-page .band--navy .cmp-note {
-  fill: var(--blue-light);
-}
-.doc-page .band--navy .cmp-track,
-.doc-page .band--navy .cmp-mark {
-  stroke: var(--blue-light);
-  fill: var(--blue-light);
-}
-.doc-page .band--navy .cmp-track {
-  fill: none;
-}
-.doc-page .band--navy .cmp-note--late,
-.doc-page .band--navy .cmp-mark--late {
-  fill: var(--amber-on-dark);
-}
-.doc-page .band--navy .cmp-track--late {
-  stroke: var(--amber-on-dark);
-}
-.doc-page .band--navy .cmp-line--per {
-  stroke: var(--blue-light);
-}
-.doc-page .band--navy .cmp-line--flat {
-  stroke: var(--navy-ink-muted);
-}
-.doc-page .band--navy .cmp-dot {
-  fill: var(--blue-light);
-}
-
 /* The tables on a navy band, for the same reason. */
 .doc-page .band--navy .tablewrap {
   border-color: var(--navy-line);
@@ -3821,1043 +3647,9 @@
   background: transparent;
   color: var(--white);
 }
-.doc-page .band--navy .cmp-facts td:nth-child(2) {
-  color: var(--white);
-}
 
-/* The three moments on the spreadsheets page.
-
-   The only narrative block on any comparison page, and the only place where a
-   story beats a list — each moment is a thing that has already happened to
-   somebody reading it, so it gets room rather than a bullet. */
-.doc-page .cmp-moments {
-  margin-top: clamp(32px, 3.8vw, 52px);
-  display: grid;
-  gap: 1px;
-  background: var(--line);
-  border-block: 1px solid var(--line);
-}
-.doc-page .cmp-moments li {
-  background: var(--paper);
-  padding: clamp(26px, 3vw, 40px) 0;
-}
-.doc-page .cmp-moments__n {
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.18em;
-  color: var(--ink-subtle);
-}
-.doc-page .cmp-moments h3 {
-  margin-top: 14px;
-  max-width: 32ch;
-}
-.doc-page .cmp-moments p:not(.cmp-moments__n) {
-  margin-top: 14px;
-  max-width: 70ch;
-  line-height: 1.7;
-  color: var(--ink-muted);
-}
-.doc-page .cmp-moments__then {
-  border-inline-start: 2px solid var(--blue);
-  padding-inline-start: 18px;
-}
-.doc-page .cmp-moments__then b {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-@media (min-width: 860px) {
-  .doc-page .cmp-moments li {
-    display: grid;
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    gap: clamp(28px, 3.4vw, 52px);
-    align-items: start;
-  }
-  .doc-page .cmp-moments__n {
-    grid-column: 1 / -1;
-  }
-  .doc-page .cmp-moments h3 {
-    grid-column: 1;
-  }
-  .doc-page .cmp-moments p:not(.cmp-moments__n) {
-    margin-top: 0;
-  }
-  .doc-page .cmp-moments li > p:nth-of-type(2) {
-    grid-column: 1;
-    margin-top: 14px;
-  }
-  .doc-page .cmp-moments__then {
-    grid-column: 2;
-    grid-row: 2 / 4;
-  }
-}
-
-/* Primitives for the per-page lead drawings.
-
-   `.cmp-set` in particular is not optional: an SVG `<circle>` with no fill
-   declared paints solid black, so the overlap diagram rendered as two black
-   discs with the labels lost inside them. */
-.doc-page .cmp-set {
-  fill: color-mix(in oklab, var(--blue) 8%, transparent);
-  stroke: var(--blue);
-  stroke-width: 1.5;
-}
-.doc-page .band--navy .cmp-set {
-  fill: color-mix(in oklab, var(--blue-light) 12%, transparent);
-  stroke: var(--blue-light);
-}
-.doc-page .cmp-node {
-  fill: var(--line-strong);
-}
-.doc-page .band--navy .cmp-node {
-  fill: var(--navy-ink-muted);
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   The computed figures (`figures.tsx`) and the drawn illustrations
-   (`illustrations.tsx`).
-
-   These two files were added in one commit and shipped referencing a whole
-   `.fig-*` and `.illo-*` layer that was never written — so every figure on
-   `/what-we-do/`, `/compare/` and the per-competitor pages rendered raw. The
-   failure is the exact one the `.cmp-set` note above warns about: an SVG shape
-   with no fill declared paints solid black, so a bar chart came out as black
-   slabs, and an HTML matrix with no cell styling came out as a grid of blank
-   squares. This block is that missing layer, drawn from the same tokens as
-   `.cmp-*` so a figure is right on whichever band it sits on.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* The line above a drawing that names what it measures. Prose, not a caption:
-   it sits inside the panel and reads as the figure's own title. */
-.doc-page .fig-title {
-  margin: 0 0 clamp(12px, 1.6vw, 18px);
-  font-size: 0.92rem;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--ink);
-}
-.doc-page .band--navy .fig-title {
-  color: var(--navy-ink);
-}
-
-/* Shared SVG marks. Gridlines are quieter than an axis; the rule is the one
-   emphasised reference line a figure hangs its argument on. */
-.doc-page .fig-grid {
-  stroke: var(--line);
-  stroke-width: 1;
-}
-.doc-page .band--navy .fig-grid {
-  stroke: color-mix(in oklab, var(--navy-ink-muted) 22%, transparent);
-}
-.doc-page .fig-rule {
-  stroke: var(--ink-subtle);
-  stroke-width: 1.5;
-  stroke-dasharray: 6 4;
-}
-.doc-page .band--navy .fig-rule {
-  stroke: var(--navy-ink-muted);
-}
-
-/* The numbers printed on bars and rows: mono and tabular so a column of them
-   lines up, and heavier than a label so the figure reads value-first. */
-.doc-page .fig-value {
-  font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  fill: var(--ink);
-}
-.doc-page .fig-value--sm {
-  font-size: 12px;
-  font-weight: 500;
-  fill: var(--ink-muted);
-}
-.doc-page .band--navy .fig-value {
-  fill: var(--white);
-}
-.doc-page .band--navy .fig-value--sm {
-  fill: var(--navy-ink-muted);
-}
-
-/* Chargeable-weight columns. The lead bar is the surprising one (sea LCL, six
-   times air on the same box); the ghost bar is FCL, which has no volumetric
-   step and so is drawn as an outline rather than a height that would read as
-   "cheapest". */
-.doc-page .fig-bar {
-  fill: color-mix(in oklab, var(--blue) 55%, var(--paper-raised));
-}
-.doc-page .fig-bar--lead {
-  fill: var(--blue);
-}
-.doc-page .fig-bar--ghost {
-  fill: color-mix(in oklab, var(--ink-subtle) 10%, transparent);
-  stroke: var(--line-strong);
-  stroke-width: 1;
-  stroke-dasharray: 4 4;
-}
-.doc-page .band--navy .fig-bar {
-  fill: color-mix(in oklab, var(--blue-light) 45%, var(--navy-800));
-}
-.doc-page .band--navy .fig-bar--lead {
-  fill: var(--blue-light);
-}
-.doc-page .band--navy .fig-bar--ghost {
-  fill: color-mix(in oklab, var(--navy-ink-muted) 12%, transparent);
-  stroke: var(--navy-line);
-}
-
-/* The demurrage stair: free time as ground, the accrual as a filled step. */
-.doc-page .fig-free {
-  fill: color-mix(in oklab, var(--ink-subtle) 9%, transparent);
-}
-.doc-page .fig-area {
-  fill: color-mix(in oklab, var(--blue) 12%, transparent);
-}
-.doc-page .fig-step {
-  stroke: var(--blue);
-  stroke-width: 2.5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-.doc-page .band--navy .fig-free {
-  fill: color-mix(in oklab, var(--navy-ink-muted) 12%, transparent);
-}
-.doc-page .band--navy .fig-area {
-  fill: color-mix(in oklab, var(--blue-light) 16%, transparent);
-}
-.doc-page .band--navy .fig-step {
-  stroke: var(--blue-light);
-}
-
-/* Milestone strips: a track with intermediate dots; the ends are `.cmp-mark`. */
-.doc-page .fig-strip {
-  stroke: var(--line-strong);
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-.doc-page .fig-strip__dot {
-  fill: var(--ink-subtle);
-}
-.doc-page .band--navy .fig-strip {
-  stroke: var(--navy-line);
-}
-.doc-page .band--navy .fig-strip__dot {
-  fill: var(--navy-ink-muted);
-}
-
-/* The duty matrix. Each granted cell is a filled disc, each withheld one a
-   faint ring — without this, the `<span>` in every cell has no size and the
-   whole table reads as empty. */
-.doc-page .fig-tablewrap {
-  margin-top: clamp(6px, 1vw, 12px);
-  /* The containing block for the matrix's visually-hidden labels. They are
-     `position: absolute`, and with no positioned ancestor inside the scroller
-     they were placed against the page instead, outside the clip, which gave a
-     390px screen 260px of sideways scroll on every page carrying the matrix. */
-  position: relative;
-}
-.doc-page .fig-matrix {
-  width: 100%;
-  border-collapse: collapse;
-}
-.doc-page .fig-matrix th,
-.doc-page .fig-matrix td {
-  padding: 13px 10px;
-  text-align: center;
-  border-bottom: 1px solid var(--line);
-}
-.doc-page .fig-matrix thead th {
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 500;
-  color: var(--ink-subtle);
-  vertical-align: bottom;
-}
-.doc-page .fig-matrix th[scope='row'],
-.doc-page .fig-matrix thead th:first-child {
-  text-align: start;
-}
-.doc-page .fig-matrix th[scope='row'] {
-  font-weight: 600;
-  color: var(--ink);
-  white-space: nowrap;
-}
-.doc-page .fig-matrix td span[aria-hidden='true'] {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  vertical-align: middle;
-}
-.doc-page .fig-matrix td.is-on span[aria-hidden='true'] {
-  background: var(--blue);
-}
-.doc-page .fig-matrix td.is-off span[aria-hidden='true'] {
-  border: 1.5px solid var(--line-strong);
-  opacity: 0.55;
-}
-.doc-page .band--navy .fig-matrix th,
-.doc-page .band--navy .fig-matrix td {
-  border-color: var(--navy-line);
-}
-.doc-page .band--navy .fig-matrix thead th {
-  color: var(--navy-ink-muted);
-}
-.doc-page .band--navy .fig-matrix th[scope='row'] {
-  color: var(--white);
-}
-.doc-page .band--navy .fig-matrix td.is-on span[aria-hidden='true'] {
-  background: var(--blue-light);
-}
-.doc-page .band--navy .fig-matrix td.is-off span[aria-hidden='true'] {
-  border-color: var(--navy-ink-muted);
-}
-
-/* The charge catalogue as a waffle: one group per rating basis, one cell per
-   charge type. */
-.doc-page .fig-waffle {
-  margin-top: clamp(6px, 1vw, 12px);
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: clamp(20px, 2.4vw, 32px);
-}
-.doc-page .fig-waffle__label {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  letter-spacing: 0.03em;
-  color: var(--ink-muted);
-}
-.doc-page .fig-waffle__label b {
-  font-size: 0.95rem;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.doc-page .fig-waffle__cells {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.doc-page .fig-waffle__cell {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  background: color-mix(in oklab, var(--blue) 22%, transparent);
-  border: 1px solid color-mix(in oklab, var(--blue) 40%, transparent);
-}
-.doc-page .band--navy .fig-waffle__label {
-  border-color: var(--navy-line);
-  color: var(--navy-ink-muted);
-}
-.doc-page .band--navy .fig-waffle__label b {
-  color: var(--white);
-}
-.doc-page .band--navy .fig-waffle__cell {
-  background: color-mix(in oklab, var(--blue-light) 26%, transparent);
-  border-color: color-mix(in oklab, var(--blue-light) 45%, transparent);
-}
-
-/* Currency chips, and the two-place-vs-three-place comparison. The `--three`
-   chips are the Gulf currencies the whole figure is about; the `--lost` side
-   is the amount a two-decimal system keeps, with the dropped fils marked. */
-.doc-page .fig-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: clamp(6px, 1vw, 12px) 0 clamp(20px, 2.4vw, 30px);
-  padding: 0;
-  list-style: none;
-}
-.doc-page .fig-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 7px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--paper);
-  font-size: 0.82rem;
-}
-.doc-page .fig-chip b {
-  font-family: var(--mono);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-}
-.doc-page .fig-chip span {
-  font-size: 0.72rem;
-  color: var(--ink-subtle);
-  font-variant-numeric: tabular-nums;
-}
-.doc-page .fig-chip--three {
-  border-color: var(--blue);
-  background: color-mix(in oklab, var(--blue) 8%, var(--paper));
-}
-.doc-page .fig-chip--three b {
-  color: var(--blue);
-}
-.doc-page .band--navy .fig-chip {
-  border-color: var(--navy-line);
-  background: color-mix(in oklab, var(--navy-800) 60%, var(--navy-900));
-}
-.doc-page .band--navy .fig-chip b {
-  color: var(--navy-ink);
-}
-.doc-page .band--navy .fig-chip--three {
-  border-color: var(--blue-light);
-  background: color-mix(in oklab, var(--blue-light) 14%, var(--navy-900));
-}
-.doc-page .band--navy .fig-chip--three b {
-  color: var(--blue-light);
-}
-
-.doc-page .fig-place {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: clamp(14px, 1.8vw, 22px);
-}
-@media (min-width: 640px) {
-  .doc-page .fig-place {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-.doc-page .fig-place__side {
-  padding: clamp(18px, 2.2vw, 26px);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--paper);
-}
-.doc-page .fig-place__side--lost {
-  border-style: dashed;
-  background: color-mix(in oklab, var(--amber) 5%, var(--paper));
-}
-.doc-page .fig-place__label {
-  margin: 0 0 12px;
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-subtle);
-}
-.doc-page .fig-place__amount {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: clamp(1.6rem, 4vw, 2.2rem);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-.doc-page .fig-place__cur {
-  margin-inline-end: 6px;
-  font-size: 0.6em;
-  font-weight: 500;
-  color: var(--ink-subtle);
-}
-.doc-page .fig-place__amount b {
-  color: var(--blue);
-  font-weight: 700;
-}
-.doc-page .fig-place__gone {
-  color: var(--amber);
-}
-.doc-page .fig-place__note {
-  margin: 14px 0 0;
-  font-size: 0.82rem;
-  line-height: 1.6;
-  color: var(--ink-muted);
-}
-.doc-page .band--navy .fig-place__side {
-  border-color: var(--navy-line);
-  background: color-mix(in oklab, var(--navy-800) 60%, var(--navy-900));
-}
-.doc-page .band--navy .fig-place__side--lost {
-  background: color-mix(in oklab, var(--amber-on-dark) 8%, var(--navy-900));
-}
-.doc-page .band--navy .fig-place__amount {
-  color: var(--white);
-}
-.doc-page .band--navy .fig-place__amount b {
-  color: var(--blue-light);
-}
-.doc-page .band--navy .fig-place__gone {
-  color: var(--amber-on-dark);
-}
-.doc-page .band--navy .fig-place__label {
-  color: var(--navy-ink-muted);
-}
-.doc-page .band--navy .fig-place__note {
-  color: var(--navy-ink-muted);
-}
-
-/* The scope span: an unbroken bar of the six states, and the five exclusions
-   drawn detached and outlined so the gap between them reads as the argument. */
-.doc-page .fig-span {
-  fill: color-mix(in oklab, var(--blue) 82%, transparent);
-}
-.doc-page .fig-span__label {
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  fill: var(--white);
-}
-.doc-page .fig-span--out {
-  fill: none;
-  stroke: var(--line-strong);
-  stroke-width: 1.3;
-  stroke-dasharray: 4 4;
-}
-/* The exclusion labels are the longest text in any figure ("Master carrier
-   documents") in the narrowest cells, so they alone drop a size to keep from
-   colliding with the block beside them. */
-.doc-page .fig-out-label {
-  font-size: 10.5px;
-  letter-spacing: 0;
-}
-.doc-page .band--navy .fig-span {
-  fill: var(--blue-light);
-}
-.doc-page .band--navy .fig-span--out {
-  stroke: var(--navy-line);
-}
-
-/* The pilot gantt bars, and the tighter note font the long "what is done"
-   lines need to sit beside a bar without running off the panel. */
-.doc-page .fig-gantt {
-  fill: var(--blue);
-}
-.doc-page .fig-gantt-note {
-  font-size: 11px;
-  letter-spacing: 0;
-}
-.doc-page .band--navy .fig-gantt {
-  fill: var(--blue-light);
-}
-/* The three blocks the pilot plan marks demo-ready, drawn in the accent so that
-   spine of the plan survives into the picture. */
-.doc-page .fig-gantt--moment {
-  fill: var(--amber);
-}
-.doc-page .band--navy .fig-gantt--moment {
-  fill: var(--amber-on-dark);
-}
-
-/* The allocation split: a proportional bar over a reconciling table. The three
-   segments step down in weight so the largest driver reads first; the last
-   column of the table is the posted figure and carries the emphasis. */
-.doc-page .fig-split {
-  display: flex;
-  gap: 3px;
-  height: 66px;
-  margin: clamp(6px, 1vw, 12px) 0 clamp(22px, 2.6vw, 32px);
-  border-radius: var(--radius-control);
-  overflow: hidden;
-}
-.doc-page .fig-split__seg {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  padding: 0 14px;
-  color: var(--white);
-}
-.doc-page .fig-split__seg b {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.doc-page .fig-split__seg span {
-  font-size: 0.72rem;
-  opacity: 0.85;
-}
-.doc-page .fig-split__seg--1 {
-  background: var(--blue);
-}
-.doc-page .fig-split__seg--2 {
-  background: color-mix(in oklab, var(--blue) 60%, var(--paper-raised));
-  color: var(--ink);
-}
-.doc-page .fig-split__seg--3 {
-  background: color-mix(in oklab, var(--blue) 30%, var(--paper-raised));
-  color: var(--ink);
-}
-.doc-page .band--navy .fig-split__seg--2 {
-  background: color-mix(in oklab, var(--blue-light) 55%, var(--navy-800));
-  color: var(--white);
-}
-.doc-page .band--navy .fig-split__seg--3 {
-  background: color-mix(in oklab, var(--blue-light) 28%, var(--navy-800));
-  color: var(--white);
-}
-
-.doc-page .fig-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.doc-page .fig-table th,
-.doc-page .fig-table td {
-  padding: 10px 12px;
-  text-align: end;
-  white-space: nowrap;
-  border-bottom: 1px solid var(--line);
-}
-.doc-page .fig-table thead th {
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  font-weight: 500;
-  color: var(--ink-subtle);
-}
-.doc-page .fig-table th[scope='row'],
-.doc-page .fig-table thead th:first-child {
-  text-align: start;
-}
-.doc-page .fig-table th[scope='row'] {
-  font-weight: 600;
-  color: var(--ink);
-}
-.doc-page .fig-table tfoot th,
-.doc-page .fig-table tfoot td {
-  border-top: 2px solid var(--line-strong);
-  border-bottom: none;
-  font-weight: 600;
-}
-.doc-page .fig-num {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-.doc-page .fig-num--soft {
-  color: var(--ink-subtle);
-}
-.doc-page .fig-num--strong {
-  color: var(--blue);
-  font-weight: 600;
-}
-.doc-page .band--navy .fig-table th,
-.doc-page .band--navy .fig-table td {
-  border-color: var(--navy-line);
-}
-.doc-page .band--navy .fig-table thead th {
-  color: var(--navy-ink-muted);
-}
-.doc-page .band--navy .fig-table th[scope='row'] {
-  color: var(--white);
-}
-.doc-page .band--navy .fig-table tfoot th,
-.doc-page .band--navy .fig-table tfoot td {
-  border-top-color: var(--navy-ink-muted);
-}
-.doc-page .band--navy .fig-num {
-  color: var(--navy-ink);
-}
-.doc-page .band--navy .fig-num--soft {
-  color: var(--navy-ink-muted);
-}
-.doc-page .band--navy .fig-num--strong {
-  color: var(--blue-light);
-}
-
-/* ── The drawn illustrations (`illustrations.tsx`) ─────────────────────────── */
-
-/* Stacked quotation versions: the live sheet is on top, bordered in blue; the
-   superseded ones stay legible underneath. */
-.doc-page .illo-sheet {
-  fill: var(--white);
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-.doc-page .illo-sheet--live {
-  fill: var(--white);
-  stroke: var(--blue);
-  stroke-width: 1.5;
-}
-.doc-page .illo-line {
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-.doc-page .illo-tag {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  fill: var(--ink-muted);
-}
-.doc-page .illo-brace {
-  stroke: var(--line-strong);
-  stroke-width: 1.2;
-}
-.doc-page .illo-trail {
-  font-family: var(--mono);
-  font-size: 12px;
-  fill: var(--ink-muted);
-}
-.doc-page .illo-trail--who {
-  fill: var(--ink);
-}
-.doc-page .illo-trail--key {
-  fill: var(--blue);
-}
-.doc-page .band--navy .illo-sheet {
-  fill: color-mix(in oklab, var(--navy-800) 70%, var(--navy-900));
-  stroke: var(--navy-line);
-}
-.doc-page .band--navy .illo-sheet--live {
-  fill: color-mix(in oklab, var(--navy-800) 88%, var(--navy-900));
-  stroke: var(--blue-light);
-}
-.doc-page .band--navy .illo-line {
-  stroke: var(--navy-line);
-}
-.doc-page .band--navy .illo-tag {
-  fill: var(--navy-ink-muted);
-}
-.doc-page .band--navy .illo-brace {
-  stroke: var(--navy-ink-muted);
-}
-.doc-page .band--navy .illo-trail {
-  fill: var(--navy-ink-muted);
-}
-.doc-page .band--navy .illo-trail--who {
-  fill: var(--white);
-}
-.doc-page .band--navy .illo-trail--key {
-  fill: var(--blue-light);
-}
-
-/* One-database-per-customer: three cylinders we build, against the single
-   shared table with a customer column that we did not. */
-.doc-page .illo-db {
-  fill: color-mix(in oklab, var(--blue) 10%, var(--paper));
-  stroke: var(--blue);
-  stroke-width: 1.3;
-}
-.doc-page .illo-db--top {
-  fill: color-mix(in oklab, var(--blue) 18%, var(--paper));
-}
-.doc-page .illo-table {
-  fill: none;
-  stroke: var(--line-strong);
-  stroke-width: 1.3;
-}
-.doc-page .illo-col {
-  fill: color-mix(in oklab, var(--amber) 14%, transparent);
-}
-.doc-page .band--navy .illo-db {
-  fill: color-mix(in oklab, var(--blue-light) 14%, var(--navy-900));
-  stroke: var(--blue-light);
-}
-.doc-page .band--navy .illo-db--top {
-  fill: color-mix(in oklab, var(--blue-light) 24%, var(--navy-900));
-}
-.doc-page .band--navy .illo-table {
-  stroke: var(--navy-line);
-}
-.doc-page .band--navy .illo-col {
-  fill: color-mix(in oklab, var(--amber-on-dark) 18%, transparent);
-}
-
-/* The quay: a decorative horizon at one hairline weight, `aria-hidden`. */
-.doc-page .illo-quay {
-  margin: clamp(20px, 3vw, 40px) 0 0;
-}
-.doc-page .illo-quay__deck {
-  stroke: var(--line-strong);
-  stroke-width: 1.5;
-}
-.doc-page .illo-quay__water {
-  stroke: var(--line);
-  stroke-width: 1;
-}
-.doc-page .illo-quay__crane,
-.doc-page .illo-quay__hull {
-  stroke: var(--ink-subtle);
-  stroke-width: 1.5;
-  fill: none;
-}
-.doc-page .illo-quay__box {
-  fill: none;
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-.doc-page .band--navy .illo-quay__deck {
-  stroke: var(--navy-line);
-}
-.doc-page .band--navy .illo-quay__water {
-  stroke: color-mix(in oklab, var(--navy-ink-muted) 30%, transparent);
-}
-.doc-page .band--navy .illo-quay__crane,
-.doc-page .band--navy .illo-quay__hull {
-  stroke: var(--navy-ink-muted);
-}
-.doc-page .band--navy .illo-quay__box {
-  stroke: var(--navy-line);
-}
-
-/*
-  The blog.
-
-  `.post__body` is the one place on the site whose markup is not written by
-  hand: it is whatever a Markdown file renders to, so it is styled by element
-  rather than by class. The measure is narrower than `.shell` because a post is
-  read top to bottom, not scanned like a landing page.
-*/
-.doc-page .post-list {
-  display: grid;
-  gap: 20px;
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-@media (min-width: 760px) {
-  .doc-page .post-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (min-width: 1100px) {
-  .doc-page .post-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-.doc-page .post-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: var(--ink);
-  text-decoration: none;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.25s ease,
-    transform 0.25s ease;
-}
-.doc-page .post-card:hover {
-  border-color: color-mix(in oklab, var(--blue) 45%, var(--line));
-  box-shadow: 0 14px 34px -14px color-mix(in oklab, var(--navy) 35%, transparent);
-  transform: translateY(-3px);
-}
-/* The picture runs to the card's edges; the zoom is inside its own box so the
-   card's outline does not move. */
-.doc-page .post-card__media {
-  display: block;
-  overflow: hidden;
-  aspect-ratio: 16 / 9;
-  background: var(--navy);
-}
-.doc-page .post-card__media img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.doc-page .post-card:hover .post-card__media img {
-  transform: scale(1.04);
-}
-.doc-page .post-card__placeholder {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background:
-    radial-gradient(
-      120% 90% at 85% 10%,
-      color-mix(in oklab, var(--blue) 55%, transparent),
-      transparent 60%
-    ),
-    linear-gradient(160deg, var(--navy), color-mix(in oklab, var(--navy) 70%, black));
-}
-.doc-page .post-card__date {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.doc-page .post-card__text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 10px;
-  padding: 22px 24px 24px;
-}
-.doc-page .post-card .h3 {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  margin: 0;
-}
-.doc-page .post-card p {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
-.doc-page .post-card__more {
-  margin-top: auto;
-  padding-top: 6px;
-  font-weight: 700;
-  color: var(--blue);
-}
-.doc-page .post-card__more span {
-  display: inline-block;
-  transition: transform 0.2s ease;
-}
-.doc-page .post-card:hover .post-card__more span {
-  transform: translateX(4px);
-}
-.doc-page [dir='rtl'] .post-card__more span {
-  transform: scaleX(-1);
-}
-.doc-page [dir='rtl'] .post-card:hover .post-card__more span {
-  transform: scaleX(-1) translateX(4px);
-}
-/* The newest post, wide: picture and text side by side above the grid. */
-.doc-page .post-card--featured {
-  margin-bottom: 28px;
-}
-.doc-page .post-card--featured .h2 {
-  margin: 0;
-}
-@media (min-width: 900px) {
-  .doc-page .post-card--featured {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  }
-  .doc-page .post-card--featured .post-card__media {
-    aspect-ratio: auto;
-    min-height: 340px;
-  }
-  .doc-page .post-card--featured .post-card__text {
-    justify-content: center;
-    gap: 14px;
-    padding: 40px;
-  }
-}
-.doc-page .post-card__date,
-.doc-page .post__meta {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  color: var(--ink-subtle);
-}
-.doc-page .post-card p {
-  color: var(--ink-muted);
-  margin: 0;
-}
-.doc-page .post__meta {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-  color: var(--navy-ink-muted);
-}
-.doc-page .post {
-  max-width: 760px;
-}
-.doc-page .post__figure {
-  margin: 0 0 40px;
-}
-.doc-page .post__cover {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--radius);
-}
-.doc-page .post__credit {
-  margin-top: 8px;
-  font-size: 0.8125rem;
-  color: var(--ink-subtle);
-}
-.doc-page .post__credit a {
-  color: inherit;
-  text-decoration: underline;
-}
-.doc-page .post__body {
-  font-size: 1.0625rem;
-  line-height: 1.75;
-  color: var(--ink);
-}
-.doc-page .post__body > * + * {
-  margin-top: 1.1em;
-}
-.doc-page .post__body h2 {
-  margin-top: 2.2em;
-  font-size: clamp(1.4rem, 2.4vw, 1.75rem);
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-}
-.doc-page .post__body h3 {
-  margin-top: 1.8em;
-  font-size: 1.2rem;
-  line-height: 1.3;
-}
-.doc-page .post__body a {
-  color: var(--blue);
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-}
-.doc-page .post__body ul,
-.doc-page .post__body ol {
-  padding-inline-start: 1.4em;
-}
-.doc-page .post__body ul {
-  list-style: disc;
-}
-.doc-page .post__body ol {
-  list-style: decimal;
-}
-.doc-page .post__body li + li {
-  margin-top: 0.4em;
-}
-.doc-page .post__body li::marker {
-  color: var(--blue);
-}
-.doc-page .post__body blockquote {
-  padding-inline-start: 20px;
-  border-inline-start: 3px solid var(--blue);
-  color: var(--ink-muted);
-}
-.doc-page .post__body code {
-  font-family: var(--mono);
-  font-size: 0.9em;
-  padding: 0.1em 0.35em;
-  background: var(--qb-neutral-100);
-  border-radius: var(--radius);
-}
-.doc-page .post__body pre {
-  overflow-x: auto;
-  padding: 18px 20px;
-  background: var(--navy);
-  color: var(--navy-ink);
-  border-radius: var(--radius);
-}
-.doc-page .post__body pre code {
-  padding: 0;
-  background: none;
-}
-.doc-page .post__body hr {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin-block: 2.4em;
-}
+/* The blog's styles moved to `src/components/blog/` when it left `DocPage`;
+   the post prose is `post-body.css` there. */
 .doc-page .band--navy .hero__ways a {
   color: var(--navy-ink);
-}
-
-/* Plex Mono has no Arabic, so the Arabic date line falls back to a glyph set
-   that spaces each letter like a code listing. The page's own face instead. */
-.doc-page [dir='rtl'] .post-card__date,
-.doc-page [dir='rtl'] .post__meta {
-  font-family: inherit;
 }

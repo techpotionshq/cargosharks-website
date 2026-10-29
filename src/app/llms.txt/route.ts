@@ -46,7 +46,7 @@ export async function GET() {
       line(
         `/compare/${item.slug}/`,
         `CargoSharks vs ${item.name}`,
-        `an honest comparison with ${item.name}`,
+        `a comparison with ${item.name}, and who each one suits`,
       ),
     ),
     '',

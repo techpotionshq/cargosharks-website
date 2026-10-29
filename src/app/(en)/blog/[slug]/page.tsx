@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { draftMode } from 'next/headers'
 import { notFound } from 'next/navigation'
-import { DocPage } from '@/components/DocPage'
+import { BlogFrame } from '@/components/blog/BlogFrame'
 import { PostContent, postMetadata } from '@/content/pages/blog'
 import { blogPath, getMeta, getPost, postsIn } from '@/lib/blog'
 
@@ -26,8 +26,8 @@ export default async function Page({ params }: Props) {
   if (!post) notFound()
   const more = (await postsIn('en')).filter((other) => other.slug !== post.slug).slice(0, 3)
   return (
-    <DocPage lang="en" alternate={post.ar ? blogPath('ar', post.slug) : blogPath('ar')}>
+    <BlogFrame lang="en" alternate={post.ar ? blogPath('ar', post.slug) : blogPath('ar')}>
       <PostContent post={post} more={more} />
-    </DocPage>
+    </BlogFrame>
   )
 }

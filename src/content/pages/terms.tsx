@@ -57,7 +57,7 @@ export function TermsContent() {
                   <a href="#t-supply">What is supplied</a>
                 </li>
                 <li>
-                  <a href="#t-pilot">The pilot</a>
+                  <a href="#t-onboarding">Setup and onboarding</a>
                 </li>
                 <li>
                   <a href="#t-yours">Your data is yours</a>
@@ -208,12 +208,12 @@ export function TermsContent() {
                 </p>
               </section>
 
-              <section id="t-pilot">
+              <section id="t-onboarding">
                 <h2>
-                  <span className="doc__n">04</span>The pilot
+                  <span className="doc__n">04</span>Setup and onboarding
                 </h2>
                 <p>
-                  The pilot is a fixed-scope, fixed-fee engagement: your rate card, your customer
+                  Setup and onboarding is a fixed-scope, fixed-fee engagement: your rate card, your customer
                   and agent lists, fifteen to twenty-five of your own completed job files, your
                   logo, and ninety minutes with whoever runs your operation &mdash; built into a
                   working deployment in fifteen working days from the day your data arrives, rather
@@ -222,7 +222,7 @@ export function TermsContent() {
                 <ol className="clauses">
                   <li data-s="4">
                     It is built on <strong>your</strong> deployment, in your region, under your
-                    brand. Nothing built during the pilot is thrown away if you proceed.
+                    brand. Nothing built during onboarding is thrown away if you proceed.
                   </li>
                   <li data-s="4">
                     The fee is fixed and, if you proceed, is credited against the full
@@ -473,12 +473,12 @@ export function TermsContent() {
                     nothing, and that is a decision rather than a gap.
                   </li>
                   <li>
-                    <strong>It does not transmit e-invoices.</strong> Invoice data carries tax
-                    treatment and rate per line, and the hand-off to an accredited provider is built
-                    as a plug. No provider has been appointed and the mandated document format is
-                    not generated. The UAE timetable in the specification is a provider appointment
-                    due 30 October 2026 and go-live on 1 January 2027 for the largest filers; the
-                    Saudi ZATCA path carries no date.
+                    <strong>It is not an accredited service provider.</strong> Saudi tax invoices,
+                    credit notes and debit notes are issued as signed XML with the QR code and
+                    cleared with ZATCA as they are issued. UAE invoices are issued in the PINT AE
+                    format and sent to the accredited service provider you appoint; we are not one,
+                    and appointing one stays with you. Kuwaiti branches invoice as before. ZATCA
+                    does not certify software, and nothing here says it has.
                   </li>
                   <li>
                     <strong>It does not issue master carrier documents.</strong> A master bill is

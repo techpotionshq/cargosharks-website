@@ -22,15 +22,33 @@ import { useEffect, useRef, useState } from 'react'
 const kwd = (value: number) =>
   value.toLocaleString('en-KW', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
+const DAY_MS = 86_400_000
+
+/**
+ * Whole days since `since`, for the "days past free time" figure beside the
+ * counter. Computed from the same date as the amount, so the two cannot
+ * disagree: they used to be three hard-coded values (a date, "131 days" and
+ * KWD 4,187.264) that matched neither each other nor the calendar.
+ */
+export function DaysSince({ since }: { since: string }) {
+  const [days, setDays] = useState(() => Math.floor((Date.now() - Date.parse(since)) / DAY_MS))
+  useEffect(() => setDays(Math.floor((Date.now() - Date.parse(since)) / DAY_MS)), [since])
+  return <span suppressHydrationWarning>{days}</span>
+}
+
 export function Accrue({
-  from,
+  since,
   perDay,
   className,
 }: {
-  from: number
+  /** When free time ran out. The amount is what has accrued since, to the second. */
+  since: string
   perDay: number
   className?: string
 }) {
+  // Read once at mount: the build prerenders the figure for the day it ran, and
+  // the browser replaces it with today's on hydration.
+  const [from] = useState(() => ((Date.now() - Date.parse(since)) / DAY_MS) * perDay)
   const [text, setText] = useState(kwd(from))
   const frame = useRef<number | null>(null)
 

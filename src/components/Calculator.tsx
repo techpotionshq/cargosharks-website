@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Reveal } from '@/components/Reveal'
+import { SectionHeader } from '@/components/ui/section'
 import { calculator, type Lang } from '@/content/copy'
 
 /**
@@ -71,16 +72,10 @@ export function Calculator({ lang }: { lang: Lang }) {
     // so it is part of the site's address space: renaming it breaks them.
     <section
       id="calculator"
-      className="scroll-mt-28 border-t border-line bg-paper-sunk py-band-sm lg:py-band"
+      className="scroll-mt-24 border-t border-line bg-paper-sunk py-16 md:py-20 lg:py-24"
     >
-      <Reveal className="shell flex flex-col items-center text-center">
-        <p className="tracked text-[0.62rem] text-ink-faint">{calculator.eyebrow[lang]}</p>
-        <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
-          {calculator.title[lang]}
-        </h2>
-        <p className="mt-5 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.65] text-ink-dim">
-          {calculator.sub[lang]}
-        </p>
+      <Reveal className="shell">
+        <SectionHeader title={calculator.title[lang]} lede={calculator.sub[lang]} />
       </Reveal>
 
       <div className="shell mt-12 grid items-start gap-6 lg:grid-cols-12 lg:gap-8">
@@ -95,13 +90,11 @@ export function Calculator({ lang }: { lang: Lang }) {
                     htmlFor={`calc-${field.key}`}
                     className="flex items-baseline justify-between gap-3"
                   >
-                    <span className="text-[0.9rem] text-ink-dim">{field.label[lang]}</span>
+                    <span className="text-small text-ink-dim">{field.label[lang]}</span>
                     <span className="figures font-mono text-[1.05rem] text-ink">
                       {value}
                       {'unit' in field && field.unit ? (
-                        <span className="ms-1 text-[0.75rem] text-ink-faint">
-                          {field.unit[lang]}
-                        </span>
+                        <span className="ms-1 text-label text-ink-faint">{field.unit[lang]}</span>
                       ) : null}
                     </span>
                   </label>
@@ -127,7 +120,7 @@ export function Calculator({ lang }: { lang: Lang }) {
             })}
           </div>
 
-          <p className="mt-9 border-t border-line pt-7 text-[0.9375rem] leading-[1.7] text-ink-dim">
+          <p className="mt-9 border-t border-line pt-7 text-body text-ink-dim">
             {calculator.note[lang]}
           </p>
         </div>
@@ -140,25 +133,23 @@ export function Calculator({ lang }: { lang: Lang }) {
           another form field.
         */}
         <div className="rounded-2xl bg-void p-8 lg:col-span-5 lg:p-10">
-          <p className="tracked text-[0.6rem] text-on-void-faint">{calculator.resultLabel[lang]}</p>
+          <p className="text-small font-medium text-on-void-dim">{calculator.resultLabel[lang]}</p>
 
           <p className="figures mt-5 flex flex-wrap items-baseline gap-x-2.5 font-mono leading-none text-on-void">
-            <span className="tracked text-[0.7rem] text-on-void-faint">
-              {calculator.currency[lang]}
-            </span>
+            <span className="text-small text-on-void-faint">{calculator.currency[lang]}</span>
             <span className={`font-medium tracking-[-0.02em] text-amber ${size}`}>{headline}</span>
           </p>
 
           <dl className="mt-8 divide-y divide-void-line border-t border-void-line">
             <div className="flex items-baseline justify-between gap-4 py-4">
-              <dt className="text-[0.85rem] text-on-void-faint">{calculator.monthLabel[lang]}</dt>
-              <dd className="figures font-mono text-[0.95rem] text-on-void-dim">
+              <dt className="text-small text-on-void-faint">{calculator.monthLabel[lang]}</dt>
+              <dd className="figures font-mono text-small text-on-void-dim">
                 {calculator.currency[lang]} {money(perYear / 12)}
               </dd>
             </div>
             <div className="flex items-baseline justify-between gap-4 py-4">
-              <dt className="text-[0.85rem] text-on-void-faint">{calculator.boxesLabel[lang]}</dt>
-              <dd className="figures font-mono text-[0.95rem] text-on-void-dim">
+              <dt className="text-small text-on-void-faint">{calculator.boxesLabel[lang]}</dt>
+              <dd className="figures font-mono text-small text-on-void-dim">
                 {Math.round(affected)}{' '}
                 <span className="text-on-void-faint">{calculator.boxesUnit[lang]}</span>
               </dd>

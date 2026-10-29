@@ -1,7 +1,7 @@
 import { resolve4, resolveMx } from 'node:dns/promises'
 
 /**
- * Whether a pilot request's email address is worth a lead, checked before the
+ * Whether a demo request's email address is worth a lead, checked before the
  * row is saved (`src/app/contact/route.ts`).
  *
  * Three answers, because they are handled differently:

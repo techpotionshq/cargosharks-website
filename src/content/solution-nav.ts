@@ -42,8 +42,8 @@ export const solutionNav: SolutionNav[] = [
     group: 'market',
     label: { en: 'For Saudi Arabia', ar: 'للسعودية' },
     blurb: {
-      en: 'What works for a Saudi forwarder, and the ZATCA answer',
-      ar: 'ما يصلح لشركة شحن سعودية، وجواب سؤال زاتكا',
+      en: 'Arabic first, SAR, and ZATCA Phase 2 e-invoicing',
+      ar: 'العربية أولاً، والريال، والفوترة الإلكترونية لزاتكا',
     },
   },
   {

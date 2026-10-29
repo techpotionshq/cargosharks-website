@@ -1,22 +1,27 @@
 import type { Metadata } from 'next'
-import type { ReactNode } from 'react'
+import { ArrowLeft, ArrowRight, CaretDown } from '@phosphor-icons/react/dist/ssr'
 import { ArticleSchema, Breadcrumbs, FaqSchema } from '@/components/StructuredData'
+import { BlogMasthead } from '@/components/blog/BlogFrame'
+import { PostCard, PostMetaLine } from '@/components/blog/PostCard'
+import '@/components/blog/post-body.css'
+import { EmailLink } from '@/components/Email'
+import { Button } from '@/components/ui/button'
+import { Section } from '@/components/ui/section'
 import { DEMO_URL, type Lang } from '@/content/copy'
 import { blogIndexAlternates, blogPath, postsIn, type Post, type PostMeta } from '@/lib/blog'
 import { pageOpenGraph } from '@/lib/og'
-import { EmailLink } from '@/components/Email'
 
 /**
  * The blog index and the post page, both languages.
  *
- * The masthead, bands and FAQ are the same markup `solution.tsx` uses, so a
- * post reads as part of the site rather than as a theme bolted onto it. The
- * one new piece is `.post__body`, the prose a Markdown file renders to —
- * styled in `pages.css` under the same `.doc-page` scope as everything else.
+ * On the design system the market pages use: a dark masthead, every band a
+ * `Section`, sizes from the type scale. The pieces are in
+ * `src/components/blog/`; the prose a Markdown body renders to is styled in
+ * `post-body.css` beside them, because it is the one markup on the site not
+ * written by hand.
  */
 
 const T = {
-  kicker: { en: 'The CargoSharks blog', ar: 'مدونة CargoSharks' },
   title: {
     en: 'Notes on running a Gulf forwarding desk',
     ar: 'ملاحظات عن إدارة مكتب شحن في الخليج',
@@ -38,32 +43,30 @@ const T = {
     en: 'The first posts are on their way.',
     ar: 'أولى المقالات في الطريق.',
   },
-  read: { en: 'Read', ar: 'اقرؤوا' },
-  minutes: { en: 'min read', ar: 'دقائق قراءة' },
+  emptyBody: {
+    en: 'Until then, the market pages cover how the software handles Kuwait, the UAE and Saudi Arabia.',
+    ar: 'وإلى ذلك الحين، تشرح صفحات الأسواق كيف يعمل النظام في الكويت والإمارات والسعودية.',
+  },
+  kuwait: { en: 'Freight forwarding software for Kuwait', ar: 'برنامج الشحن للكويت' },
   more: { en: 'More from the blog', ar: 'المزيد من المدونة' },
   photoBy: { en: 'Photo by', ar: 'تصوير' },
   onPexels: { en: 'on Pexels', ar: 'على Pexels' },
-  faqEyebrow: { en: 'Questions', ar: 'أسئلة' },
   faqHeading: { en: 'Asked about this', ar: 'أسئلة عن هذا الموضوع' },
   faqLead: {
     en: 'Anything not answered here, ask us directly at ',
     ar: 'ما لم تجدوا جوابه هنا، اسألونا مباشرة على ',
   },
   tail: {
-    en: 'The fastest way to judge the software is to open it.',
-    ar: 'أسرع طريقة للحكم على النظام أن تفتحوه.',
+    en: 'See it on your own shipments.',
+    ar: 'شاهدوه على شحناتكم أنتم.',
+  },
+  tailBody: {
+    en: 'The demo call is free, and we tailor it to your lanes. The live demo is open now, with no sign-up.',
+    ar: 'الاتصال التعريفي مجاني، ونُعدّه على خطوطكم. والنسخة التجريبية مفتوحة الآن، بلا تسجيل.',
   },
   demo: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  pilot: { en: 'Ask for a pilot', ar: 'اطلبوا تجربة' },
+  book: { en: 'Book a demo', ar: 'احجزوا عرضاً تعريفياً' },
   all: { en: 'All posts', ar: 'كل المقالات' },
-}
-
-function date(iso: string, lang: Lang): string {
-  return new Intl.DateTimeFormat(lang === 'ar' ? 'ar' : 'en-GB', {
-    dateStyle: 'long',
-    numberingSystem: 'latn',
-    timeZone: 'UTC',
-  }).format(new Date(`${iso}T00:00:00Z`))
 }
 
 export async function blogIndexMetadata(lang: Lang): Promise<Metadata> {
@@ -129,108 +132,71 @@ export function postMetadata(post: PostMeta, lang: Lang): Metadata {
   }
 }
 
-function Masthead({
-  kicker,
-  title,
-  lede,
-  children,
-}: {
-  kicker: string
-  title: string
-  lede: string
-  children?: ReactNode
-}) {
-  return (
-    <section className="hero hero--page">
-      <div className="hero__field" aria-hidden="true">
-        <div className="hero__grid" />
-      </div>
-      <div className="shell hero__copy">
-        <p className="hero__kicker">
-          <i />
-          {kicker}
-        </p>
-        <h1 className="display">{title}</h1>
-        <p className="hero__sub">{lede}</p>
-        {children}
-      </div>
-    </section>
-  )
-}
+const homeOf = (lang: Lang) => (lang === 'ar' ? '/ar/' : '/')
 
-/** Minutes to read a post's body, as the post page reckons it (200 words a minute). */
-const minutes = (body: string) => Math.max(1, Math.round(body.split(/\s+/).filter(Boolean).length / 200))
-
-/**
- * One post as a card, on the index and under every post.
- *
- * The photograph runs to the card's edges and the text sits below it: the
- * cover is the strongest thing a post has, and framing it inside padding made
- * every card look like a form with a picture attached. Title and summary are
- * clamped so a row of cards ends level whatever the model wrote. A post with
- * no cover gets a drawn panel in the brand's colours rather than a hole.
- * `featured` lays the newest post out wide, picture beside text.
- */
-function PostCard({ post, lang, featured = false }: { post: PostMeta; lang: Lang; featured?: boolean }) {
-  const copy = post[lang]!
+/** A grid of post cards: one column on a phone, two on a tablet, three wide. */
+function PostGrid({ posts, lang }: { posts: PostMeta[]; lang: Lang }) {
   return (
-    <a href={blogPath(lang, post.slug)} className={`post-card${featured ? ' post-card--featured' : ''}`}>
-      <span className="post-card__media">
-        {post.cover ? (
-          <img src={post.cover} alt="" width={1280} height={720} loading={featured ? 'eager' : 'lazy'} />
-        ) : (
-          <span className="post-card__placeholder" aria-hidden="true" />
-        )}
-      </span>
-      <span className="post-card__text">
-        <span className="post-card__date">
-          <time dateTime={post.publishedAt}>{date(post.publishedAt, lang)}</time>
-          <span aria-hidden="true">·</span>
-          <span>
-            {minutes(copy.body)} {T.minutes[lang]}
-          </span>
-        </span>
-        {featured ? <h2 className="h2">{copy.title}</h2> : <h3 className="h3">{copy.title}</h3>}
-        <p>{copy.excerpt}</p>
-        <span className="post-card__more">
-          {T.read[lang]} <span aria-hidden="true">→</span>
-        </span>
-      </span>
-    </a>
+    <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {posts.map((post) => (
+        <li key={post.slug} className="min-w-0">
+          <PostCard post={post} lang={lang} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
 export function BlogIndexContent({ posts, lang }: { posts: PostMeta[]; lang: Lang }) {
+  const [newest, ...rest] = posts
   return (
-    <div dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <>
       <Breadcrumbs lang={lang} trail={[{ name: T.blog[lang], path: blogPath(lang) }]} />
-      <Masthead kicker={T.kicker[lang]} title={T.title[lang]} lede={T.lede[lang]} />
-      <section className="band band--paper">
-        <div className="shell">
-          {posts.length ? null : <p className="lead">{T.empty[lang]}</p>}
-          {posts[0] ? <PostCard post={posts[0]} lang={lang} featured /> : null}
-          {posts.length > 1 ? (
-            <ul className="post-list">
-              {posts.slice(1).map((post) => (
-                <li key={post.slug}>
-                  <PostCard post={post} lang={lang} />
-                </li>
-              ))}
-            </ul>
-          ) : null}
+      <BlogMasthead title={T.title[lang]} lede={T.lede[lang]} />
+
+      <Section>
+        <div className="shell flex flex-col gap-10 lg:gap-12">
+          {newest ? (
+            <PostCard post={newest} lang={lang} featured />
+          ) : (
+            // The listing is empty until a language has its first post. Say so
+            // plainly and point somewhere useful rather than leave a blank band.
+            <div className="rounded-lg border border-line bg-paper-lift p-6 sm:p-10">
+              <h2 className="font-display text-h3 font-bold text-heading">{T.empty[lang]}</h2>
+              <p className="mt-3 max-w-[60ch] text-body text-ink-dim">{T.emptyBody[lang]}</p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button asChild variant="outline">
+                  <a
+                    href={
+                      lang === 'ar'
+                        ? '/ar/freight-forwarding-software-kuwait/'
+                        : '/freight-forwarding-software-kuwait/'
+                    }
+                  >
+                    {T.kuwait[lang]}
+                  </a>
+                </Button>
+                <Button asChild>
+                  <a href={`${homeOf(lang)}#demo`}>{T.book[lang]}</a>
+                </Button>
+              </div>
+            </div>
+          )}
+          {rest.length ? <PostGrid posts={rest} lang={lang} /> : null}
         </div>
-      </section>
-    </div>
+      </Section>
+
+      <Tail lang={lang} />
+    </>
   )
 }
 
 export function PostContent({ post, more = [] }: { post: Post; more?: PostMeta[] }) {
   const { lang, copy } = post
   const path = blogPath(lang, post.slug)
-  const home = lang === 'ar' ? '/ar/' : '/'
 
   return (
-    <div dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <>
       <Breadcrumbs
         lang={lang}
         trail={[
@@ -251,28 +217,50 @@ export function PostContent({ post, more = [] }: { post: Post; more?: PostMeta[]
       />
       {copy.faqs.length ? <FaqSchema items={copy.faqs} /> : null}
 
-      <Masthead kicker={T.kicker[lang]} title={copy.title} lede={copy.excerpt}>
-        <p className="post__meta">
-          <time dateTime={post.publishedAt}>{date(post.publishedAt, lang)}</time>
-          <span aria-hidden="true">·</span>
-          <span>
-            {post.readingTime} {T.minutes[lang]}
-          </span>
-        </p>
-      </Masthead>
+      <BlogMasthead
+        title={copy.title}
+        lede={copy.excerpt}
+        before={
+          <a
+            href={blogPath(lang)}
+            className="mb-6 inline-flex min-h-10 items-center gap-1.5 text-small font-medium text-blue-lit hover:text-on-void"
+          >
+            <ArrowLeft weight="bold" className="size-3.5 rtl:-scale-x-100" />
+            {T.blog[lang]}
+          </a>
+        }
+        after={
+          <PostMetaLine
+            iso={post.publishedAt}
+            minutes={post.readingTime}
+            lang={lang}
+            className="mt-6 text-on-void-faint"
+          />
+        }
+      />
 
-      <section className="band band--white">
-        <div className="shell post">
+      <Section>
+        <div className="shell">
           {post.cover ? (
-            <figure className="post__figure">
-              <img className="post__cover" src={post.cover} alt="" width={1280} height={720} />
+            <figure className="mb-10 max-w-4xl lg:mb-12">
+              <img
+                src={post.cover}
+                alt=""
+                width={1280}
+                height={720}
+                className="w-full rounded-lg border border-line"
+              />
               {/* Pexels asks for this, and a named photographer reads as a
                   real photograph rather than an illustration. */}
               {post.coverCredit ? (
-                <figcaption className="post__credit">
+                <figcaption className="mt-3 text-label text-ink-faint">
                   {T.photoBy[lang]}{' '}
                   {post.coverCredit.url ? (
-                    <a href={post.coverCredit.url} rel="noopener nofollow">
+                    <a
+                      href={post.coverCredit.url}
+                      rel="noopener nofollow"
+                      className="underline underline-offset-2 hover:text-ink"
+                    >
                       {post.coverCredit.name}
                     </a>
                   ) : (
@@ -283,70 +271,88 @@ export function PostContent({ post, more = [] }: { post: Post; more?: PostMeta[]
               ) : null}
             </figure>
           ) : null}
-          <article className="post__body" dangerouslySetInnerHTML={{ __html: post.html }} />
+          <article className="post-body" dangerouslySetInnerHTML={{ __html: post.html }} />
         </div>
-      </section>
+      </Section>
 
       {/*
         The FAQ the model returned as data, shown as `<details>` with the same
-        strings `FaqSchema` marks up — the rule `solution.tsx` keeps, for the
-        same reason. The Markdown body is told not to repeat it.
+        strings `FaqSchema` marks up: an answer marked up but hidden from the
+        reader is cloaking. The Markdown body is told not to repeat it.
       */}
       {copy.faqs.length ? (
-        <section className="band band--paper">
-          <div className="shell faq-wrap">
-            <div className="section-head">
-              <p className="eyebrow">
-                <b />
-                {T.faqEyebrow[lang]}
-              </p>
-              <h2 className="h2">{T.faqHeading[lang]}</h2>
-              <p className="lead">
+        <Section rule tone="lift">
+          <div className="shell grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-16">
+            <div className="lg:col-span-5">
+              <h2 className="text-balance font-display text-h2 font-extrabold text-heading">
+                {T.faqHeading[lang]}
+              </h2>
+              <p className="mt-4 max-w-[40ch] text-body text-ink-dim">
                 {T.faqLead[lang]}
-                <EmailLink />.
+                <EmailLink className="text-blue-ink hover:underline" />.
               </p>
             </div>
-            <div className="faq">
+            <div className="divide-y divide-line border-y border-line lg:col-span-7">
               {copy.faqs.map((entry) => (
-                <details key={entry.question}>
-                  <summary>{entry.question}</summary>
-                  <p>{entry.answer}</p>
+                <details key={entry.question} className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-4 text-body font-semibold text-ink [&::-webkit-details-marker]:hidden">
+                    {entry.question}
+                    <CaretDown
+                      weight="bold"
+                      className="size-4 shrink-0 text-ink-faint transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                    />
+                  </summary>
+                  <p className="max-w-[64ch] pb-5 text-body text-ink-dim">{entry.answer}</p>
                 </details>
               ))}
             </div>
           </div>
-        </section>
+        </Section>
       ) : null}
 
       {/* Three more posts, so a reader who finished this one has somewhere to
           go other than the back button. Newest first, this one left out. */}
       {more.length ? (
-        <section className="band band--paper">
+        <Section rule tone="sunk" space="tight">
           <div className="shell">
-            <div className="section-head">
-              <h2 className="h2">{T.more[lang]}</h2>
+            <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+              <h2 className="font-display text-h2 font-extrabold text-heading">{T.more[lang]}</h2>
+              <a
+                href={blogPath(lang)}
+                className="inline-flex min-h-10 items-center gap-1.5 text-small font-semibold text-blue-ink hover:underline"
+              >
+                {T.all[lang]}
+                <ArrowRight weight="bold" className="size-3.5 rtl:-scale-x-100" />
+              </a>
             </div>
-            <ul className="post-list">
-              {more.map((other) => (
-                <li key={other.slug}>
-                  <PostCard post={other} lang={lang} />
-                </li>
-              ))}
-            </ul>
+            <PostGrid posts={more} lang={lang} />
           </div>
-        </section>
+        </Section>
       ) : null}
 
-      <section className="band band--navy">
-        <div className="shell">
-          <h2 className="h2">{T.tail[lang]}</h2>
-          <p className="hero__ways">
-            <a href={DEMO_URL}>{T.demo[lang]}</a>
-            <a href={`${home}#pilot`}>{T.pilot[lang]}</a>
-            <a href={blogPath(lang)}>{T.all[lang]}</a>
-          </p>
+      <Tail lang={lang} />
+    </>
+  )
+}
+
+/** The close every blog page ends on: book a demo, or open the live one. */
+function Tail({ lang }: { lang: Lang }) {
+  return (
+    <section className="bg-void py-14 text-on-void lg:py-16">
+      <div className="shell flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="font-display text-h2 font-extrabold">{T.tail[lang]}</h2>
+          <p className="mt-3 max-w-[60ch] text-body text-on-void-dim">{T.tailBody[lang]}</p>
         </div>
-      </section>
-    </div>
+        <div className="flex shrink-0 flex-wrap gap-3">
+          <Button asChild size="lg">
+            <a href={`${homeOf(lang)}#demo`}>{T.book[lang]}</a>
+          </Button>
+          <Button asChild size="lg" variant="onDark">
+            <a href={DEMO_URL}>{T.demo[lang]}</a>
+          </Button>
+        </div>
+      </div>
+    </section>
   )
 }

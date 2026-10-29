@@ -1,3 +1,15 @@
+import { Check } from '@phosphor-icons/react/dist/ssr'
+import { ChartFigure } from '@/components/charts/ChartFigure'
+import { AccrualChart } from '@/components/charts/charts'
+import { AllocationBar, ChargeableChart, MilestoneChart } from '@/components/charts/figures-a'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import type { Bi, Lang } from '@/content/copy'
 
 /**
@@ -38,27 +50,19 @@ import type { Bi, Lang } from '@/content/copy'
  *
  * ## How they are drawn
  *
- * The SVG ones use a 1000-unit viewBox across a band about 1090px wide, so they
- * render close to 1:1 — a 13px label is 13px and a hairline is a hairline. That
- * is `comparison-figures.tsx`'s rule, and it is why the coordinates below are
- * round pixel numbers rather than arbitrary units.
+ * Every figure sits in `ChartFigure` (title, the drawing, a caption of one or
+ * two sentences) and follows DESIGN.md, "Charts and tables". A quantity is a
+ * Recharts bar chart from `components/charts/` (chargeable weight, milestone
+ * counts, the allocation split); a matrix is `ui/table`; a list of facts is a
+ * ledger; the onboarding plan is an HTML day grid, because nine blocks tiling
+ * fifteen columns is a layout a browser does exactly and mirrors for Arabic on
+ * its own. Numbers stay left-to-right inside their own runs.
  *
- * The rest are HTML — a matrix, a waffle, a proportional split, a row of chips.
- * Drawing a table in SVG to make it look like a chart would cost the text
- * selection, the reflow at 380px and the screen reader, and buy nothing: a
- * heatmap *is* a table with the values marked, and the honest way to build one
- * is to build the table.
- *
- * Colours come from the doc stylesheet's own variables through the `.fig-*` and
- * `.cmp-*` classes in `pages.css`, never from an attribute — a figure that
- * names its own greys can only ever be right on one surface, and half of these
- * sit on `band--navy`.
+ * `FigureTitle`, `figureFrame` and `FigureSvg` below are the old SVG frame,
+ * kept only while `comparison-figures.tsx`, `comparison-leads.tsx` and
+ * `illustrations.tsx` still draw with them.
  */
 
-/** The line above a drawing that says what is being measured. */
-function Title({ lang, text }: { lang: Lang; text: Bi }) {
-  return <p className="fig-title">{text[lang]}</p>
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    01 — Chargeable weight: one pallet, five modes
@@ -154,128 +158,43 @@ function chargeableKg(rule: (typeof RULES)[number]): number | null {
  * chargeable kilos by air and 1,200 by sea LCL, a six-fold spread on a pallet
  * that never changed weight. The scale reads 180 kg and not one of the five
  * modes bills that number.
+ *
+ * Four bars, not five: FCL has no volumetric step, and a bar of length zero
+ * would read as "cheapest" rather than "not this arithmetic", so the caption
+ * says how it is billed instead.
  */
 export function ChargeableColumns({ lang }: { lang: Lang }) {
-  const MAX = 1250
-  const base = 270
-  const top = 60
-
-  const y = (kg: number) => base - (kg / MAX) * (base - top)
-  const centres = [150, 330, 510, 690, 870]
-  const width = 116
+  const ar = lang === 'ar'
+  const rows = RULES.flatMap((rule) => {
+    const kg = chargeableKg(rule)
+    return kg === null
+      ? []
+      : [
+          {
+            key: rule.key,
+            name: rule.label[lang],
+            note: `÷ ${(rule.divisor ?? 0).toLocaleString('en-US')}`,
+            kg,
+          },
+        ]
+  })
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: 'One pallet: 120 × 100 × 100 cm, 180 kg on the scale',
-            ar: 'منصة واحدة: 120 × 100 × 100 سم، 180 كجم على الميزان',
-          }}
-        />
-
-        <svg
-          viewBox="0 0 1000 360"
-          role="img"
-          aria-labelledby="chargeable-title"
-          className="cmp-svg"
-        >
-          <title id="chargeable-title">
-            {lang === 'ar'
-              ? 'أعمدة تبيّن الوزن الخاضع للتسعير للمنصة نفسها في خمس وسائل شحن'
-              : 'A column chart showing the chargeable weight of the same pallet in five transport modes'}
-          </title>
-
-          {/* Four stops, not a grid. A grid invites reading values off the chart
-              to the kilo, and the values are printed on the bars instead. */}
-          {[0, 400, 800, 1200].map((tick) => (
-            <g key={tick}>
-              <line x1="84" y1={y(tick)} x2="960" y2={y(tick)} className="fig-grid" />
-              <text x="72" y={y(tick) + 4} textAnchor="end" className="cmp-axis-label">
-                {tick}
-              </text>
-            </g>
-          ))}
-
-          {/* What the scale says. Every bar that clears it is the difference
-              between weighing a shipment and billing one. */}
-          <line
-            x1="84"
-            y1={y(PALLET.grossKg)}
-            x2="960"
-            y2={y(PALLET.grossKg)}
-            className="fig-rule"
-          />
-          <text x="960" y={y(PALLET.grossKg) - 12} textAnchor="end" className="cmp-note">
-            {lang === 'ar' ? '180 كجم: ما يقوله الميزان' : '180 kg: what the scale says'}
-          </text>
-
-          {RULES.map((rule, index) => {
-            const centre = centres[index]!
-            const kg = chargeableKg(rule)
-
-            return (
-              <g key={rule.key}>
-                {kg === null ? (
-                  <>
-                    {/* FCL has no bar because it has no volumetric step: volume
-                        never enters the calculation, and a bar of height zero
-                        would read as "cheapest" rather than "not this
-                        arithmetic". */}
-                    <rect
-                      x={centre - width / 2}
-                      y={base - 74}
-                      width={width}
-                      height="74"
-                      className="fig-bar--ghost"
-                    />
-                    <text x={centre} y={base - 88} textAnchor="middle" className="cmp-axis-label">
-                      {lang === 'ar' ? 'بلا وزن حجمي' : 'no volumetric step'}
-                    </text>
-                  </>
-                ) : (
-                  <>
-                    <rect
-                      x={centre - width / 2}
-                      y={y(kg)}
-                      width={width}
-                      height={base - y(kg)}
-                      className={index === 0 ? 'fig-bar fig-bar--lead' : 'fig-bar'}
-                    />
-                    <text x={centre} y={y(kg) - 14} textAnchor="middle" className="fig-value">
-                      {kg.toLocaleString('en')} kg
-                    </text>
-                  </>
-                )}
-
-                <text x={centre} y={base + 30} textAnchor="middle" className="cmp-track-label">
-                  {rule.label[lang]}
-                </text>
-                <text x={centre} y={base + 52} textAnchor="middle" className="cmp-axis-label">
-                  {rule.divisor === null
-                    ? rule.unit[lang]
-                    : `${rule.divisor.toLocaleString('en')} cm³/kg`}
-                </text>
-                {rule.divisor === null ? null : (
-                  <text x={centre} y={base + 72} textAnchor="middle" className="cmp-axis-label">
-                    {lang === 'ar'
-                      ? `الحد الأدنى ${rule.minimumKg.toLocaleString('en')} كجم`
-                      : `min ${rule.minimumKg.toLocaleString('en')} kg`}
-                  </text>
-                )}
-              </g>
-            )
-          })}
-        </svg>
-      </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'الطرد نفسه والوزن نفسه، وخمسة أرقام مختلفة على الفاتورة: 200 كجم جواً مقابل 1,200 كجم بحراً مجمّعاً، ستة أضعاف على منصة لم يتغيّر وزنها. والقواسم إعدادات يغيّرها المسؤول لا أرقام مثبّتة في البرنامج: نقل ناقلٍ من القاسم 6000 إلى 5000 تعديلٌ لا إصدار جديد.'
-          : 'Same pallet, same weight, five different numbers on the invoice: 200 kg by air against 1,200 by sea LCL, a six-fold spread on a box whose weight never changed. The divisors are settings an administrator can change, not numbers baked into the software: moving an airline from a 6,000 divisor to a 5,000 one is an edit, not a new release.'}
-      </figcaption>
-    </figure>
+    <ChartFigure
+      title={
+        ar
+          ? 'منصة واحدة، 120 × 100 × 100 سم و180 كجم: الوزن المحتسب في أربع وسائل شحن'
+          : 'One pallet, 120 × 100 × 100 cm and 180 kg: the weight billed in four modes'
+      }
+      meta={ar ? 'القاسم بوحدة سم³/كجم' : 'Divisors in cm³/kg'}
+      caption={
+        ar
+          ? 'لا تُسعِّر أي وسيلة الوزن الذي على الميزان. البحري بحاوية يُسعَّر لكل حاوية، بلا وزن حجمي. وكل قاسم إعداد يعدّله المسؤول.'
+          : 'No mode bills what the scale reads. Sea FCL is priced per container, with no volumetric step. Each divisor is a setting an administrator edits.'
+      }
+    >
+      <ChargeableChart lang={lang} rows={rows} grossKg={PALLET.grossKg} />
+    </ChartFigure>
   )
 }
 
@@ -296,110 +215,23 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
 const CLOCK = { freeDays: 5, perDiem: 28, days: 21 }
 
 export function AccrualStair({ lang }: { lang: Lang }) {
-  const MAX = 480
-  const base = 260
-  const top = 50
-  const x = (day: number) => 90 + (day / CLOCK.days) * 870
-  const y = (kwd: number) => base - (kwd / MAX) * (base - top)
-
-  /**
-   * A stair rather than a line, because the money arrives in whole days.
-   *
-   * A slope would say the charge accrues by the hour, which is what a per-hour
-   * rate does and is not what a per diem is. The vertical is the midnight the
-   * day ticks over on; the horizontal is the day itself.
-   */
-  let stair = `M ${x(0)} ${y(0)} L ${x(CLOCK.freeDays)} ${y(0)}`
-  for (let day = CLOCK.freeDays + 1; day <= CLOCK.days; day++) {
-    const total = (day - CLOCK.freeDays) * CLOCK.perDiem
-    stair += ` L ${x(day).toFixed(1)} ${y(total - CLOCK.perDiem).toFixed(1)}`
-    stair += ` L ${x(day).toFixed(1)} ${y(total).toFixed(1)}`
-  }
-  const area = `${stair} L ${x(CLOCK.days).toFixed(1)} ${y(0)} Z`
   const final = (CLOCK.days - CLOCK.freeDays) * CLOCK.perDiem
-
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: 'One container: five free days, then KWD 28.000 a day',
-            ar: 'حاوية واحدة: خمسة أيام سماح، ثم 28.000 د.ك في اليوم',
-          }}
-        />
-
-        <svg viewBox="0 0 1000 330" role="img" aria-labelledby="accrual-title" className="cmp-svg">
-          <title id="accrual-title">
-            {lang === 'ar'
-              ? 'رسم درجي يبيّن تراكم رسم الأرضيات يوماً بيوم بعد انتهاء وقت السماح'
-              : 'A step chart showing demurrage accruing day by day once free time ends'}
-          </title>
-
-          {[0, 120, 240, 360, 480].map((tick) => (
-            <g key={tick}>
-              <line x1="84" y1={y(tick)} x2="960" y2={y(tick)} className="fig-grid" />
-              <text x="72" y={y(tick) + 4} textAnchor="end" className="cmp-axis-label">
-                {tick}
-              </text>
-            </g>
-          ))}
-
-          {/* Free time as a region rather than a label. It is the part everybody
-              plans for and nobody is billed for, so it should read as ground
-              rather than as value. */}
-          <rect
-            x={x(0)}
-            y={top}
-            width={x(CLOCK.freeDays) - x(0)}
-            height={base - top}
-            className="fig-free"
-          />
-          <text
-            x={(x(0) + x(CLOCK.freeDays)) / 2}
-            y={top + 24}
-            textAnchor="middle"
-            className="cmp-axis-label"
-          >
-            {lang === 'ar' ? 'وقت السماح' : 'free time'}
-          </text>
-
-          <path d={area} className="fig-area" />
-          <path d={stair} className="fig-step" fill="none" />
-
-          {/* The first chargeable day, which is the whole argument: the line is
-              written on the day it is incurred, against the job that caused it. */}
-          <circle cx={x(CLOCK.freeDays + 1)} cy={y(CLOCK.perDiem)} r="6" className="cmp-dot" />
-          <text x={x(CLOCK.freeDays + 1) + 16} y={y(CLOCK.perDiem) - 14} className="cmp-note">
-            {lang === 'ar' ? 'أول بند تكلفة · 28.000 د.ك' : 'first charge line · KWD 28.000'}
-          </text>
-
-          <circle cx={x(CLOCK.days)} cy={y(final)} r="6" className="cmp-dot" />
-          <text x={x(CLOCK.days)} y={y(final) - 18} textAnchor="end" className="cmp-note">
-            {lang === 'ar' ? `${final}.000 د.ك` : `KWD ${final}.000`}
-          </text>
-
-          <line x1="84" y1={base} x2="960" y2={base} className="cmp-axis" />
-          {[0, 3, 6, 9, 12, 15, 18, 21].map((day) => (
-            <text key={day} x={x(day)} y={base + 26} textAnchor="middle" className="cmp-axis-label">
-              {day === 0 ? (lang === 'ar' ? 'اليوم 0' : 'day 0') : day}
-            </text>
-          ))}
-          <text x="90" y={base + 54} className="cmp-axis-label">
-            {lang === 'ar' ? 'الأيام منذ التفريغ' : 'days since discharge'}
-          </text>
-          <text x="0" y="0" transform="translate(28,152) rotate(-90)" className="cmp-axis-label">
-            KWD
-          </text>
-        </svg>
-      </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'العدّاد يشغّله وصول المرحلة، لا تذكُّر أحدهم. الأيام الخمسة الأولى مجانية لأن الناقل قال ذلك؛ وفي اليوم السادس يُكتب بند تكلفة على الشحنة نفسها بالمبلغ الذي سيظهر لاحقاً على فاتورة المورّد. وحين تكون تعرفة الناقل تصاعدية فتلك مجرّد جدول أسعار مختلف لا حسابٌ آخر. هذه أرقام النسخة التجريبية نفسها.'
-          : 'The counter is started by a milestone arriving, not by somebody remembering. The first five days are free because the carrier said so; on the sixth a charge line is written against the job itself, for the amount that will later appear on a supplier invoice. Where a carrier’s tariff escalates rather than running flat, that is just a different rate table, not a different calculation. These are the demo’s own figures.'}
-      </figcaption>
-    </figure>
+    <ChartFigure
+      title={
+        lang === 'ar'
+          ? 'حاوية واحدة: خمسة أيام سماح، ثم 28.000 د.ك في اليوم'
+          : 'One container: five free days, then KWD 28.000 a day'
+      }
+      meta={lang === 'ar' ? 'أرقام النسخة التجريبية' : 'The demo’s own figures'}
+      caption={
+        lang === 'ar'
+          ? `يبدأ العدّاد مع المرحلة، ويُكتب بند التكلفة على الشحنة كل يوم: ${CLOCK.days - CLOCK.freeDays} يوماً × 28.000 = ${final}.000 د.ك.`
+          : `The clock starts with the milestone and writes a charge line on the job each day: ${CLOCK.days - CLOCK.freeDays} days × 28.000 = KWD ${final}.000.`
+      }
+    >
+      <AccrualChart lang={lang} freeDays={CLOCK.freeDays} perDiem={CLOCK.perDiem} days={CLOCK.days} />
+    </ChartFigure>
   )
 }
 
@@ -450,97 +282,95 @@ function allocate() {
 }
 
 export function AllocationSplit({ lang }: { lang: Lang }) {
+  const ar = lang === 'ar'
   const rows = allocate()
   const totalCbm = HOUSES.reduce((sum, house) => sum + house.cbm, 0)
   const settled = rows.reduce((sum, row) => sum + row.final, 0)
   const floors = rows.reduce((sum, row) => sum + row.floored, 0)
   const spare = rows.reduce((sum, row) => sum + row.extraFils, 0)
+  const num = 'figures text-end font-mono'
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
+    <ChartFigure
+      title={
+        ar
+          ? '100.000 د.ك تكلفة رئيسية على ثلاث بوالص فرعية، حسب الحجم'
+          : 'KWD 100.000 of master cost, across three houses, by volume'
+      }
+      meta={ar ? 'د.ك' : 'KWD'}
+      caption={
+        ar
+          ? `بعد حطّ كل حصة يبقى ${(spare / 1000).toFixed(3)} د.ك، فيذهب كل فلس إلى أكبر كسر متبقٍّ. والعمود الأخير يجمع ${settled.toFixed(3)} بالضبط.`
+          : `Flooring every share leaves ${(spare / 1000).toFixed(3)}, so each spare fils goes to the largest remainder. The posted column sums to ${settled.toFixed(3)} exactly.`
+      }
+    >
+      <div className="flex flex-col gap-6">
+        <AllocationBar
           lang={lang}
-          text={{
-            en: 'KWD 100.000 of master cost, across three houses, by volume',
-            ar: '100.000 د.ك تكلفة رئيسية على ثلاث بوالص فرعية، حسب الحجم',
-          }}
+          rows={rows.map((row) => ({ ref: row.ref, cbm: row.cbm, posted: row.final.toFixed(3) }))}
         />
-
-        {/*
-          The split at its real proportions.
-
-          `flexGrow` takes the CBM itself rather than a percentage width: the
-          bar *is* the drivers, and a rounded percentage in the markup would be
-          a second arithmetic quietly disagreeing with the table underneath it.
-        */}
-        <div
-          className="fig-split"
-          role="img"
-          aria-label={
-            lang === 'ar'
-              ? 'شريط يبيّن حصة كل بوليصة فرعية من التكلفة الرئيسية حسب حجمها'
-              : 'A bar showing each house bill’s share of the master cost by its volume'
-          }
-        >
-          {rows.map((row, index) => (
-            <div
-              key={row.ref}
-              className={`fig-split__seg fig-split__seg--${index + 1}`}
-              style={{ flexGrow: row.cbm }}
-            >
-              <b>{row.ref}</b>
-              <span>{row.cbm} cbm</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="tablewrap fig-tablewrap">
-          <table className="fig-table">
-            <thead>
-              <tr>
-                <th scope="col">{lang === 'ar' ? 'البوليصة' : 'House'}</th>
-                <th scope="col">{lang === 'ar' ? 'المُحرِّك' : 'Driver'}</th>
-                <th scope="col">{lang === 'ar' ? 'الحصة الدقيقة' : 'Exact share'}</th>
-                <th scope="col">{lang === 'ar' ? 'بعد الحطّ' : 'Floored'}</th>
-                <th scope="col">{lang === 'ar' ? 'الفلس المتبقّي' : 'Left-over fils'}</th>
-                <th scope="col">{lang === 'ar' ? 'المرحَّل' : 'Posted'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.ref}>
-                  <th scope="row">{row.ref}</th>
-                  <td>
-                    {row.cbm} / {totalCbm}
-                  </td>
-                  <td className="fig-num fig-num--soft">{row.exact.toFixed(6)}</td>
-                  <td className="fig-num">{row.floored.toFixed(3)}</td>
-                  <td className="fig-num">{row.extraFils ? '+0.001' : '—'}</td>
-                  <td className="fig-num fig-num--strong">{row.final.toFixed(3)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row">{lang === 'ar' ? 'المجموع' : 'Total'}</th>
-                <td>{totalCbm}</td>
-                <td className="fig-num fig-num--soft">{MASTER_COST.toFixed(6)}</td>
-                <td className="fig-num">{floors.toFixed(3)}</td>
-                <td className="fig-num">+{(spare / 1000).toFixed(3)}</td>
-                <td className="fig-num fig-num--strong">{settled.toFixed(3)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <Table className="min-w-[36rem]">
+          <TableHeader>
+            <TableRow className="border-line-strong">
+              <TableHead className="text-heading">{ar ? 'البوليصة' : 'House'}</TableHead>
+              <TableHead className="text-end text-heading">{ar ? 'الحجم (م³)' : 'CBM'}</TableHead>
+              <TableHead className="text-end text-heading">
+                {ar ? 'الحصة الدقيقة' : 'Exact share'}
+              </TableHead>
+              <TableHead className="text-end text-heading">{ar ? 'بعد الحطّ' : 'Floored'}</TableHead>
+              <TableHead className="text-end text-heading">
+                {ar ? 'الفلس المتبقّي' : 'Spare fils'}
+              </TableHead>
+              <TableHead className="text-end text-heading">{ar ? 'المرحَّل' : 'Posted'}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.ref} className="border-line">
+                <TableCell className="text-start font-mono font-medium text-heading">
+                  {row.ref}
+                </TableCell>
+                <TableCell className={num}>
+                  {row.cbm}
+                </TableCell>
+                <TableCell className={`${num} text-ink-dim`}>
+                  {row.exact.toFixed(6)}
+                </TableCell>
+                <TableCell className={num}>
+                  {row.floored.toFixed(3)}
+                </TableCell>
+                <TableCell className={num}>
+                  <span dir="ltr">{row.extraFils ? '+0.001' : '0.000'}</span>
+                </TableCell>
+                <TableCell className={`${num} font-semibold text-heading`}>
+                  {row.final.toFixed(3)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+          <tfoot className="border-t border-line-strong">
+            <TableRow className="border-0">
+              <TableCell className="font-semibold text-heading">{ar ? 'المجموع' : 'Total'}</TableCell>
+              <TableCell className={num}>
+                {totalCbm}
+              </TableCell>
+              <TableCell className={`${num} text-ink-dim`}>
+                {MASTER_COST.toFixed(6)}
+              </TableCell>
+              <TableCell className={num}>
+                {floors.toFixed(3)}
+              </TableCell>
+              <TableCell className={num}>
+                <span dir="ltr">+{(spare / 1000).toFixed(3)}</span>
+              </TableCell>
+              <TableCell className={`${num} font-semibold text-heading`}>
+                {settled.toFixed(3)}
+              </TableCell>
+            </TableRow>
+          </tfoot>
+        </Table>
       </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'الحصص الدقيقة لا تقع على فلوس صحيحة تقريباً أبداً، فيبقى فلسان بعد حطّ كل حصة. إسقاطهما يضيّع مالاً ومنحهما للجميع يخلق مالاً، فيذهبان إلى أكبر كسرَين متبقّيين — وهي القاعدة نفسها التي تحوّل بها البرلمانات الأصوات إلى مقاعد. العمود الأخير يجمع 100.000 بالضبط، وهذا ما يجعل هامش البوليصة الحادية عشرة رقماً يمكن الدفاع عنه بعد ستة أشهر.'
-          : 'Exact shares almost never land on whole fils, so two are left over once every share is floored. Dropping them loses money and spreading them creates it, so they go to the two largest fractional remainders — the same rule parliaments use to turn votes into seats. The last column sums to 100.000 exactly, which is what makes the margin on house eleven a number you can still defend six months later.'}
-      </figcaption>
-    </figure>
+    </ChartFigure>
   )
 }
 
@@ -598,58 +428,68 @@ const DUTY_ROLES: { key: string; label: Bi; holds: string[] }[] = [
 ]
 
 export function DutyMatrix({ lang }: { lang: Lang }) {
-  const yes = lang === 'ar' ? 'مسموح' : 'granted'
-  const no = lang === 'ar' ? 'غير مسموح' : 'not granted'
+  const ar = lang === 'ar'
+  const yes = ar ? 'مسموح' : 'granted'
+  const no = ar ? 'غير مسموح' : 'not granted'
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: 'Seven seeded roles, six keys an auditor asks about',
-            ar: 'سبعة أدوار مُعدّة مسبقاً، وستة مفاتيح يسأل عنها المدقق',
-          }}
-        />
-
-        <div className="tablewrap fig-tablewrap">
-          <table className="fig-matrix">
-            <thead>
-              <tr>
-                <th scope="col">{lang === 'ar' ? 'الدور' : 'Role'}</th>
-                {DUTY_ACTIONS.map((action) => (
-                  <th key={action.key} scope="col">
-                    {action.label[lang]}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DUTY_ROLES.map((role) => (
-                <tr key={role.key}>
-                  <th scope="row">{role.label[lang]}</th>
-                  {DUTY_ACTIONS.map((action) => {
-                    const held = role.holds.includes(action.key)
-                    return (
-                      <td key={action.key} className={held ? 'is-on' : 'is-off'}>
-                        <span aria-hidden="true" />
-                        <span className="visually-hidden">{held ? yes : no}</span>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'الصفّان الفارغان ليسا سهواً: المبيعات تسعّر وتغلق الاستفسارات ولا تصدر فاتورة قط، والمخلّص الجمركي يقدّم البيانات ولا يفتح شحنة. مدير العمليات لا يصدر الفواتير ولا يعتمد فواتير المورّدين، وهذا هو الفصل الذي يسأل عنه المدقق أولاً. أما مسؤول النظام فيحمل كل مفتاح بحكم التصميم، بما فيها ما يُضاف لاحقاً، حتى لا تُشحن عملية جديدة بلا من يبلغها.'
-          : 'The two empty rows are not an oversight: Sales prices and closes enquiries and never issues an invoice, and a Customs Broker files declarations and never books a job. The Operations Manager issues nothing and approves no supplier bill, which is the separation an auditor asks about first. Administrator holds every key by design, including keys added later, so that a new transition cannot ship unreachable.'}
-      </figcaption>
-    </figure>
+    <ChartFigure
+      title={
+        ar
+          ? 'سبعة أدوار مُعدّة مسبقاً، وستة مفاتيح يسأل عنها المدقق'
+          : 'Seven seeded roles, six keys an auditor asks about'
+      }
+      caption={
+        ar
+          ? 'ثلاثة أدوار لا تحمل أياً منها، ومدير العمليات لا يصدر فاتورة ولا يعتمد فاتورة مورّد. ومسؤول النظام يحمل كل مفتاح، حتى ما يُضاف لاحقاً.'
+          : 'Three roles hold none of these, and Operations never issues an invoice or approves a bill. Administrator holds every key, even ones added later.'
+      }
+    >
+      <Table className="min-w-[40rem] table-fixed">
+        <TableHeader>
+          <TableRow className="border-line-strong">
+            <TableHead className="w-[10.5rem] align-bottom text-heading">
+              {ar ? 'الدور' : 'Role'}
+            </TableHead>
+            {DUTY_ACTIONS.map((action) => (
+              <TableHead
+                key={action.key}
+                scope="col"
+                className="h-auto pb-3 text-center align-bottom font-semibold whitespace-normal text-heading"
+              >
+                {action.label[lang]}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {DUTY_ROLES.map((role) => (
+            <TableRow key={role.key} className="border-line">
+              <TableHead scope="row" className="h-11 font-medium text-heading">
+                {role.label[lang]}
+              </TableHead>
+              {DUTY_ACTIONS.map((action) => {
+                const held = role.holds.includes(action.key)
+                return (
+                  <TableCell key={action.key} className="py-0 text-center align-middle">
+                    {held ? (
+                      <Check
+                        weight="bold"
+                        aria-hidden="true"
+                        className="mx-auto size-[18px] text-blue"
+                      />
+                    ) : (
+                      <span aria-hidden="true" className="mx-auto block h-px w-3 bg-line-strong" />
+                    )}
+                    <span className="sr-only">{held ? yes : no}</span>
+                  </TableCell>
+                )
+              })}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ChartFigure>
   )
 }
 
@@ -757,91 +597,38 @@ const TEMPLATES: { flow: Bi; steps: string[] }[] = [
 ]
 
 export function MilestoneStrips({ lang }: { lang: Lang }) {
-  const gutter = 210
-  const trackStart = gutter + 24
-  const trackEnd = 890
-  const rowHeight = 44
-  const firstRow = 54
-  const longest = Math.max(...TEMPLATES.map((template) => template.steps.length))
+  const ar = lang === 'ar'
+  // "Sea FCL · import" splits at the dot into the axis label's two lines.
+  const rows = TEMPLATES.map((template) => {
+    const [mode = '', direction = ''] = template.flow[lang].split(' · ')
+    return { key: template.flow.en, mode, direction, steps: template.steps.length }
+  })
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: 'Six seeded milestone templates, at their real lengths',
-            ar: 'ستة قوالب مراحل مُعدّة مسبقاً، بأطوالها الحقيقية',
-          }}
-        />
-
-        <svg
-          viewBox={`0 0 1000 ${firstRow + TEMPLATES.length * rowHeight + 34}`}
-          role="img"
-          aria-labelledby="milestones-title"
-          className="cmp-svg"
-        >
-          <title id="milestones-title">
-            {lang === 'ar'
-              ? 'ستة صفوف من النقاط، كل صف قالب مراحل لوسيلة واتجاه، وطول الصف عدد مراحله'
-              : 'Six rows of dots, each a milestone template for one mode and direction, the length of the row being its number of steps'}
-          </title>
-
-          {TEMPLATES.map((template, row) => {
-            const y = firstRow + row * rowHeight
-            // Every row is spaced on the *longest* template rather than on its
-            // own length, so a short flow is visibly short. Normalising each row
-            // to the full width would draw six identical strips and say nothing.
-            const step = (trackEnd - trackStart) / (longest - 1)
-            const end = trackStart + (template.steps.length - 1) * step
-
-            return (
-              <g key={template.flow.en}>
-                <text x="0" y={y + 5} className="cmp-track-label">
-                  {template.flow[lang]}
-                </text>
-                <line x1={trackStart} y1={y} x2={end} y2={y} className="fig-strip" />
-                {template.steps.map((name, index) => (
-                  <circle
-                    key={name + index}
-                    cx={trackStart + index * step}
-                    cy={y}
-                    r={index === 0 || index === template.steps.length - 1 ? 6 : 4}
-                    className={
-                      index === 0 || index === template.steps.length - 1
-                        ? 'cmp-mark'
-                        : 'fig-strip__dot'
-                    }
-                  >
-                    {/* The name is on the dot rather than under it: seventeen
-                        labels across six rows is a wall of type, and the
-                        information a reader wants from this drawing is the
-                        shape. */}
-                    <title>{MILESTONE_NAMES[name]?.[lang] ?? name}</title>
-                  </circle>
-                ))}
-                <text x="920" y={y + 5} className="fig-value fig-value--sm">
-                  {template.steps.length}
-                </text>
-              </g>
-            )
-          })}
-
-          <text x={trackStart} y={firstRow - 26} className="cmp-axis-label">
-            {lang === 'ar' ? 'تأكيد الحجز' : 'booking confirmed'}
-          </text>
-          <text x="920" y={firstRow - 26} textAnchor="end" className="cmp-axis-label">
-            {lang === 'ar' ? 'مراحل' : 'steps'}
-          </text>
-        </svg>
+    <ChartFigure
+      title={
+        ar
+          ? 'ستة قوالب مراحل مُعدّة مسبقاً، وعدد مراحل كل منها'
+          : 'Six seeded milestone templates, and how many steps each has'
+      }
+      caption={
+        ar
+          ? 'ثماني مراحل أو تسع بحراً، وست جواً، وخمس براً. قائمة واحدة ستكون أطول من اللازم على الطريق أو أقصر منه على الماء.'
+          : 'Eight or nine steps by sea, six by air and five by road. One checklist would be too long for the road or too short for the water.'
+      }
+    >
+      <MilestoneChart lang={lang} rows={rows} />
+      {/* The steps themselves, for a screen reader: the bars give only the
+          count, and the names are what the count is of. */}
+      <div className="sr-only">
+        {TEMPLATES.map((template) => (
+          <p key={template.flow.en}>
+            {template.flow[lang]}:{' '}
+            {template.steps.map((step) => MILESTONE_NAMES[step]?.[lang] ?? step).join(ar ? '، ' : ', ')}
+          </p>
+        ))}
       </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'كل قالب يبدأ بتأكيد الحجز وينتهي بالتسليم، عدا الاستيراد بحاوية كاملة، الذي ينتهي بإعادة الحاوية الفارغة، وهي المرحلة التي يقف عندها عدّاد التأخير. تسعة صفوف للبحري وخمسة للبري، ولذلك لا «قائمة تحقّق للشحنة» واحدة: ستكون إمّا أطول من اللازم على الطريق أو أقصر من اللازم على الماء. مرّروا المؤشّر على أي نقطة لاسمها.'
-          : 'Every template opens at booking confirmed and ends at delivered, except the FCL import, which ends at empty returned, the milestone the detention clock stops on. Nine steps by sea and five by road, which is why there is no single “shipment checklist”: it would be too long for the road or too short for the water. Hover any dot for its name.'}
-      </figcaption>
-    </figure>
+    </ChartFigure>
   )
 }
 
@@ -853,7 +640,10 @@ export function MilestoneStrips({ lang }: { lang: Lang }) {
  * `CHARGE_TYPES` from `packages/db/src/seed.ts`, grouped by the rating basis
  * each row names.
  *
- * Twenty-one rows over six functions. The figure exists to make one sentence
+ * Twenty-one named rows over six functions. The seed has a twenty-second,
+ * `other` (flat), which is where a priced line lands when nobody can yet name
+ * its charge; it is a holding pen rather than a charge type, so the figure
+ * counts it in the caption and not in the grid. The figure exists to make one sentence
  * concrete — *configuration is rows, not code* (FR-AD-03) — because it is the
  * claim on this site that sounds most like marketing and is easiest to check:
  * a new accessorial is a row naming one of these six bases, and nobody ships a
@@ -920,44 +710,45 @@ const CHARGE_BASES: { key: string; label: Bi; charges: Bi[] }[] = [
 ]
 
 export function ChargeWaffle({ lang }: { lang: Lang }) {
+  const ar = lang === 'ar'
   const total = CHARGE_BASES.reduce((sum, basis) => sum + basis.charges.length, 0)
+  const sentence = (text: string) => (ar ? text : text.charAt(0).toUpperCase() + text.slice(1))
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: `${total} seeded charge types, over six rating functions`,
-            ar: `${total} نوع تكلفة مُعدّاً مسبقاً، على ست دوال تسعير`,
-          }}
-        />
-
-        <div className="fig-waffle">
-          {CHARGE_BASES.map((basis) => (
-            <div key={basis.key} className="fig-waffle__group">
-              <p className="fig-waffle__label">
-                {basis.label[lang]}
-                <b>{basis.charges.length}</b>
-              </p>
-              <ul className="fig-waffle__cells">
-                {basis.charges.map((charge) => (
-                  <li key={charge.en} className="fig-waffle__cell" title={charge[lang]}>
-                    <span className="visually-hidden">{charge[lang]}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'كل مربّع نوع تكلفة، وكل مجموعة طريقة تسعيره — مرّروا المؤشّر لاسمه. الرسم كله عن فكرة واحدة: إضافة رسم إعدادٌ لا تغيير برمجي. رسمٌ إضافي جديد يضيفه المسؤول باختيار إحدى طرق التسعير الست، ولا إصدار برمجي له.'
-          : 'Each square is a charge type and each group the way it is priced — hover one for its name. The whole drawing is about a single idea: adding a charge is a setting, not a code change. A new accessorial is added by an administrator, choosing one of these six ways to price it, with no release behind it.'}
-      </figcaption>
-    </figure>
+    <ChartFigure
+      title={
+        ar
+          ? `${total} نوعاً مسمّى من التكاليف، على ست طرق لتسعيرها`
+          : `${total} named charge types, over six ways of pricing them`
+      }
+      meta={ar ? 'طريقة التسعير · العدد' : 'Pricing basis · count'}
+      caption={
+        ar
+          ? 'إضافة رسم إعدادٌ: يختار المسؤول إحدى الطرق الست. وبند إضافي، «رسوم أخرى» بمبلغ مقطوع، يستقبل ما لم يُسمَّ بعد.'
+          : 'Adding a charge is a setting: an administrator picks one of the six bases. One more row, Other charge (flat), holds anything not yet named.'
+      }
+    >
+      {/* A ledger, one row per basis: the grouping is the information, and a
+          grid of twenty-one tags made the reader count squares to find it. */}
+      <dl className="divide-y divide-line border-y border-line">
+        {CHARGE_BASES.map((basis) => (
+          <div
+            key={basis.key}
+            className="grid gap-1 py-3.5 sm:grid-cols-[11rem_1fr] sm:items-baseline sm:gap-6"
+          >
+            <dt className="flex items-baseline justify-between gap-3 text-small font-semibold text-heading sm:justify-start">
+              {sentence(basis.label[lang])}
+              <span className="figures font-mono text-label font-medium text-blue-ink">
+                {basis.charges.length}
+              </span>
+            </dt>
+            <dd className="text-small text-ink-dim">
+              {basis.charges.map((charge) => charge[lang]).join(ar ? '، ' : ', ')}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </ChartFigure>
   )
 }
 
@@ -990,74 +781,75 @@ const CURRENCIES: { code: string; minor: number }[] = [
  * Kuwaiti amount. This is that line as a picture.
  */
 export function MinorUnits({ lang }: { lang: Lang }) {
+  const ar = lang === 'ar'
   const three = CURRENCIES.filter((currency) => currency.minor === 3)
+  const two = CURRENCIES.filter((currency) => currency.minor === 2)
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: `${three.length} of ${CURRENCIES.length} seeded currencies carry three decimals`,
-            ar: `${three.length} من ${CURRENCIES.length} عملات مُعدّة مسبقاً بثلاث خانات عشرية`,
-          }}
-        />
-
-        <ul className="fig-chips">
-          {CURRENCIES.map((currency) => (
-            <li
-              key={currency.code}
-              className={currency.minor === 3 ? 'fig-chip fig-chip--three' : 'fig-chip'}
+    <ChartFigure
+      title={
+        ar
+          ? `${three.length} من ${CURRENCIES.length} عملة مُعدّة تحمل ثلاث خانات عشرية`
+          : `${three.length} of ${CURRENCIES.length} seeded currencies carry three decimals`
+      }
+      caption={
+        ar
+          ? 'الدينار الكويتي والبحريني والريال العُماني بثلاث خانات. تقريبها إلى خانتين يُضيع حتى خمسة فلوس في كل بند.'
+          : 'The Kuwaiti and Bahraini dinar and the Omani rial carry three decimals. Rounding them to two loses up to five fils on every line.'
+      }
+    >
+      {/* Two rows rather than eleven tags: the grouping is the information. */}
+      <dl className="divide-y divide-line border-y border-line">
+        {[
+          { label: ar ? 'ثلاث خانات' : 'Three decimals', list: three, strong: true },
+          { label: ar ? 'خانتان' : 'Two decimals', list: two, strong: false },
+        ].map((row) => (
+          <div key={row.label} className="grid gap-1 py-3 sm:grid-cols-[10rem_1fr] sm:items-baseline sm:gap-6">
+            <dt className="text-small font-semibold text-heading">{row.label}</dt>
+            <dd
+              dir="ltr"
+              className={`flex flex-wrap gap-x-4 gap-y-1 font-mono text-small ${
+                row.strong ? 'font-semibold text-blue-ink' : 'text-ink-dim'
+              } ${ar ? 'justify-end sm:justify-start' : ''}`}
             >
-              <b>{currency.code}</b>
-              <span>
-                {currency.minor}
-                {lang === 'ar' ? ' خانة' : ' dp'}
-              </span>
-            </li>
-          ))}
-        </ul>
+              {row.list.map((currency) => (
+                <span key={currency.code}>{currency.code}</span>
+              ))}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
-        <div className="fig-place">
-          <div className="fig-place__side">
-            <p className="fig-place__label">
-              {lang === 'ar' ? 'ما يخزّنه هذا النظام' : 'What this system stores'}
-            </p>
-            <p className="fig-place__amount">
-              <span className="fig-place__cur">KWD</span> 12.34
-              <b>5</b>
-            </p>
-            <p className="fig-place__note">
-              {lang === 'ar'
-                ? 'الخانات الثلاث محفوظة من قاعدة البيانات حتى الفاتورة، بلا تقريب'
-                : 'All three decimals kept, from the database through to the invoice'}
-            </p>
-          </div>
-          <div className="fig-place__side fig-place__side--lost">
-            <p className="fig-place__label">
-              {lang === 'ar'
-                ? 'ما يخزّنه نظامٌ بُني للدولار'
-                : 'What a system built for dollars stores'}
-            </p>
-            <p className="fig-place__amount">
-              <span className="fig-place__cur">KWD</span> 12.35
-              <b className="fig-place__gone">—</b>
-            </p>
-            <p className="fig-place__note">
-              {lang === 'ar'
-                ? 'الفلس ليس خطأ تقريب، بل عملة متداولة: خمسة فلوس على كل بند'
-                : 'The fils is not a rounding error, it is money in circulation: five of them on every line'}
-            </p>
-          </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-3 rounded-lg border border-line bg-paper p-5">
+          <p className="text-small font-semibold text-heading">
+            {ar ? 'ما يحفظه هذا النظام' : 'What this system stores'}
+          </p>
+          <p dir="ltr" className="figures font-mono text-[2rem] font-medium leading-none text-heading">
+            <span className="me-2 text-small text-ink-faint">KWD</span>12.34
+            <span className="text-blue">5</span>
+          </p>
+          <p className="text-small text-ink-dim">
+            {ar ? 'الخانات الثلاث، من قاعدة البيانات حتى الفاتورة.' : 'All three decimals, from the database to the invoice.'}
+          </p>
+        </div>
+        {/* The wrong answer on the dark navy rather than a beige box: the
+            owner asked for the darker colour, and the contrast now carries the
+            comparison instead of a tint nobody reads as meaning anything. */}
+        <div className="flex flex-col gap-3 rounded-lg bg-void p-5">
+          <p className="text-small font-semibold text-on-void">
+            {ar ? 'ما يحفظه نظام بُني للدولار' : 'What a system built for dollars stores'}
+          </p>
+          <p dir="ltr" className="figures font-mono text-[2rem] font-medium leading-none text-on-void">
+            <span className="me-2 text-small text-on-void-faint">KWD</span>12.35
+            <span className="text-amber">–</span>
+          </p>
+          <p className="text-small text-on-void-dim">
+            {ar ? 'الخانة الثالثة تضيع عند التقريب.' : 'The third decimal is rounded away.'}
+          </p>
         </div>
       </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'الدينار الكويتي والبحريني والريال العُماني تحمل ثلاث خانات؛ والثماني الأخرى خانتان. هذا هو الفرق الذي لا يظهر أبداً في السوق التي بُني فيها نظامٌ للدولار ثم كُيِّف: تقريبٌ عام إلى خانتين يُفسد كل مبلغ كويتي يمرّ عليه. افتحوا أي فاتورة في النسخة التجريبية: عدّ الخانات أسرع فحص على هذه الصفحة.'
-          : 'The Kuwaiti and Bahraini dinar and the Omani rial carry three; the other eight carry two. This is the difference that never shows up in the home market of a system built for dollars and adapted afterwards: a global rounding to two corrupts every Kuwaiti amount it touches. Open any invoice in the demo: counting the decimal places is the fastest check on this page.'}
-      </figcaption>
-    </figure>
+    </ChartFigure>
   )
 }
 
@@ -1094,93 +886,48 @@ const OUTSIDE: Bi[] = [
  * is a logo wall with rectangles.
  */
 export function ScopeSpan({ lang }: { lang: Lang }) {
-  const trackStart = 40
-  const trackEnd = 960
-  const cell = (trackEnd - trackStart) / SPAN.length
+  const ar = lang === 'ar'
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: 'One record, six states, no exits — and what is deliberately outside it',
-            ar: 'سجل واحد، ست حالات، بلا مخارج — وما هو خارجه عن قصد',
-          }}
-        />
-
-        <svg viewBox="0 0 1000 300" role="img" aria-labelledby="scope-title" className="cmp-svg">
-          <title id="scope-title">
-            {lang === 'ar'
-              ? 'شريط متصل يبيّن حالات الشحنة الست، وتحته كتل منفصلة لما هو خارج المنتج عن قصد'
-              : 'An unbroken bar showing the six states of a job, and detached blocks beneath it for what is deliberately outside the product'}
-          </title>
-
+    <ChartFigure
+      title={
+        ar
+          ? 'سجل واحد، ست حالات، بلا مخارج، وما هو خارجه عن قصد'
+          : 'One record, six states, no exits, and what is deliberately outside it'
+      }
+      caption={
+        ar
+          ? 'كل حالة تسلّم التالية ما تحتاجه، فلا يُعاد كتابة شيء. والخمسة تحتها خارجه بقرار، وليست على خارطة الطريق.'
+          : 'Each state hands the next everything it needs, so nothing is retyped. The five below are outside it by decision and are not planned.'
+      }
+    >
+      <div className="flex flex-col gap-8">
+        {/* One unbroken band: the job never leaves it. Three to a row on a
+            phone, six across from `sm`, numbered so the order survives the wrap. */}
+        <ol className="grid grid-cols-3 gap-0.5 overflow-hidden rounded-lg sm:grid-cols-6">
           {SPAN.map((state, index) => (
-            <g key={state.en}>
-              <rect
-                x={trackStart + index * cell}
-                y="70"
-                width={cell - 3}
-                height="56"
-                className="fig-span"
-              />
-              <text
-                x={trackStart + index * cell + (cell - 3) / 2}
-                y="104"
-                textAnchor="middle"
-                className="fig-span__label"
-              >
-                {state[lang]}
-              </text>
-            </g>
+            <li key={state.en} className="flex flex-col gap-1 bg-blue px-3 py-3.5 text-on-brand">
+              <span className="figures font-mono text-label text-on-brand/80">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span className="text-small font-semibold">{state[lang]}</span>
+            </li>
           ))}
-          <text x={trackStart} y="52" className="cmp-note">
-            {lang === 'ar'
-              ? 'سجل واحد — لا يُعاد إدخاله في نظام ثانٍ'
-              : 'one record — never re-keyed into a second system'}
-          </text>
-
-          {/* The gap is the argument. These are drawn detached and hatched
-              because they are not a roadmap and not a gap in the product; they
-              are five decisions, and each of them has a paragraph on
-              `/what-we-do/` saying why. */}
-          {OUTSIDE.map((item, index) => {
-            const width = (trackEnd - trackStart) / OUTSIDE.length
-            return (
-              <g key={item.en}>
-                <rect
-                  x={trackStart + index * width}
-                  y="196"
-                  width={width - 12}
-                  height="52"
-                  className="fig-span--out"
-                />
-                <text
-                  x={trackStart + index * width + (width - 12) / 2}
-                  y="226"
-                  textAnchor="middle"
-                  className="cmp-axis-label fig-out-label"
-                >
-                  {item[lang]}
-                </text>
-              </g>
-            )
-          })}
-          <text x={trackStart} y="178" className="cmp-axis-label">
-            {lang === 'ar'
-              ? 'خارج المنتج بقرار — لا على خارطة الطريق'
-              : 'outside the product by decision — not on the roadmap'}
-          </text>
-        </svg>
+        </ol>
+        <div className="grid gap-1 sm:grid-cols-[11rem_1fr] sm:gap-6">
+          <p className="pt-3 text-small font-semibold text-heading">
+            {ar ? 'خارج المنتج بقرار' : 'Outside the product by decision'}
+          </p>
+          <ul className="divide-y divide-line border-b border-line sm:border-t">
+            {OUTSIDE.map((item) => (
+              <li key={item.en} className="py-3 text-small text-ink-dim">
+                {item[lang]}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'الشريط الأعلى متصل لأن الشحنة لا تخرج منه: كل حالة تسلّم التالية ما تحتاجه، فلا يُعاد كتابة شيء ولا يمكن أن يُكتب مختلفاً. والكتل السفلى ليست خارطة طريق ولا نقصاً — بل خمسة قرارات، لكل واحد منها فقرة تشرح سببه. من يحتاج إحداها فعلاً ينبغي أن يعرف ذلك اليوم لا في الأسبوع الثالث.'
-          : 'The upper bar is unbroken because the job never leaves it: each state hands the next one everything it needs, so nothing is retyped and nothing can be retyped differently. The lower blocks are not a roadmap and not a shortfall — they are five decisions, each with a paragraph saying why. Somebody who genuinely needs one of them should know that today rather than in week three.'}
-      </figcaption>
-    </figure>
+    </ChartFigure>
   )
 }
 
@@ -1189,17 +936,17 @@ export function ScopeSpan({ lang }: { lang: Lang }) {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * The fifteen-day pilot plan from the sales set, drawn.
+ * The fifteen-day onboarding plan from the sales set, drawn.
  *
- * The site offers a fifteen-day pilot in four places and has never once shown
+ * The site promised fifteen days of setup in four places and never once showed
  * what the fifteen days are. That plan exists, it is specific, and it is dull
  * in the way a real plan is dull — which is exactly why printing it is worth
  * more than another sentence promising that it exists. Three of the blocks are
  * flagged `demoReady` — days 8–9, 12 and 13 — because the document marks them as
- * the moments the pilot has something to show in the room; the chart draws them
+ * the moments onboarding has something to show in the room; the chart draws them
  * in the accent colour so that spine of the plan survives into the picture.
  */
-const PILOT: { from: number; to: number; block: Bi; done: Bi; demoReady?: boolean }[] = [
+const ONBOARDING: { from: number; to: number; block: Bi; done: Bi; demoReady?: boolean }[] = [
   {
     from: 1,
     to: 2,
@@ -1277,96 +1024,84 @@ const PILOT: { from: number; to: number; block: Bi; done: Bi; demoReady?: boolea
   },
 ]
 
-export function PilotGantt({ lang }: { lang: Lang }) {
-  const gutter = 232
-  const trackStart = gutter + 20
-  const trackEnd = 960
-  const day = (n: number) => trackStart + ((n - 1) / 15) * (trackEnd - trackStart)
-  const rowHeight = 34
-  const firstRow = 64
+export function OnboardingGantt({ lang }: { lang: Lang }) {
+  const ar = lang === 'ar'
+  const DAYS = 15
+  const days = Array.from({ length: DAYS }, (_, index) => index + 1)
+  const moments = ONBOARDING.filter((block) => block.demoReady)
+  const span = (block: (typeof ONBOARDING)[number]) =>
+    block.from === block.to ? `${block.from}` : `${block.from}–${block.to}`
+  // The day grid: one track per working day, and the blocks placed on it by
+  // `gridColumn`, so the tiling is the data's own (each block starts the day
+  // after the last ends) and a gap or overlap would show as one.
+  const track = { gridTemplateColumns: `repeat(${DAYS}, minmax(0, 1fr))` }
 
   return (
-    <figure className="cmp-figure fig">
-      <div className="cmp-panel">
-        <Title
-          lang={lang}
-          text={{
-            en: 'Fifteen working days, and what is finished on each of them',
-            ar: 'خمسة عشر يوم عمل، وما يكتمل في كل منها',
-          }}
-        />
-
-        <svg
-          viewBox={`0 0 1000 ${firstRow + PILOT.length * rowHeight + 40}`}
-          role="img"
-          aria-labelledby="pilot-title"
-          className="cmp-svg"
-        >
-          <title id="pilot-title">
-            {lang === 'ar'
-              ? 'مخطط زمني لتسع كتل عمل موزّعة على خمسة عشر يوماً'
-              : 'A bar chart of nine blocks of work across fifteen working days'}
-          </title>
-
-          {[1, 3, 5, 7, 9, 11, 13, 15].map((n) => (
-            <g key={n}>
-              <line
-                x1={day(n)}
-                y1={firstRow - 24}
-                x2={day(n)}
-                y2={firstRow + PILOT.length * rowHeight - 18}
-                className="fig-grid"
-              />
-              <text x={day(n)} y={firstRow - 34} textAnchor="middle" className="cmp-axis-label">
-                {n === 1 ? (lang === 'ar' ? 'اليوم 1' : 'day 1') : n}
-              </text>
-            </g>
-          ))}
-
-          {PILOT.map((block, index) => {
-            const y = firstRow + index * rowHeight
-            const x = day(block.from)
-            const width = day(block.to + 1) - x - 6
-
-            // The "done" note sits after the bar, except for blocks late in the
-            // fortnight: their bar is so far right that a note beside it would
-            // run off the panel, so those notes sit to the left of the bar
-            // instead. Without this the last four rows overflowed the drawing.
-            const barEnd = x + width
-            const noteOnLeft = barEnd > (trackStart + trackEnd) / 2
-
-            return (
-              <g key={block.block.en}>
-                <text x="0" y={y + 4} className="cmp-track-label">
-                  {block.block[lang]}
-                </text>
-                <rect
-                  x={x}
-                  y={y - 11}
-                  width={width}
-                  height="20"
-                  className={block.demoReady ? 'fig-gantt fig-gantt--moment' : 'fig-gantt'}
-                  rx="2"
-                />
-                <text
-                  x={noteOnLeft ? x - 14 : barEnd + 14}
-                  y={y + 4}
-                  textAnchor={noteOnLeft ? 'end' : 'start'}
-                  className="cmp-axis-label fig-gantt-note"
+    <ChartFigure
+      title={
+        ar
+          ? 'خمسة عشر يوم عمل، وما يكتمل في كل مرحلة'
+          : 'Fifteen working days, and what is finished in each block'
+      }
+      meta={ar ? 'أيام العمل' : 'Working days'}
+      caption={
+        ar
+          ? `اليوم الأول هو يوم وصول بياناتكم، والأجر ثابت. والكتل الزرقاء جاهزة للعرض: الأيام ${moments.map(span).join(' و')}.`
+          : `Day one is the day your data arrives, and the fee is fixed. The blue blocks are ready to demonstrate: days ${moments.map(span).join(', ')}.`
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-[15rem_1fr]">
+          {/* Day numbers over the track; on a phone the track is the full width. */}
+          <div aria-hidden="true" className="hidden lg:block" />
+          <div aria-hidden="true" className="grid border-b border-line-strong pb-1.5" style={track}>
+            {days.map((day) => (
+              <span key={day} className="figures text-center font-mono text-label text-ink-dim">
+                {day}
+              </span>
+            ))}
+          </div>
+          <ol className="contents">
+            {ONBOARDING.map((block) => (
+              <li key={block.block.en} className="contents">
+                <div className="pt-3 lg:border-b lg:border-line lg:py-2.5">
+                  <p className="text-small font-semibold text-heading">
+                    {block.block[lang]}
+                    <span className="sr-only">
+                      {ar ? `، الأيام ${span(block)}` : `, days ${span(block)}`}
+                    </span>
+                  </p>
+                  <p className="text-label text-ink-dim">{block.done[lang]}</p>
+                </div>
+                <div
+                  aria-hidden="true"
+                  className="grid items-center border-b border-line py-2 lg:py-2.5"
+                  style={{
+                    ...track,
+                    backgroundImage:
+                      'repeating-linear-gradient(to right, var(--color-line) 0 1px, transparent 1px calc(100% / 15))',
+                  }}
                 >
-                  {block.done[lang]}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
+                  <span
+                    className={`mx-px h-4 rounded-[3px] ${block.demoReady ? 'bg-blue' : 'bg-heading'}`}
+                    style={{ gridColumn: `${block.from} / ${block.to + 1}` }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <ul className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+          <li className="flex items-center gap-2 text-label text-ink-dim">
+            <span aria-hidden="true" className="size-3 rounded-[2px] bg-heading" />
+            {ar ? 'إعداد' : 'Setup'}
+          </li>
+          <li className="flex items-center gap-2 text-label text-ink-dim">
+            <span aria-hidden="true" className="size-3 rounded-[2px] bg-blue" />
+            {ar ? 'جاهز للعرض' : 'Ready to demonstrate'}
+          </li>
+        </ul>
       </div>
-
-      <figcaption>
-        {lang === 'ar'
-          ? 'خمسة عشر يوم عمل تبدأ يوم تصل بياناتكم لا يوم التوقيع، بأجر ثابت. الخطة نفسها التي نعمل بها، ومملّة بالقدر الذي تكون عليه خطة حقيقية: يومان لقراءة بطاقة أسعاركم، ويوم كامل للعربية، ويوم أخير للتجربة على نظام لا يعمل فيه الإنترنت. لا شيء يُبنى فيها يُرمى بعدها. والأشرطة الكهرمانية الثلاثة هي اللحظات التي تصبح فيها الخطة جاهزة للعرض — الأيام ٨–٩ و١٢ و١٣.'
-          : 'Fifteen working days that start the day your data arrives rather than the day you sign, for a fixed fee. It is the plan we actually work to, and it is dull in the way a real plan is dull: two days to read your rate card, a whole day for Arabic, and a last day rehearsing against a room with no internet. Nothing built in it is thrown away. The three amber bars are the moments the plan is demo-ready — days 8–9, 12 and 13.'}
-      </figcaption>
-    </figure>
+    </ChartFigure>
   )
 }

@@ -114,7 +114,7 @@ export function PrivacyContent() {
                 <ul className="bullets">
                   <li>
                     <strong>This website</strong> &mdash; <code>cargosharks.com</code>, including
-                    its blog and the form for asking about a pilot. Sections&nbsp;03 and 04 are
+                    its blog and the form for booking a demo. Sections&nbsp;03 and 04 are
                     about this and only this.
                   </li>
                   <li>
@@ -191,7 +191,7 @@ export function PrivacyContent() {
                 </h2>
                 <p>
                   The site runs on a server we operate. It has a database, which holds the blog and
-                  the pilot requests sent through its form, and no visitor accounts.
+                  the demo requests sent through its form, and no visitor accounts.
                 </p>
                 <ul className="bullets">
                   <li>
@@ -203,11 +203,11 @@ export function PrivacyContent() {
                     <strong>It runs no analytics.</strong> There is no Google Analytics, no
                     Plausible, no Matomo, no Meta pixel, no LinkedIn tag and no heatmap script. Its
                     scripts, served from this site under <code>/_next/static/</code>, run the menus,
-                    the scroll effects, the free time calculator and the pilot form. They send
+                    the scroll effects, the free time calculator and the demo form. They send
                     nothing to any other host, and they store nothing in the browser.
                   </li>
                   <li>
-                    <strong>One form, the pilot request.</strong> Nothing you do on this site is
+                    <strong>One form, the demo request.</strong> Nothing you do on this site is
                     sent anywhere unless you send that form or write to us. Section&nbsp;04 says
                     what the form collects.
                   </li>
@@ -239,9 +239,11 @@ export function PrivacyContent() {
                   <span className="doc__n">04</span>What you send when you enquire
                 </h2>
                 <p>
-                  The pilot form asks for your name, company and work email, and optionally a phone
-                  or WhatsApp number, your country, roughly how many shipments you handle a month
-                  and a message. With it we record the language of the page and its address. It is
+                  The demo form asks for your name, company and work email, and optionally a phone
+                  or WhatsApp number, your country, roughly how many shipments you handle a month,
+                  how many branches and users you have, what you move, what software you use
+                  today, which e-invoicing regimes you need, when you would like to start, and a
+                  message. With it we record the language of the page and its address. It is
                   stored in this site&rsquo;s database, and a notification with the same details
                   is posted to our team&rsquo;s <strong>Slack</strong> workspace so that somebody
                   answers it. Nothing is emailed to you automatically; a person replies.
@@ -499,6 +501,18 @@ export function PrivacyContent() {
                         <td>Currency codes. Nothing else.</td>
                       </tr>
                       <tr>
+                        <th scope="row">E-invoicing</th>
+                        <td>
+                          For Saudi branches, ZATCA&rsquo;s Fatoora platform, which clears each
+                          invoice as it is issued. For UAE branches, the accredited service provider
+                          the customer appoints; we are not one and do not choose it.
+                        </td>
+                        <td>
+                          Each tax invoice, credit note and debit note as issued: the seller and
+                          buyer, their tax numbers and addresses, the lines, VAT and totals.
+                        </td>
+                      </tr>
+                      <tr>
                         <th scope="row">Webhooks you configure</th>
                         <td>
                           Signed outbound webhooks to URLs the customer chooses, retried and logged.
@@ -529,10 +543,6 @@ export function PrivacyContent() {
                   <li>
                     <strong>No error-reporting service.</strong> No Sentry, no Datadog, no Bugsnag.
                     Errors are written to the container&rsquo;s log as structured JSON.
-                  </li>
-                  <li>
-                    <strong>No e-invoicing provider.</strong> The hand-off is built; no accredited
-                    provider has been appointed, so nothing is transmitted.
                   </li>
                   <li>
                     <strong>No WhatsApp.</strong> The webhook verifies signatures and nothing

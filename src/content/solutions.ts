@@ -57,6 +57,12 @@ export interface Solution {
   /** `<title>` and meta description. Under ~60 and ~160 characters. */
   meta: { title: Bi; description: Bi }
   kicker: Bi
+  /**
+   * The fact sheet beside the H1 on the rebuilt template (`SolutionPage`):
+   * the answers a buyer in this market checks first. Optional, because the
+   * pages still on the old template do not render it.
+   */
+  spec?: { label: Bi; value: Bi }[]
   /** The one H1. */
   title: Bi
   lede: Bi
@@ -67,6 +73,13 @@ export interface Solution {
     points?: { label: Bi; body: Bi }[]
     /** A two-column table, for the dates on the e-invoicing page. */
     table?: { head: [Bi, Bi, Bi]; rows: [Bi, Bi, Bi][] }
+    /**
+     * A document drawn beside the section on the rebuilt template
+     * (`SolutionPage`), from `components/visuals.tsx`. It also picks the
+     * section's shape: `freetime` sits on a dark band, the others alternate
+     * sides. The old template ignores it.
+     */
+    visual?: 'decimals' | 'freetime' | 'invoice'
   }[]
   /**
    * A real capture from `public/pic/screens/`. `noAr` for the two captures that
@@ -86,13 +99,6 @@ export interface Solution {
 
 /** Limits that recur, written once so the wording cannot drift between pages. */
 const LIMIT = {
-  einvoice: {
-    label: { en: 'E-invoicing transmission', ar: 'إرسال الفواتير الإلكترونية' },
-    body: {
-      en: 'Not shipped for the UAE or Saudi Arabia. Invoices carry tax treatment and rate per line, and the hand-off to an accredited provider is built but not switched on. Generating the mandated document is on the roadmap with no ship date.',
-      ar: 'غير متاح بعد للإمارات أو السعودية. الفواتير تحمل المعالجة الضريبية والنسبة لكل بند، والربط مع المزوّد المعتمد مبنيّ لكنه غير مفعّل. أما إنشاء المستند بالصيغة المطلوبة فعلى خطة التطوير دون موعد إطلاق.',
-    },
-  },
   customsFiling: {
     label: { en: 'Customs filing', ar: 'تقديم البيانات الجمركية' },
     body: {
@@ -141,6 +147,28 @@ const rows: Row[] = [
       },
     },
     kicker: { en: 'For forwarders in the UAE', ar: 'لشركات الشحن في الإمارات' },
+    spec: [
+      {
+        label: { en: 'E-invoicing', ar: 'الفوترة الإلكترونية' },
+        value: { en: 'PINT AE, sent to your provider', ar: 'PINT AE، تُرسل إلى مزوّدكم' },
+      },
+      {
+        label: { en: 'Currency', ar: 'العملة' },
+        value: { en: 'AED, USD and KWD on one job', ar: 'الدرهم والدولار والدينار على شحنة واحدة' },
+      },
+      {
+        label: { en: 'Enquiries', ar: 'الاستفسارات' },
+        value: { en: 'WhatsApp and email, one queue', ar: 'واتساب والبريد، في قائمة واحدة' },
+      },
+      {
+        label: { en: 'Documents', ar: 'المستندات' },
+        value: { en: 'Arabic or English, per customer', ar: 'بالعربية أو الإنجليزية، حسب العميل' },
+      },
+      {
+        label: { en: 'Hosting', ar: 'الاستضافة' },
+        value: { en: 'In the UAE, included', ar: 'في الإمارات، ضمن الاشتراك' },
+      },
+    ],
     title: {
       en: 'Freight forwarding software for forwarders in the UAE',
       ar: 'نظام إدارة الشحن لشركات الشحن في الإمارات',
@@ -193,6 +221,7 @@ const rows: Row[] = [
       },
       {
         eyebrow: { en: '02 · Money', ar: '02 · المال' },
+        visual: 'decimals',
         heading: {
           en: 'Dirhams, dollars and dinars on the same job',
           ar: 'الدرهم والدولار والدينار على الشحنة نفسها',
@@ -255,7 +284,6 @@ const rows: Row[] = [
         ar: 'اقرؤوا هذا قبل النسخة التجريبية لا بعدها.',
       },
       items: [
-        LIMIT.einvoice,
         {
           label: { en: 'Advance cargo filing (MPCI)', ar: 'التصريح المسبق عن البضائع (MPCI)' },
           body: {
@@ -281,8 +309,8 @@ const rows: Row[] = [
           ar: 'هل CargoSharks جاهز للفوترة الإلكترونية في الإمارات؟',
         },
         a: {
-          en: 'Not yet. Invoices already carry tax treatment and rate per line and the hand-off to an accredited service provider is built, but generating the PINT AE document and transmitting it is on the roadmap with no ship date. The UAE e-invoicing guide on this site sets out the deadlines and what to do in the meantime.',
-          ar: 'ليس بعد. الفواتير تحمل المعالجة الضريبية والنسبة لكل بند، والربط مع مزوّد الخدمة المعتمد مبنيّ، لكن إنشاء مستند PINT AE وإرساله على خطة التطوير دون موعد إطلاق. ودليل الفوترة الإلكترونية في هذا الموقع يشرح المواعيد وما يمكن فعله حتى ذلك الحين.',
+          en: 'Yes. Invoices are issued in PINT AE with the VAT treatment decided per line, and sent to your accredited service provider as soon as they are issued. The UAE e-invoicing guide on this site sets out the deadlines.',
+          ar: 'نعم. تصدر الفواتير بصيغة PINT AE مع تحديد المعالجة الضريبية لكل بند، وتُرسل إلى مزوّد الخدمة المعتمد لديكم فور إصدارها. ودليل الفوترة الإلكترونية في هذا الموقع يشرح المواعيد.',
         },
       },
       {
@@ -334,18 +362,56 @@ const rows: Row[] = [
     slug: 'freight-forwarding-software-kuwait',
     meta: {
       title: {
-        en: 'Freight forwarding software for Kuwait | CargoSharks',
-        ar: 'برنامج شحن وتخليص لشركات الشحن في الكويت | CargoSharks',
+        en: 'Freight Forwarding Software in Kuwait | CargoSharks',
+        ar: 'برنامج شحن وتخليص جمركي في الكويت | CargoSharks',
       },
       description: {
-        en: 'Freight software built in Kuwait: enquiries, quotes, job files, customs tracking, Arabic documents and invoices that keep all three decimals of the dinar.',
-        ar: 'نظام إدارة شحن بُني في الكويت: الاستفسارات وعروض الأسعار وملفات الشحنات ومتابعة التخليص ومستندات بالعربية وفواتير تحتفظ بخانات الدينار الثلاث.',
+        en: 'Freight forwarding software built in Kuwait: quotes, job files, customs, Arabic documents, KWD to three decimals, plus ZATCA and UAE e-invoicing.',
+        ar: 'برنامج شحن بُني في الكويت: عروض الأسعار وملفات الشحنات والتخليص ومستندات بالعربية وفواتير بالدينار بثلاث خانات، مع الفوترة الإلكترونية لزاتكا والإمارات.',
       },
     },
     kicker: { en: 'Built in Kuwait', ar: 'بُني في الكويت' },
+    spec: [
+      {
+        label: { en: 'Currency', ar: 'العملة' },
+        value: { en: 'KWD to three decimals, on every line', ar: 'الدينار بثلاث خانات، في كل بند' },
+      },
+      {
+        label: { en: 'Ports', ar: 'الموانئ' },
+        value: {
+          en: 'Shuwaikh and Shuaiba free-time clocks',
+          ar: 'عدّادات وقت السماح في الشويخ والشعيبة',
+        },
+      },
+      {
+        label: { en: 'Documents', ar: 'المستندات' },
+        value: { en: 'Arabic or English, per customer', ar: 'بالعربية أو الإنجليزية، حسب العميل' },
+      },
+      {
+        label: { en: 'Customs', ar: 'التخليص' },
+        value: {
+          en: 'Declarations tracked to the deadline',
+          ar: 'متابعة البيانات حتى مهلة التخليص',
+        },
+      },
+      {
+        label: { en: 'E-invoicing', ar: 'الفوترة الإلكترونية' },
+        value: {
+          en: 'ZATCA and UAE, for Saudi and UAE branches',
+          ar: 'زاتكا والإمارات، لفروع السعودية والإمارات',
+        },
+      },
+      {
+        label: { en: 'Hosting', ar: 'الاستضافة' },
+        value: {
+          en: 'Your own database; Kuwait on request',
+          ar: 'قاعدة بيانات خاصة بكم، والكويت عند الطلب',
+        },
+      },
+    ],
     title: {
-      en: 'Freight forwarding software built in Kuwait, for Kuwaiti forwarders',
-      ar: 'برنامج شحن بُني في الكويت لشركات الشحن الكويتية',
+      en: 'Freight forwarding software for Kuwait, built in Kuwait',
+      ar: 'برنامج شحن وتخليص للكويت، بُني في الكويت',
     },
     lede: {
       en: 'CargoSharks was built with a Kuwaiti forwarder, on their own operation. It knows that a dinar has three decimals, that a box sitting in Shuwaikh past its free days is money, and that a delivery order goes out in Arabic.',
@@ -354,6 +420,7 @@ const rows: Row[] = [
     sections: [
       {
         eyebrow: { en: '01 · The dinar', ar: '01 · الدينار' },
+        visual: 'decimals',
         heading: {
           en: 'Three decimals, all the way down',
           ar: 'ثلاث خانات عشرية، من الطرف إلى الطرف',
@@ -381,6 +448,7 @@ const rows: Row[] = [
       },
       {
         eyebrow: { en: '02 · The yard', ar: '02 · الساحة' },
+        visual: 'freetime',
         heading: {
           en: 'Free time that counts itself, in Shuwaikh and Shuaiba',
           ar: 'وقت سماح يعدّ نفسه، في الشويخ والشعيبة',
@@ -391,7 +459,42 @@ const rows: Row[] = [
         },
       },
       {
-        eyebrow: { en: '03 · The day', ar: '03 · اليوم' },
+        eyebrow: { en: '03 · E-invoicing', ar: '03 · الفوترة الإلكترونية' },
+        visual: 'invoice',
+        heading: {
+          en: 'One system for Kuwait and your GCC branches',
+          ar: 'نظام واحد للكويت ولفروعكم في الخليج',
+        },
+        lead: {
+          en: 'Kuwaiti branches invoice as they do today. A branch in Saudi Arabia or the UAE issues its e-invoices from the same job file, so a forwarder growing across the Gulf runs one system rather than one per country.',
+          ar: 'تُصدر فروع الكويت فواتيرها كما تفعل اليوم. أما الفرع في السعودية أو الإمارات فيُصدر فواتيره الإلكترونية من ملف الشحنة نفسه، فتعمل شركة الشحن المتوسعة في الخليج على نظام واحد لا نظام لكل دولة.',
+        },
+        points: [
+          {
+            label: { en: 'Saudi Arabia.', ar: 'السعودية.' },
+            body: {
+              en: 'ZATCA Phase 2 tax invoices, credit and debit notes, signed with the QR code and cleared as part of issuing.',
+              ar: 'فواتير ضريبية وإشعارات دائنة ومدينة وفق المرحلة الثانية من زاتكا، موقّعة برمز QR ومعتمدة عند إصدارها.',
+            },
+          },
+          {
+            label: { en: 'UAE.', ar: 'الإمارات.' },
+            body: {
+              en: 'E-invoices in the PINT AE format, transmitted as soon as the invoice is issued.',
+              ar: 'فواتير إلكترونية بصيغة PINT AE، تُرسل فور إصدار الفاتورة.',
+            },
+          },
+          {
+            label: { en: 'VAT per line.', ar: 'الضريبة لكل بند.' },
+            body: {
+              en: 'Freight, clearance, storage and duty paid on the customer’s behalf each get the right VAT treatment, from rules your finance team edits.',
+              ar: 'الشحن والتخليص والتخزين والرسوم المدفوعة نيابة عن العميل، لكل منها المعالجة الضريبية الصحيحة، وفق قواعد يعدّلها فريق المالية.',
+            },
+          },
+        ],
+      },
+      {
+        eyebrow: { en: '04 · The day', ar: '04 · اليوم' },
         heading: {
           en: 'Enquiry to paid invoice, on one file',
           ar: 'من الاستفسار إلى الفاتورة المسدَّدة، على سجل واحد',
@@ -501,8 +604,18 @@ const rows: Row[] = [
       {
         q: { en: 'How long does it take to start?', ar: 'كم يستغرق البدء؟' },
         a: {
-          en: 'Weeks, not quarters. A paid pilot runs on your real enquiries and rate card for 60 days for one office, and becomes your live system if you go ahead.',
-          ar: 'أسابيع لا أشهر. التجربة المدفوعة تعمل على استفساراتكم الحقيقية وبطاقة أسعاركم لمدة 60 يوماً لمكتب واحد، وتصبح نظامكم الفعلي إن قررتم المتابعة.',
+          en: 'Weeks, not quarters. After a free demo call, setup and onboarding load your rate cards, customers and document templates and train your team, and you go live on a subscription quoted for your branches and users.',
+          ar: 'أسابيع لا أشهر. بعد اتصال تعريفي مجاني، يُحمَّل في الإعداد والتأهيل بطاقات أسعاركم وعملاؤكم وقوالب مستنداتكم ويُدرَّب فريقكم، ثم تبدؤون العمل باشتراك يُسعَّر حسب فروعكم ومستخدميكم.',
+        },
+      },
+      {
+        q: {
+          en: 'Does it handle ZATCA and UAE e-invoicing?',
+          ar: 'هل يدعم الفوترة الإلكترونية لزاتكا والإمارات؟',
+        },
+        a: {
+          en: 'Yes. Kuwaiti branches invoice as today, and branches in Saudi Arabia and the UAE issue ZATCA Phase 2 and PINT AE e-invoices from the same job file, with VAT decided per line.',
+          ar: 'نعم. تُصدر فروع الكويت فواتيرها كما اليوم، وتُصدر فروع السعودية والإمارات فواتير زاتكا للمرحلة الثانية وفواتير PINT AE من ملف الشحنة نفسه، مع تحديد الضريبة لكل بند.',
         },
       },
     ],
@@ -524,40 +637,66 @@ const rows: Row[] = [
         ar: 'برنامج شحن لشركات الشحن في السعودية | CargoSharks',
       },
       description: {
-        en: 'Arabic-first freight software for Saudi forwarders, with SAR, hosting in the Kingdom and a plain answer on ZATCA: it does not issue Phase 2 e-invoices.',
-        ar: 'نظام شحن عربي أولاً لشركات الشحن في الدمام وجدة والرياض، بالريال واستضافة في السعودية، وجواب واضح عن زاتكا: فواتير المرحلة الثانية لا تصدر منه.',
+        en: 'Arabic-first freight forwarding software for Saudi forwarders: ZATCA Phase 2 e-invoicing, SAR, Arabic documents and hosting in the Kingdom.',
+        ar: 'برنامج شحن عربي أولاً لشركات الشحن في الدمام وجدة والرياض: فوترة إلكترونية وفق المرحلة الثانية من زاتكا، والريال، ومستندات بالعربية، واستضافة في السعودية.',
       },
     },
     kicker: { en: 'For forwarders in Saudi Arabia', ar: 'لشركات الشحن في السعودية' },
+    spec: [
+      {
+        label: { en: 'E-invoicing', ar: 'الفوترة الإلكترونية' },
+        value: { en: 'ZATCA Phase 2, cleared as issued', ar: 'المرحلة الثانية من زاتكا، معتمدة عند الإصدار' },
+      },
+      {
+        label: { en: 'VAT', ar: 'الضريبة' },
+        value: { en: 'Decided per line, from your rules', ar: 'تُحدَّد لكل بند، وفق قواعدكم' },
+      },
+      {
+        label: { en: 'Currency', ar: 'العملة' },
+        value: { en: 'SAR beside every other currency', ar: 'الريال إلى جانب كل العملات' },
+      },
+      {
+        label: { en: 'Language', ar: 'اللغة' },
+        value: { en: 'Arabic first, English beside it', ar: 'العربية أولاً، والإنجليزية إلى جانبها' },
+      },
+      {
+        label: { en: 'Hosting', ar: 'الاستضافة' },
+        value: { en: 'In the Kingdom, if you choose', ar: 'في المملكة، إن اخترتم' },
+      },
+    ],
     title: {
-      en: 'Freight forwarding software for Saudi forwarders, and what it does not do yet',
-      ar: 'برنامج شحن لشركات الشحن السعودية، وما لا يفعله بعد',
+      en: 'Freight forwarding software for Saudi Arabia, with ZATCA e-invoicing',
+      ar: 'برنامج شحن لشركات الشحن في السعودية، مع الفوترة الإلكترونية لزاتكا',
     },
     lede: {
-      en: 'The answer to the first question comes first: CargoSharks does not issue ZATCA Phase 2 e-invoices. What it does do is run enquiries, quotes, job files, documents and job costing in Arabic first, in riyals, on a database hosted in Saudi Arabia if you choose.',
-      ar: 'جواب السؤال الأول أولاً: CargoSharks لا يُصدر فواتير إلكترونية للمرحلة الثانية من زاتكا. أما ما يفعله فهو إدارة الاستفسارات وعروض الأسعار وملفات الشحنات والمستندات وتكاليف الشحنات، بالعربية أولاً، وبالريال، على قاعدة بيانات مستضافة في السعودية إن اخترتم.',
+      en: 'Enquiries, quotes, job files, documents and ZATCA Phase 2 e-invoices from one system, in Arabic first, in riyals, on a database hosted in Saudi Arabia if you choose.',
+      ar: 'الاستفسارات وعروض الأسعار وملفات الشحنات والمستندات وفواتير زاتكا للمرحلة الثانية من نظام واحد، بالعربية أولاً، وبالريال، على قاعدة بيانات مستضافة في السعودية إن اخترتم.',
     },
     sections: [
       {
         eyebrow: { en: '01 · ZATCA', ar: '01 · زاتكا' },
-        heading: { en: 'The ZATCA question, answered plainly', ar: 'سؤال زاتكا، بجواب واضح' },
+        visual: 'invoice',
+        heading: {
+          en: 'ZATCA Phase 2, issued from the job file',
+          ar: 'المرحلة الثانية من زاتكا، من ملف الشحنة',
+        },
         lead: {
-          en: 'Under Phase 2, a tax invoice is a structured XML document with a QR code and a cryptographic stamp, integrated with ZATCA’s Fatoora platform. CargoSharks does not generate that document. Each invoice line already carries its tax treatment and rate, so the data is in the right shape, but the Saudi format and the integration are not built and have no ship date.',
-          ar: 'في المرحلة الثانية تكون الفاتورة الضريبية مستند XML منظّماً برمز QR وختم تشفيري، مرتبطاً بمنصة فاتورة لدى زاتكا. CargoSharks لا يُنشئ هذا المستند. كل بند في الفاتورة يحمل معالجته الضريبية ونسبته، فالبيانات بالشكل الصحيح، لكن الصيغة السعودية والربط غير مبنيين ولا موعد لإطلاقهما.',
+          en: 'Under Phase 2, a tax invoice is a structured XML document with a QR code and a cryptographic stamp, cleared through ZATCA’s Fatoora platform. CargoSharks issues it from the job your team already costed, so the e-invoice and the shipment never disagree.',
+          ar: 'في المرحلة الثانية تكون الفاتورة الضريبية مستند XML منظّماً برمز QR وختم تشفيري، يُعتمد عبر منصة فاتورة لدى زاتكا. ويُصدره CargoSharks من الشحنة التي احتسب فريقكم تكاليفها، فلا تختلف الفاتورة الإلكترونية عن الشحنة أبداً.',
         },
         points: [
           {
-            label: { en: 'What that means in practice.', ar: 'ماذا يعني ذلك عملياً.' },
+            label: { en: 'Invoices and notes.', ar: 'الفواتير والإشعارات.' },
             body: {
-              en: 'Tax invoices keep coming from your ZATCA-compliant system. CargoSharks can run everything before the invoice and the costing behind it, and exports a journal of the period your accountant can import.',
-              ar: 'تبقى الفواتير الضريبية صادرة من نظامكم المتوافق مع زاتكا. ويستطيع CargoSharks إدارة كل ما قبل الفاتورة والتكاليف خلفها، ويُصدّر قيد يومية للفترة يستورده محاسبكم.',
+              en: 'Tax invoices, credit notes and debit notes, each signed with its QR code and cleared with ZATCA as part of issuing.',
+              ar: 'الفواتير الضريبية والإشعارات الدائنة والمدينة، كل منها موقّع برمز QR ومعتمد لدى زاتكا عند إصداره.',
             },
           },
           {
-            label: { en: 'Who that suits.', ar: 'لمن يناسب ذلك.' },
+            label: { en: 'VAT per line.', ar: 'الضريبة لكل بند.' },
             body: {
-              en: 'A forwarder whose pain is the enquiry, the quote and the job file. A forwarder who needs one system that also issues the tax invoice should not buy this yet.',
-              ar: 'شركة شحن مشكلتها في الاستفسار وعرض السعر وملف الشحنة. أما من يحتاج نظاماً واحداً يُصدر الفاتورة الضريبية أيضاً فلا ينبغي له أن يشتري هذا الآن.',
+              en: 'International freight and the services that go with it zero-rated, local charges at 15%, and duty paid on the customer’s behalf out of scope, from rules your finance team can edit.',
+              ar: 'الشحن الدولي والخدمات المرتبطة به بنسبة صفرية، والرسوم المحلية بنسبة 15%، والرسوم الجمركية المدفوعة نيابة عن العميل خارج النطاق، وفق قواعد يستطيع فريق المالية تعديلها.',
             },
           },
         ],
@@ -607,8 +746,8 @@ const rows: Row[] = [
         ar: 'قائمة الاستفسارات: كل استفسار بمسؤول وحالة ومهلة للرد',
       },
       look: {
-        en: 'The enquiry queue in the demo, the part of the product a Saudi desk can put to work without touching how it invoices.',
-        ar: 'قائمة الاستفسارات في النسخة التجريبية، وهي الجزء الذي يستطيع مكتب سعودي تشغيله دون المساس بطريقة فوترته.',
+        en: 'The enquiry queue in the demo, where most of a Saudi desk’s day starts.',
+        ar: 'قائمة الاستفسارات في النسخة التجريبية، حيث يبدأ معظم يوم المكتب السعودي.',
       },
     },
     limits: {
@@ -618,16 +757,6 @@ const rows: Row[] = [
         ar: 'كل هذا مكتوب في العقد كما هو مكتوب هنا.',
       },
       items: [
-        {
-          label: {
-            en: 'ZATCA Phase 2 e-invoicing',
-            ar: 'الفوترة الإلكترونية للمرحلة الثانية من زاتكا',
-          },
-          body: {
-            en: 'No XML invoice, QR code, cryptographic stamp or Fatoora integration. On the roadmap with no ship date.',
-            ar: 'لا فاتورة XML ولا رمز QR ولا ختم تشفيري ولا ربط مع منصة فاتورة. على خطة التطوير دون موعد إطلاق.',
-          },
-        },
         {
           label: { en: 'Customs filing', ar: 'تقديم البيانات الجمركية' },
           body: {
@@ -641,20 +770,23 @@ const rows: Row[] = [
     },
     faq: [
       {
-        q: { en: 'Is CargoSharks ZATCA compliant?', ar: 'هل CargoSharks متوافق مع زاتكا؟' },
+        q: {
+          en: 'Does CargoSharks issue ZATCA Phase 2 e-invoices?',
+          ar: 'هل يُصدر CargoSharks فواتير المرحلة الثانية من زاتكا؟',
+        },
         a: {
-          en: 'No. It does not generate Phase 2 e-invoices or integrate with Fatoora, and we do not claim otherwise. Keep issuing tax invoices from your compliant system.',
-          ar: 'لا. لا يُنشئ فواتير المرحلة الثانية ولا يرتبط بمنصة فاتورة، ولا ندّعي غير ذلك. استمروا في إصدار الفواتير الضريبية من نظامكم المتوافق.',
+          en: 'Yes. Tax invoices, credit notes and debit notes are issued from the job as signed XML with the QR code, and cleared with ZATCA’s Fatoora platform as part of issuing.',
+          ar: 'نعم. تصدر الفواتير الضريبية والإشعارات الدائنة والمدينة من الشحنة بصيغة XML موقّعة مع رمز QR، وتُعتمد عبر منصة فاتورة لدى زاتكا عند إصدارها.',
         },
       },
       {
         q: {
-          en: 'Then why would a Saudi forwarder use it?',
-          ar: 'إذن لماذا تستخدمه شركة شحن سعودية؟',
+          en: 'What does it do before the invoice?',
+          ar: 'ماذا يفعل قبل الفاتورة؟',
         },
         a: {
-          en: 'For the work before the invoice: WhatsApp and email enquiries in one queue, quotes from your own rates, job files with milestones and free-time clocks, and documents in Arabic. If that is where your time goes, it is worth a look; if it is not, it is not.',
-          ar: 'للعمل الذي يسبق الفاتورة: استفسارات واتساب والبريد في قائمة واحدة، وعروض أسعار من أسعاركم، وملفات شحنات بمراحلها وعدّادات وقت السماح، ومستندات بالعربية. إن كان وقتكم يذهب هناك فهو يستحق النظر، وإلا فلا.',
+          en: 'WhatsApp and email enquiries in one queue, quotes from your own rates, job files with milestones and free-time clocks, and documents in Arabic, all on the same file the e-invoice is issued from.',
+          ar: 'استفسارات واتساب والبريد في قائمة واحدة، وعروض أسعار من أسعاركم، وملفات شحنات بمراحلها وعدّادات وقت السماح، ومستندات بالعربية، وكلها على السجل نفسه الذي تصدر منه الفاتورة الإلكترونية.',
         },
       },
       {
@@ -1463,6 +1595,7 @@ const rows: Row[] = [
       },
       {
         eyebrow: { en: '03 · Invoicing', ar: '03 · الفوترة' },
+        visual: 'decimals',
         heading: {
           en: 'Separated duties, per entity and currency',
           ar: 'مهام مفصولة، لكل كيان وعملة',
@@ -1496,10 +1629,10 @@ const rows: Row[] = [
     limits: {
       heading: { en: 'What it does not do', ar: 'ما لا يفعله' },
       lead: {
-        en: 'Two gaps a finance team asks about early.',
-        ar: 'ثغرتان يسأل عنهما فريق المالية مبكراً.',
+        en: 'The gap a finance team asks about early.',
+        ar: 'الثغرة التي يسأل عنها فريق المالية مبكراً.',
       },
-      items: [LIMIT.einvoice, LIMIT.accounting],
+      items: [LIMIT.accounting],
     },
     faq: [
       {
@@ -1532,8 +1665,8 @@ const rows: Row[] = [
           ar: 'هل يُصدر فواتير إلكترونية إماراتية أو سعودية؟',
         },
         a: {
-          en: 'Not yet. Invoices carry tax treatment and rate per line, but the mandated e-invoice formats and their transmission are on the roadmap with no ship date.',
-          ar: 'ليس بعد. الفواتير تحمل المعالجة الضريبية والنسبة لكل بند، لكن صيغ الفوترة الإلكترونية المطلوبة وإرسالها على خطة التطوير دون موعد إطلاق.',
+          en: 'Yes. Saudi branches issue ZATCA Phase 2 e-invoices and UAE branches issue PINT AE e-invoices, from the same job file, with the VAT treatment decided per line.',
+          ar: 'نعم. تُصدر فروع السعودية فواتير المرحلة الثانية من زاتكا، وتُصدر فروع الإمارات فواتير PINT AE، من ملف الشحنة نفسه، مع تحديد المعالجة الضريبية لكل بند.',
         },
       },
       {
@@ -1834,10 +1967,10 @@ const rows: Row[] = [
       },
       {
         eyebrow: { en: '04 · Where CargoSharks stands', ar: '04 · أين يقف CargoSharks' },
-        heading: { en: 'On the roadmap, with no ship date', ar: 'على خطة التطوير، دون موعد إطلاق' },
+        heading: { en: 'How CargoSharks handles it', ar: 'كيف يتعامل CargoSharks معها' },
         lead: {
-          en: 'CargoSharks does not issue UAE e-invoices today, and we will not give a date we cannot keep. What exists: each invoice line already carries its tax treatment and rate, per entity and currency, and the hand-off to an accredited provider is built into the service but not switched on. What remains is generating the PINT AE document and connecting a contracted provider. We are not an ASP and do not plan to become one. Until it ships, issue e-invoices from your accounting system or your provider’s portal, and use the journal export to carry CargoSharks invoices into it.',
-          ar: 'لا يُصدر CargoSharks فواتير إلكترونية إماراتية اليوم، ولن نعطي موعداً لا نستطيع الوفاء به. الموجود: كل بند في الفاتورة يحمل معالجته الضريبية ونسبته، لكل كيان وعملة، والربط مع مزوّد معتمد مبنيّ في الخدمة لكنه غير مفعّل. والمتبقي: إنشاء مستند PINT AE وربط مزوّد متعاقد معه. لسنا مزوّد خدمة معتمداً ولا ننوي أن نكون. وإلى أن يُطلق، أصدروا الفواتير الإلكترونية من نظامكم المحاسبي أو من بوابة مزوّدكم، واستخدموا تصدير القيود لنقل فواتير CargoSharks إليه.',
+          en: 'CargoSharks issues the invoice in PINT AE from the job file, with each line’s VAT treatment and rate decided from your rules, and sends it to your accredited service provider as soon as it is issued. We are not an ASP and do not plan to become one: you appoint your own provider, as the Ministry requires, and CargoSharks connects to it.',
+          ar: 'يُصدر CargoSharks الفاتورة بصيغة PINT AE من ملف الشحنة، مع تحديد المعالجة الضريبية ونسبتها لكل بند وفق قواعدكم، ويرسلها إلى مزوّد الخدمة المعتمد لديكم فور إصدارها. لسنا مزوّد خدمة معتمداً ولا ننوي أن نكون: تعيّنون مزوّدكم بأنفسكم كما تشترط الوزارة، ويرتبط به CargoSharks.',
         },
       },
     ],
@@ -1861,20 +1994,6 @@ const rows: Row[] = [
         ar: 'بالوضوح نفسه الذي كُتبت به المواعيد أعلاه.',
       },
       items: [
-        {
-          label: { en: 'PINT AE documents', ar: 'مستندات PINT AE' },
-          body: {
-            en: 'Not generated. On the roadmap with no ship date.',
-            ar: 'لا تُنشأ. على خطة التطوير دون موعد إطلاق.',
-          },
-        },
-        {
-          label: { en: 'Transmission through an ASP', ar: 'الإرسال عبر مزوّد معتمد' },
-          body: {
-            en: 'The connection is built but not switched on, and no provider is contracted.',
-            ar: 'الربط مبنيّ لكنه غير مفعّل، ولا يوجد مزوّد متعاقد معه.',
-          },
-        },
         {
           label: { en: 'Being an ASP', ar: 'أن نكون مزوّداً معتمداً' },
           body: {
@@ -1915,8 +2034,8 @@ const rows: Row[] = [
           ar: 'هل يدعم CargoSharks الفوترة الإلكترونية في الإمارات؟',
         },
         a: {
-          en: 'Not yet. Invoices carry tax treatment and rate per line and the provider hand-off is built, but PINT AE generation and transmission are on the roadmap with no ship date. Until then, issue e-invoices from your accounting system or provider and use CargoSharks’ journal export.',
-          ar: 'ليس بعد. الفواتير تحمل المعالجة الضريبية والنسبة لكل بند والربط مع المزوّد مبنيّ، لكن إنشاء PINT AE وإرسالها على خطة التطوير دون موعد إطلاق. وحتى ذلك الحين أصدروا الفواتير الإلكترونية من نظامكم المحاسبي أو مزوّدكم واستخدموا تصدير القيود من CargoSharks.',
+          en: 'Yes. Invoices are issued in PINT AE from the job file, with VAT decided per line, and sent to your accredited service provider as soon as they are issued.',
+          ar: 'نعم. تصدر الفواتير بصيغة PINT AE من ملف الشحنة، مع تحديد الضريبة لكل بند، وتُرسل إلى مزوّد الخدمة المعتمد لديكم فور إصدارها.',
         },
       },
       {

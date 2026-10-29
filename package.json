@@ -32,14 +32,19 @@
     "@payloadcms/next": "3.91.0",
     "@payloadcms/translations": "3.91.0",
     "@phosphor-icons/react": "^2.1.10",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "graphql": "^16.14.2",
     "marked": "18.1.1",
     "motion": "^13.5.1",
     "next": "^16.4.3",
     "payload": "3.91.0",
+    "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "sharp": "0.35.5"
+    "recharts": "2.15.4",
+    "sharp": "0.35.5",
+    "tailwind-merge": "^3.7.0"
   },
   "packageManager": "pnpm@11.28.9",
   "engines": {

@@ -566,6 +566,17 @@ export function DpaContent() {
                         <td>Currency codes only.</td>
                       </tr>
                       <tr>
+                        <th scope="row">E-invoicing</th>
+                        <td>
+                          ZATCA&rsquo;s Fatoora platform for Saudi branches; for UAE branches, the
+                          accredited service provider the controller appoints.
+                        </td>
+                        <td>
+                          Each tax invoice, credit note and debit note as issued: parties, tax
+                          numbers, addresses, lines, VAT and totals.
+                        </td>
+                      </tr>
+                      <tr>
                         <th scope="row">Outbound webhooks</th>
                         <td>Whatever URL the controller configures.</td>
                         <td>
@@ -580,8 +591,7 @@ export function DpaContent() {
                   Not present, and worth saying because a reviewer will look:{' '}
                   <strong>
                     no payment processor, no analytics, no advertising or marketing platform, no
-                    error-reporting service, no product-telemetry exporter, no appointed e-invoicing
-                    provider, no WhatsApp sender.
+                    error-reporting service, no product-telemetry exporter, no WhatsApp sender.
                   </strong>{' '}
                   The application is instrumented against the OpenTelemetry interface with no
                   exporter configured, so nothing is emitted unless the controller configures a

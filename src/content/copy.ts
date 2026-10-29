@@ -472,68 +472,164 @@ export const navLinks: { href: string; label: Bi }[] = nav.flatMap((item) =>
 )
 
 export const hero = {
-  /** Split so the line breaks are a design decision rather than the browser's. */
+  /**
+   * The search phrase leads, the promise follows.
+   *
+   * "From enquiry to invoice, one file." carried no word anybody searches for,
+   * on the page with the most authority on the site. "Freight forwarding
+   * software" is the query; "e-invoice" is the word Gulf buyers are asking
+   * every vendor about, so it is the destination of the sentence.
+   */
   title: {
-    en: ['From enquiry', 'to invoice,', 'one file.'],
-    ar: ['من الاستفسار', 'إلى الفاتورة،', 'سجل واحد.'],
+    en: 'Freight forwarding software, from enquiry to e-invoice.',
+    ar: 'برنامج إدارة الشحن، من الاستفسار إلى الفاتورة الإلكترونية.',
   },
-  /**
-   * Two lines, not five.
-   *
-   * This ran to a forty-word sentence listing seven stages, under a mono eyebrow
-   * reading "KUWAIT · SEA, AIR, ROAD, COURIER" with a pulsing dot beside
-   * it. The list is what the page below is for; the eyebrow was the house style
-   * of every generated landing page in the category. Both are gone. What is
-   * left is the sentence a forwarder would use.
-   */
   body: {
-    en: 'Quote, book, clear and invoice a shipment without ever keying it into a second system.',
-    ar: 'سعّروا الشحنة واحجزوها وخلّصوها وفوتروها، دون إدخال بياناتها مرة أخرى في أي نظام آخر.',
-  },
-  /**
-   * The line above the headline.
-   *
-   * It was a glass pill with a pulsing green dot reading "The live demo is
-   * open · no sign-up". A pill with a pulsing dot is the single most recognisable
-   * component of a generated landing page, and this one was also making the
-   * page's most important offer in its smallest, most decorative element.
-   * The offer moved to the button, where it can be clicked, and what is left
-   * here is what an eyebrow is for: where this thing is from and what it covers.
-   */
-  eyebrow: {
-    en: 'Kuwait · sea, air, road, courier',
-    ar: 'الكويت · بحري وجوي وبري وبريد سريع',
+    en: 'Quote, book, clear and invoice every shipment on one file, in Arabic and English, with ZATCA and UAE e-invoicing built in. Made in Kuwait for forwarders across the GCC.',
+    ar: 'سعّروا كل شحنة واحجزوها وخلّصوها وفوتروها على سجل واحد، بالعربية والإنجليزية، مع الفوترة الإلكترونية لزاتكا والإمارات مدمجة فيه. صُنع في الكويت لشركات الشحن في دول الخليج.',
   },
   primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  secondary: { en: 'See what it does', ar: 'اطّلعوا على ما يفعله' },
+  secondary: { en: 'Book a demo call', ar: 'احجزوا اتصالاً تعريفياً' },
   /**
-   * The caption under the product frame — one live figure, in mono, in small
-   * type. See `Hero.tsx` for why it is a caption rather than the chip it was.
+   * Under the buttons, as plain text: what a Gulf buyer checks for first. Not
+   * pills — a row of badges under a hero is the template this page left.
+   */
+  facts: [
+    { en: 'ZATCA Phase 2', ar: 'زاتكا المرحلة الثانية' },
+    { en: 'UAE e-invoicing', ar: 'الفوترة الإلكترونية في الإمارات' },
+    { en: 'Arabic and English', ar: 'العربية والإنجليزية' },
+    { en: 'Sea, air, road, courier', ar: 'بحري وجوي وبري وبريد سريع' },
+  ],
+  /**
+   * The caption under the product frame. The day count and the amount are
+   * computed from `FREE_TIME_ENDED` in the browser, so the three figures on the
+   * line can no longer disagree with each other or with today's date, which
+   * the hard-coded "131 days" did.
    */
   tickerLabel: {
     en: 'Accruing right now on one box in Shuwaikh:',
     ar: 'يجري الآن على حاوية واحدة في الشويخ:',
   },
-  tickerRef: {
-    en: '· MSKU 704 118 2 · 131 days past free time',
-    ar: '· MSKU 704 118 2 · 131 يوماً بعد وقت السماح',
-  },
+  tickerDays: { en: 'days past free time', ar: 'يوماً بعد وقت السماح' },
 }
 
 /**
- * The proof strip.
+ * When free time ran out on the demurrage example, and what it costs a day.
+ * One date and one rate, so the hero caption and the charge line in `Leak`
+ * cannot drift apart again.
+ */
+export const FREE_TIME_ENDED = '2026-08-14T00:00:00+03:00'
+export const DEMURRAGE_PER_DAY = 32
+
+/**
+ * The facts strip under the hero.
  *
- * Facts about the product a buyer can check in the demo, not outcomes: there
- * is no pilot data yet, so nothing here is a saving or a speed-up. It used to
- * count row-level policies, audit triggers and interface strings, which are
- * true and mean nothing to the owner of a forwarding desk.
+ * Facts a buyer can check in the demo, not outcomes: nothing here is a saving
+ * or a speed-up, because there is no customer data behind one.
  */
 export const proof: { value: string; label: Bi }[] = [
   { value: '1', label: { en: 'file from enquiry to paid invoice', ar: 'سجل من الاستفسار إلى الفاتورة المسدَّدة' } },
   { value: '0', label: { en: 'times a shipment is keyed in twice', ar: 'مرات إدخال الشحنة مرتين' } },
-  { value: '2', label: { en: 'languages on every screen and document', ar: 'لغتان في كل شاشة ومستند' } },
+  { value: '2', label: { en: 'e-invoicing regimes: ZATCA and the UAE', ar: 'نظاما فوترة إلكترونية: زاتكا والإمارات' } },
   { value: '3', label: { en: 'decimals on every dinar', ar: 'خانات عشرية لكل دينار' } },
 ]
+
+/**
+ * The e-invoicing section, second on the home page and on the market pages.
+ *
+ * It is the first question Gulf forwarders ask a vendor now, so it is answered
+ * near the top rather than in a FAQ. The example invoice is real VAT logic:
+ * the categories, rates and exemption codes are the seed rows of the product's
+ * `vat_rules` table for a Saudi branch billing an international move, and the
+ * totals add up (6,400 + 850 + 600 + 3,200 = 11,050; VAT 90.00).
+ */
+export const einvoicing = {
+  title: {
+    en: 'ZATCA and UAE e-invoicing, built into the invoice',
+    ar: 'الفوترة الإلكترونية لزاتكا والإمارات، مدمجة في الفاتورة',
+  },
+  lede: {
+    en: 'The invoice your team raises from the job is the e-invoice. No second system, no export, and nothing re-keyed into a tax portal.',
+    ar: 'الفاتورة التي يصدرها فريقكم من ملف الشحنة هي نفسها الفاتورة الإلكترونية. لا نظام ثانٍ ولا تصدير، ولا إعادة إدخال في بوابة ضريبية.',
+  },
+  points: [
+    {
+      label: { en: 'Saudi Arabia: ZATCA Phase 2', ar: 'السعودية: زاتكا المرحلة الثانية' },
+      body: {
+        en: 'Tax invoices, credit notes and debit notes go out as signed XML with the QR code, cleared with ZATCA as part of issuing.',
+        ar: 'الفواتير الضريبية والإشعارات الدائنة والمدينة تصدر بصيغة XML موقّعة مع رمز QR، وتُعتمد لدى زاتكا كجزء من إصدارها.',
+      },
+    },
+    {
+      label: { en: 'UAE: e-invoicing', ar: 'الإمارات: الفوترة الإلكترونية' },
+      body: {
+        en: 'Invoices in the UAE’s PINT AE format, transmitted as soon as the invoice is issued.',
+        ar: 'فواتير بصيغة PINT AE المعتمدة في الإمارات، تُرسل فور إصدار الفاتورة.',
+      },
+    },
+    {
+      label: { en: 'VAT decided per line', ar: 'ضريبة القيمة المضافة لكل بند' },
+      body: {
+        en: 'Each line’s VAT category, rate and exemption code comes from the charge, the branch’s country and whether the move is international, from rules your finance team can edit.',
+        ar: 'فئة الضريبة ونسبتها ورمز الإعفاء لكل بند تُحدَّد من نوع الرسم ودولة الفرع وما إذا كانت الشحنة دولية، وفق قواعد يستطيع فريق المالية تعديلها.',
+      },
+    },
+    {
+      label: { en: 'Kuwait: unchanged', ar: 'الكويت: كما هي' },
+      body: {
+        en: 'Kuwaiti branches invoice as they do today, in dinars to three decimals.',
+        ar: 'تُصدر فروع الكويت فواتيرها كما تفعل اليوم، بالدينار وبثلاث خانات عشرية.',
+      },
+    },
+  ],
+  example: {
+    caption: {
+      en: 'One invoice from a Dammam branch: a sea import from Shanghai, VAT decided line by line.',
+      ar: 'فاتورة واحدة من فرع الدمام: شحنة استيراد بحرية من شنغهاي، والضريبة محددة بنداً بنداً.',
+    },
+    head: {
+      charge: { en: 'Charge', ar: 'الرسم' },
+      treatment: { en: 'VAT treatment', ar: 'المعالجة الضريبية' },
+      amount: { en: 'Amount, SAR', ar: 'المبلغ، ر.س' },
+      vat: { en: 'VAT, SAR', ar: 'الضريبة، ر.س' },
+    },
+    rows: [
+      {
+        charge: { en: 'Ocean freight', ar: 'الشحن البحري' },
+        treatment: { en: 'Zero-rated · VATEX-SA-34-1', ar: 'نسبة صفرية · VATEX-SA-34-1' },
+        amount: '6,400.00',
+        vat: '0.00',
+      },
+      {
+        charge: { en: 'Customs clearance', ar: 'التخليص الجمركي' },
+        treatment: { en: 'Zero-rated · VATEX-SA-34-5', ar: 'نسبة صفرية · VATEX-SA-34-5' },
+        amount: '850.00',
+        vat: '0.00',
+      },
+      {
+        charge: { en: 'Port storage', ar: 'التخزين في الميناء' },
+        treatment: { en: 'Standard · 15%', ar: 'النسبة الأساسية · 15%' },
+        amount: '600.00',
+        vat: '90.00',
+      },
+      {
+        charge: { en: 'Customs duty, paid for you', ar: 'الرسوم الجمركية المدفوعة عنكم' },
+        treatment: { en: 'Out of scope', ar: 'خارج النطاق' },
+        amount: '3,200.00',
+        vat: '–',
+      },
+    ],
+    total: { en: 'Total with VAT', ar: 'الإجمالي مع الضريبة' },
+    totalAmount: '11,050.00',
+    totalVat: '90.00',
+    grand: '11,140.00',
+    stamp: { en: 'Signed · QR · cleared', ar: 'موقّعة · QR · معتمدة' },
+  },
+  links: {
+    uae: { en: 'UAE e-invoicing guide for forwarders', ar: 'دليل الفوترة الإلكترونية في الإمارات' },
+    saudi: { en: 'Freight software for Saudi Arabia', ar: 'برنامج الشحن للسعودية' },
+  },
+}
 
 /**
  * The three-step sequence.
@@ -718,13 +814,13 @@ export const capabilities = {
     ar: 'الأجزاء التي يفتحها الوكيل كل يوم.',
   },
   sub: {
-    en: 'Five things a desk relies on, built so they still hold on the day everyone is in a hurry.',
-    ar: 'خمسة أمور يعتمد عليها المكتب، مبنية لتصمد حتى في اليوم الذي يستعجل فيه الجميع.',
+    en: 'Six things a desk relies on, built so they still hold on the day everyone is in a hurry.',
+    ar: 'ستة أمور يعتمد عليها المكتب، مبنية لتصمد حتى في اليوم الذي يستعجل فيه الجميع.',
   },
   cards: [
     {
       key: 'lane',
-      span: 'wide',
+      span: 'half',
       icon: 'route',
       title: { en: 'Every leg on one timeline', ar: 'كل مرحلة على خط زمني واحد' },
       body: {
@@ -763,6 +859,16 @@ export const capabilities = {
       },
     },
     {
+      key: 'inbox',
+      span: 'half',
+      icon: 'inbox',
+      title: { en: 'Every enquiry in one queue', ar: 'كل استفسار في قائمة واحدة' },
+      body: {
+        en: 'WhatsApp, email, the web form and the phone land in one queue across every branch, each with an owner and a response clock, so no request waits because nobody saw it.',
+        ar: 'واتساب والبريد ونموذج الموقع والهاتف تصل إلى قائمة واحدة لكل الفروع، لكل استفسار مسؤول وعدّاد للرد، فلا ينتظر طلب لأن أحداً لم يره.',
+      },
+    },
+    {
       key: 'tenancy',
       span: 'half',
       icon: 'tenancy',
@@ -785,7 +891,7 @@ export const capabilities = {
  *
  * **It does not claim a saving, and that is deliberate.** Every calculator in
  * this category ends with "you would save 23% with us", a figure nobody can
- * check and which this product has no pilot data to support. The sales set
+ * check and which this product has no customer data to support. The sales set
  * is written under one rule — nothing is claimed
  * that the working tree does not do — so the output here is the reader's own
  * exposure, full stop, and `note` says plainly that the software does not make
@@ -926,38 +1032,53 @@ export const leak = {
     rateLabel: { en: 'Rate', ar: 'التعرفة' },
     rateValue: { en: 'KWD 32.000 / day', ar: '32.000 د.ك / يوم' },
     daysLabel: { en: 'Chargeable days', ar: 'الأيام الخاضعة' },
-    daysValue: { en: '131 and counting', ar: '131 ويزيد' },
+    /** After the day count, which `Leak` computes from `FREE_TIME_ENDED`. */
+    daysTail: { en: 'and counting', ar: 'ويزيد' },
     totalLabel: { en: 'Accrued to now', ar: 'المستحق حتى الآن' },
     written: { en: 'Charge line written automatically', ar: 'يُكتب بند التكلفة تلقائياً' },
   },
 }
 
 /**
- * The pilot request form (`components/Pilot.tsx`). It replaced a mailto link
- * that did nothing for a reader with no mail client set up.
+ * The demo request form (`components/Enquiry.tsx`), which closes the home page.
+ *
+ * There is no trial. A visitor can open the live demo on their own, and the
+ * meetings before a decision cost nothing; setup, onboarding and the
+ * subscription are quoted per operation. The questions are the ones the first
+ * call would otherwise spend twenty minutes on, so the quote can be shaped
+ * before anyone meets. Only name, company and email are required: every other
+ * question is a reason not to send the form, so none of them blocks it.
  */
-export const pilot = {
-  eyebrow: { en: 'Fifteen-day pilot', ar: 'تجربة لخمسة عشر يوماً' },
+export const enquiry = {
   title: {
-    en: 'Try it on your own shipments.',
-    ar: 'جرّبوه على شحناتكم أنتم.',
+    en: 'Book a demo, and tell us about your operation.',
+    ar: 'احجزوا عرضاً تعريفياً، وأخبرونا عن عملكم.',
   },
   body: {
-    en: 'Tell us a little about your desk. A person reads every request and replies with what a pilot on your data would involve, in English or Arabic.',
-    ar: 'أخبرونا قليلاً عن مكتبكم. يقرأ شخصٌ كل طلب ويرد عليكم بما تتضمنه تجربة على بياناتكم، بالعربية أو الإنجليزية.',
+    en: 'A person reads every request and replies within one working day, in Arabic or English. The answers below shape the demo and the quote, so the first call is about your shipments, not a questionnaire.',
+    ar: 'يقرأ شخصٌ كل طلب ويرد خلال يوم عمل واحد، بالعربية أو الإنجليزية. الإجابات أدناه تحدد محتوى العرض والتسعيرة، فيكون الاتصال الأول عن شحناتكم لا عن استبيان.',
   },
-  points: [
+  steps: [
     {
-      en: 'Your own rate cards, customers and lanes loaded in',
-      ar: 'أسعاركم وعملاؤكم وخطوطكم محمّلة فيه',
+      title: { en: 'Demo call', ar: 'اتصال تعريفي' },
+      body: {
+        en: 'Free. Your lanes and your documents, on the real software.',
+        ar: 'مجاني. خطوطكم ومستنداتكم، على البرنامج نفسه.',
+      },
     },
     {
-      en: 'Your team on it from the first week, in both languages',
-      ar: 'فريقكم يعمل عليه من الأسبوع الأول، باللغتين',
+      title: { en: 'Setup and onboarding', ar: 'الإعداد والتأهيل' },
+      body: {
+        en: 'Your rate cards, customers, templates and e-invoicing set up, and your team trained.',
+        ar: 'إعداد بطاقات أسعاركم وعملائكم وقوالبكم والفوترة الإلكترونية، وتدريب فريقكم.',
+      },
     },
     {
-      en: 'Nothing to install, and your data stays yours',
-      ar: 'لا شيء لتثبيته، وبياناتكم تبقى ملككم',
+      title: { en: 'Live', ar: 'التشغيل' },
+      body: {
+        en: 'A subscription quoted for your branches and users. No per-shipment fees.',
+        ar: 'اشتراك يُسعَّر حسب فروعكم ومستخدميكم. بلا رسوم على كل شحنة.',
+      },
     },
   ],
   fields: {
@@ -965,12 +1086,58 @@ export const pilot = {
     company: { en: 'Company', ar: 'الشركة' },
     email: { en: 'Work email', ar: 'البريد الإلكتروني للعمل' },
     phone: { en: 'Phone or WhatsApp', ar: 'الهاتف أو واتساب' },
-    country: { en: 'Country', ar: 'الدولة' },
+    country: { en: 'Main country', ar: 'الدولة الرئيسية' },
     volume: { en: 'Shipments a month', ar: 'الشحنات شهرياً' },
-    message: { en: 'Anything we should know (optional)', ar: 'أي شيء يجب أن نعرفه (اختياري)' },
+    branches: { en: 'Branches', ar: 'عدد الفروع' },
+    users: { en: 'People who would use it', ar: 'عدد المستخدمين' },
+    modes: { en: 'What you move', ar: 'وسائل الشحن لديكم' },
+    system: { en: 'What you use today', ar: 'ما تستخدمونه اليوم' },
+    einvoicing: { en: 'E-invoicing you need', ar: 'الفوترة الإلكترونية المطلوبة' },
+    timeline: { en: 'When you want to be live', ar: 'متى تريدون البدء' },
+    message: { en: 'Anything else we should know', ar: 'أي شيء آخر يجب أن نعرفه' },
     optional: { en: 'optional', ar: 'اختياري' },
     choose: { en: 'Choose', ar: 'اختاروا' },
+    about: { en: 'About your operation', ar: 'عن عملكم' },
   },
+  branchCounts: [
+    { value: '1', en: 'One office', ar: 'مكتب واحد' },
+    { value: '2-3', en: '2 to 3', ar: 'من 2 إلى 3' },
+    { value: '4-10', en: '4 to 10', ar: 'من 4 إلى 10' },
+    { value: 'Over 10', en: 'More than 10', ar: 'أكثر من 10' },
+  ],
+  userCounts: [
+    { value: 'Under 10', en: 'Under 10', ar: 'أقل من 10' },
+    { value: '10-25', en: '10 to 25', ar: 'من 10 إلى 25' },
+    { value: '25-100', en: '25 to 100', ar: 'من 25 إلى 100' },
+    { value: 'Over 100', en: 'More than 100', ar: 'أكثر من 100' },
+  ],
+  modeOptions: [
+    { value: 'Sea', en: 'Sea', ar: 'بحري' },
+    { value: 'Air', en: 'Air', ar: 'جوي' },
+    { value: 'Road', en: 'Road', ar: 'بري' },
+    { value: 'Courier', en: 'Courier', ar: 'بريد سريع' },
+    { value: 'Customs', en: 'Customs clearance', ar: 'تخليص جمركي' },
+  ],
+  systems: [
+    { value: 'Spreadsheets', en: 'Spreadsheets and email', ar: 'جداول بيانات وبريد' },
+    { value: 'CargoWise', en: 'CargoWise', ar: 'CargoWise' },
+    { value: 'Logistaas', en: 'Logistaas', ar: 'Logistaas' },
+    { value: 'Other software', en: 'Other freight software', ar: 'برنامج شحن آخر' },
+    { value: 'In-house', en: 'Our own system', ar: 'نظام خاص بنا' },
+  ],
+  einvoicingNeeds: [
+    { value: 'ZATCA', en: 'Saudi ZATCA', ar: 'زاتكا السعودية' },
+    { value: 'UAE', en: 'UAE', ar: 'الإمارات' },
+    { value: 'Both', en: 'Both', ar: 'كلاهما' },
+    { value: 'None', en: 'Not needed', ar: 'غير مطلوبة' },
+    { value: 'Unsure', en: 'Not sure yet', ar: 'غير متأكدين' },
+  ],
+  timelines: [
+    { value: 'This month', en: 'This month', ar: 'هذا الشهر' },
+    { value: '1-3 months', en: 'In 1 to 3 months', ar: 'خلال 1 إلى 3 أشهر' },
+    { value: '3-6 months', en: 'In 3 to 6 months', ar: 'خلال 3 إلى 6 أشهر' },
+    { value: 'Exploring', en: 'Just exploring', ar: 'نستكشف فقط' },
+  ],
   countries: [
     { value: 'Kuwait', en: 'Kuwait', ar: 'الكويت' },
     { value: 'UAE', en: 'UAE', ar: 'الإمارات' },
@@ -986,14 +1153,20 @@ export const pilot = {
     { value: '200-1,000', en: '200 to 1,000', ar: 'من 200 إلى 1,000' },
     { value: 'Over 1,000', en: 'Over 1,000', ar: 'أكثر من 1,000' },
   ],
-  submit: { en: 'Ask for a pilot', ar: 'اطلبوا التجربة' },
+  submit: { en: 'Request a demo', ar: 'اطلبوا العرض التعريفي' },
   sending: { en: 'Sending…', ar: 'جارٍ الإرسال…' },
+  /** Beside the form, for a reader who would rather look than talk first. */
+  selfServe: {
+    en: 'Rather look first? The live demo is open, with no sign-up.',
+    ar: 'تفضّلون الاطلاع أولاً؟ النسخة التجريبية مفتوحة، بلا تسجيل.',
+  },
   done: {
     title: { en: 'Thank you. We have it.', ar: 'شكراً لكم، وصلنا طلبكم.' },
     body: {
-      en: 'Someone from CargoSharks will be in touch. In the meantime the live demo is open, with no sign-up.',
-      ar: 'سيتواصل معكم أحد من CargoSharks. وإلى ذلك الحين النسخة التجريبية مفتوحة، بلا تسجيل.',
+      en: 'We will reply within one working day. If you would rather fix a time now, pick one below.',
+      ar: 'سنرد خلال يوم عمل واحد. وإن فضّلتم تحديد موعد الآن، اختاروه أدناه.',
     },
+    book: { en: 'Pick a time for the call', ar: 'اختاروا موعد الاتصال' },
   },
   error: {
     missing: {
@@ -1020,32 +1193,27 @@ export const pilot = {
 }
 
 /**
- * The close.
- *
- * It used to be a headline beside a card printing three email addresses and a
- * password — a credentials table as the last thing a prospect sees, which reads
- * as a support article rather than an invitation. The addresses are in the
- * demo's own sign-in screen where they are useful; here there is one thing to
- * do and one line explaining why it costs nothing to do it.
+ * The intro-call booking page, offered once a demo request has been sent. A
+ * link rather than an embed: an embedded scheduler is a third-party script on
+ * every page view for the one visitor in a hundred who books.
  */
-export const cta = {
-  eyebrow: { en: 'The demo is the build', ar: 'النسخة التجريبية هي المنتج نفسه' },
+export const CALL_URL = 'https://cal.com/techpotions/intro-call-cargosharks'
+
+/**
+ * The market pages, as a strip of links on the home page. The header panels
+ * that list them only render on hover, so before this the home page's HTML
+ * linked to none of the pages written to rank.
+ */
+export const markets = {
   title: {
-    en: 'Judge it in ten minutes, not ten meetings.',
-    ar: 'احكموا عليه في عشر دقائق، لا في عشرة اجتماعات.',
+    en: 'Freight software for each Gulf market',
+    ar: 'برنامج الشحن لكل سوق خليجي',
   },
-  body: {
-    en: 'It is the real software on a seeded dataset, with a sign-in for you, for your customer and for your agent. Nothing to install, nothing to uninstall, and nothing you do in it touches anything.',
-    ar: 'هو البرنامج نفسه يعمل على بيانات مُعدّة، بحساب لكم، وحساب لعميلكم، وحساب لوكيلكم. لا شيء يُثبَّت ولا شيء يُزال، ولا يمسّ ما تفعلونه فيه شيئاً.',
+  lede: {
+    en: 'The same product, set up for the currency, the documents and the e-invoicing rules where you work.',
+    ar: 'المنتج نفسه، مُعدّاً للعملة والمستندات وقواعد الفوترة الإلكترونية حيث تعملون.',
   },
-  primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  secondary: { en: 'Ask for a 15-day pilot', ar: 'اطلبوا تجربة الخمسة عشر يوماً' },
-  /** Three claims, each one checkable in the first thirty seconds. */
-  points: [
-    { en: 'No sign-up', ar: 'بلا تسجيل' },
-    { en: 'Three roles', ar: 'ثلاثة حسابات' },
-    { en: 'Arabic and English', ar: 'بالعربية والإنجليزية' },
-  ],
+  jobs: { en: 'Or start from the job', ar: 'أو ابدؤوا من المهمة' },
 }
 
 export const footer = {
@@ -1061,7 +1229,8 @@ export const footer = {
         { href: '/compare/', label: { en: 'How we compare', ar: 'كيف نقارن' } },
         // The one link with an Arabic twin: the same `hrefAr` shape as `nav`.
         { href: '/blog/', hrefAr: '/ar/blog/', label: { en: 'Blog', ar: 'المدونة' } },
-        { href: '#demo', label: { en: 'Demo', ar: 'النسخة التجريبية' } },
+        { href: DEMO_URL, label: { en: 'Live demo', ar: 'النسخة التجريبية' } },
+        { href: '/#demo', hrefAr: '/ar/#demo', label: { en: 'Book a demo', ar: 'احجزوا عرضاً' } },
       ],
     },
     {

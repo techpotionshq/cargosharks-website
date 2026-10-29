@@ -80,4 +80,10 @@
   --pg-amber: #e3a52f;
 
   --pg-positive: #2f9e6b;
+
+  /* Headings on paper: the brand's deepest navy rather than the near-black
+     ink, at weight 800. It is the heading the market and comparison pages
+     always had, and the one the owner chose over the lighter black 500 the
+     rebuild first tried. */
+  --pg-heading: var(--qb-primary-950);
 }

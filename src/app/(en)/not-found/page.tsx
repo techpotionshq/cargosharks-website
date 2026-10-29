@@ -1,7 +1,12 @@
 import type { Metadata } from 'next'
-import { Wordmark } from '@/components/Wordmark'
-import { navLinks } from '@/content/copy'
+import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
 import { EmailLink } from '@/components/Email'
+import { Footer } from '@/components/Footer'
+import { Header } from '@/components/Header'
+import { Wordmark } from '@/components/Wordmark'
+import { Button } from '@/components/ui/button'
+import { Section } from '@/components/ui/section'
+import type { Lang } from '@/content/copy'
 
 /**
  * `noindex` and no canonical: the group layout's metadata would otherwise give
@@ -14,6 +19,39 @@ export const metadata: Metadata = {
   description: 'The address was wrong, or what was here has moved.',
   robots: { index: false, follow: true },
   alternates: {},
+}
+
+/** The ways on, in each language, to that language's own pages. */
+const WAYS: Record<Lang, { heading: string; links: { href: string; label: string }[] }> = {
+  en: {
+    heading: 'Where to go from here',
+    links: [
+      { href: '/', label: 'The home page' },
+      {
+        href: '/freight-forwarding-software-kuwait/',
+        label: 'Freight forwarding software for Kuwait',
+      },
+      {
+        href: '/freight-forwarding-software-uae/',
+        label: 'Freight forwarding software for the UAE',
+      },
+      {
+        href: '/freight-forwarding-software-saudi-arabia/',
+        label: 'Freight forwarding software for Saudi Arabia',
+      },
+      { href: '/blog/', label: 'The blog' },
+    ],
+  },
+  ar: {
+    heading: 'إلى أين من هنا',
+    links: [
+      { href: '/ar/', label: 'الصفحة الرئيسية' },
+      { href: '/ar/freight-forwarding-software-kuwait/', label: 'برنامج الشحن للكويت' },
+      { href: '/ar/freight-forwarding-software-uae/', label: 'برنامج الشحن للإمارات' },
+      { href: '/ar/freight-forwarding-software-saudi-arabia/', label: 'برنامج الشحن للسعودية' },
+      { href: '/ar/blog/', label: 'المدونة' },
+    ],
+  },
 }
 
 /**
@@ -41,76 +79,87 @@ export const metadata: Metadata = {
  * named `404` is silently dropped from the route table and the built-in page
  * is emitted in its place, which looks exactly like this working until you
  * open the file.
+ *
+ * It wears the market pages' masthead and the shared bar and footer, so a
+ * visitor who lands here has not visibly left the site.
  */
 export default function NotFound() {
   return (
-    <main className="flex min-h-screen flex-col justify-between py-10">
-      <div className="shell">
-        <a href="/" aria-label="CargoSharks">
-          <Wordmark />
-        </a>
-      </div>
+    <>
+      <Header lang="en" alternate="/ar/" mark={<Wordmark tone="onDark" height={24} />} />
+      <main id="top">
+        <section className="bg-void pt-32 pb-16 text-on-void lg:pt-36 lg:pb-20">
+          <div className="shell grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <h1 className="max-w-[20ch] text-balance font-display text-display font-extrabold">
+                This page is not here.
+              </h1>
+              <p className="mt-6 max-w-[48ch] text-lede text-on-void-dim">
+                The address was wrong, or what was here has moved. Nothing on this site is deleted
+                without a redirect, so a link that used to work still does.
+              </p>
+            </div>
+            <div lang="ar" dir="rtl" className="arabic">
+              <p className="max-w-[20ch] text-balance font-display text-h2 font-bold leading-[1.35]">
+                هذه الصفحة غير موجودة.
+              </p>
+              <p className="mt-6 max-w-[48ch] text-lede leading-[1.9] text-on-void-dim">
+                العنوان غير صحيح، أو أن ما كان هنا قد انتقل. ولا يُحذف من هذا الموقع شيء دون تحويل،
+                فالرابط الذي كان يعمل ما زال يعمل.
+              </p>
+            </div>
+          </div>
+          <div className="shell mt-10 flex flex-wrap gap-3">
+            <Button asChild size="lg">
+              <a href="/#demo">Book a demo</a>
+            </Button>
+            <Button asChild size="lg" variant="onDark">
+              <a href="/ar/#demo" lang="ar" className="arabic">
+                احجزوا عرضاً تعريفياً
+              </a>
+            </Button>
+          </div>
+        </section>
 
-      <div className="shell">
-        <p className="tracked text-[0.62rem] text-blue-ink">404</p>
-
-        <h1 className="mt-6 font-display text-[clamp(2rem,4.4vw,3.2rem)] font-medium leading-[1.12] tracking-[-0.02em]">
-          This page is not here.
-        </h1>
-        <div className="arabic-block mt-4">
-          <h2
-            lang="ar"
-            dir="rtl"
-            className="arabic text-[clamp(1.5rem,3vw,2.1rem)] font-medium leading-[1.4] text-ink-dim"
-          >
-            هذه الصفحة غير موجودة.
-          </h2>
-        </div>
-
-        <p className="mt-8 max-w-[46ch] text-[1.0625rem] leading-[1.7] text-ink-dim">
-          The address was wrong, or what was here has moved. Nothing on this site is deleted without
-          a redirect, so a link that used to work still does.
-        </p>
-        <div className="arabic-block mt-4">
-          <p lang="ar" dir="rtl" className="arabic text-[1.0625rem] leading-[1.9] text-ink-faint">
-            العنوان غير صحيح، أو أن ما كان هنا قد انتقل. ولا يُحذف من هذا الموقع شيء دون تحويل،
-            فالرابط الذي كان يعمل ما زال يعمل.
+        <Section space="tight">
+          <div className="shell grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16">
+            {(['en', 'ar'] as const).map((lang) => (
+              <nav
+                key={lang}
+                aria-label={WAYS[lang].heading}
+                lang={lang}
+                dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                className={lang === 'ar' ? 'arabic min-w-0' : 'min-w-0'}
+              >
+                <h2 className="font-display text-h3 font-bold text-heading">
+                  {WAYS[lang].heading}
+                </h2>
+                <ul className="mt-5 divide-y divide-line border-y border-line">
+                  {WAYS[lang].links.map((link) => (
+                    <li key={link.href}>
+                      <a
+                        href={link.href}
+                        className="group flex min-h-12 items-center justify-between gap-4 py-3 text-body font-semibold text-ink transition-colors hover:text-blue-ink"
+                      >
+                        {link.label}
+                        <ArrowRight
+                          weight="bold"
+                          className="size-4 shrink-0 text-ink-faint group-hover:text-blue-ink rtl:-scale-x-100"
+                        />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ))}
+          </div>
+          <p className="shell mt-10 text-small text-ink-dim">
+            Certain the address was right? Tell us at{' '}
+            <EmailLink className="text-blue-ink hover:underline" />.
           </p>
-        </div>
-
-        <nav className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3">
-          <a
-            href="/"
-            className="tracked rounded-lg bg-blue px-6 py-4 text-[0.66rem] leading-none text-on-brand transition-opacity hover:opacity-90"
-          >
-            The home page
-          </a>
-          {navLinks.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="text-[0.95rem] text-ink-dim underline-offset-4 transition-colors hover:text-ink hover:underline"
-            >
-              {item.label.en}
-            </a>
-          ))}
-          <a
-            href="/ar/"
-            hrefLang="ar"
-            lang="ar"
-            className="arabic text-[0.95rem] text-ink-dim underline-offset-4 transition-colors hover:text-ink hover:underline"
-          >
-            العربية
-          </a>
-        </nav>
-      </div>
-
-      <div className="shell">
-        <p className="text-[0.8125rem] text-ink-faint">
-          Certain the address was right?{' '}
-          <EmailLink className="font-mono text-blue-ink hover:underline" />
-        </p>
-      </div>
-    </main>
+        </Section>
+      </main>
+      <Footer lang="en" alternate="/ar/" mark={<Wordmark tone="onDark" height={26} />} />
+    </>
   )
 }

@@ -1,43 +1,14 @@
-import type { Metadata } from 'next'
-import { DocPage } from '@/components/DocPage'
-import { ComparisonContent } from '@/content/pages/comparison'
-import { comparisons } from '@/content/comparisons'
-import { Breadcrumbs } from '@/components/StructuredData'
+import { ComparisonContent, comparison, comparisonMetadata } from '@/content/pages/comparison'
 
 /**
- * `/compare/cargoes-runner/`.
- *
- * The page itself is `ComparisonContent` driven by a row in
- * `comparisons.ts` — see that file for why these four are data rather than
- * four hand-written documents, and for the editorial rule they follow.
+ * `/compare/cargoes-runner/`: `ComparisonContent` driven by its row in
+ * `comparisons.ts`. That file says why the four are data rather than four
+ * documents, and the editorial rule they follow.
  */
-const item = comparisons.find((entry) => entry.slug === 'cargoes-runner')!
+const slug = 'cargoes-runner'
 
-export const metadata: Metadata = {
-  title: 'CargoSharks vs CARGOES Runner — DP World’s platform, compared honestly',
-  description:
-    'What CARGOES Runner is, when the backing of a group that size is the reason to choose it, and where a smaller independent system built in Kuwait fits instead.',
-  alternates: { canonical: '/compare/cargoes-runner/' },
-  openGraph: {
-    type: 'article',
-    title: 'CargoSharks vs CARGOES Runner — DP World’s platform, compared honestly',
-    description:
-      'What CARGOES Runner is, when the backing of a group that size is the reason to choose it, and where a smaller independent system built in Kuwait fits instead.',
-    url: '/compare/cargoes-runner/',
-    images: [{ url: '/pic/screens/app-dashboard.webp', width: 2360, height: 1476 }],
-  },
-}
+export const metadata = comparisonMetadata(slug)
 
 export default function Page() {
-  return (
-    <DocPage lang="en">
-      <Breadcrumbs
-        trail={[
-          { name: 'How we compare', path: '/compare/' },
-          { name: item.name, path: '/compare/cargoes-runner/' },
-        ]}
-      />
-      <ComparisonContent item={item} lang="en" />
-    </DocPage>
-  )
+  return <ComparisonContent item={comparison(slug)} />
 }

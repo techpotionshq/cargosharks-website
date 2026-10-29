@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { DocPage } from '@/components/DocPage'
 import { ServerErrorContent } from '@/content/pages/500'
 
 /** An error page has nothing to index and a canonical would be a lie. */
@@ -10,9 +9,5 @@ export const metadata: Metadata = {
 }
 
 export default function Page() {
-  return (
-    <DocPage lang="en">
-      <ServerErrorContent />
-    </DocPage>
-  )
+  return <ServerErrorContent />
 }
