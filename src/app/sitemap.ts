@@ -20,13 +20,18 @@ import { allPosts, blogIndexAlternates, blogPath } from '@/lib/blog'
  * The landing pages come from `solution-nav.ts` on the same principle: the
  * list the header panel is built from is the list submitted here.
  *
- * The seven remaining routes are written down because they genuinely are a
+ * The four remaining routes are written down because they genuinely are a
  * hand-made list — Next's own route table is not readable at build time from
- * here, and inventing a filesystem walk to avoid seven strings would be more
+ * here, and inventing a filesystem walk to avoid four strings would be more
  * machinery than the strings.
  *
  * `/not-found/` and `/server-error/` are deliberately absent: a sitemap that
  * submits an error page is asking a crawler to index a dead end.
+ *
+ * So are `/privacy/`, `/terms/` and `/dpa/`, for as long as they are `noindex`
+ * (until counsel signs them off). Submitting a page the page itself refuses is
+ * a contradiction Search Console reports as an error, and Bing scores the
+ * sitemap down for it. Put them back here when the `robots` line goes.
  */
 
 /**
@@ -51,26 +56,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const all = await allPosts()
   const blogLanguages = await blogIndexAlternates(SITE_URL)
   const postsIn = (lang: 'en' | 'ar') => all.filter((post) => post[lang])
-  const home = {
-    url: `${SITE_URL}/`,
+  // Both homes, each carrying the pair as `hreflang` alternates, which is what
+  // stops a search engine treating `/` and `/ar/` as two pages competing for
+  // the same query. `/ar/` needs its own entry: an alternate alone is a hint,
+  // not a submission, and Google left the Arabic home undiscovered on it.
+  const homeLanguages = { en: `${SITE_URL}/`, ar: `${SITE_URL}/ar/`, 'x-default': `${SITE_URL}/` }
+  const home = (['en', 'ar'] as const).map((lang) => ({
+    url: homeLanguages[lang],
     lastModified: BUILT,
     changeFrequency: 'weekly' as const,
     priority: 1,
-    // The one page with an Arabic twin. `languages` emits `hreflang`
-    // alternates, which is what stops a search engine treating `/` and `/ar/`
-    // as two pages competing for the same query.
-    alternates: {
-      languages: { en: `${SITE_URL}/`, ar: `${SITE_URL}/ar/`, 'x-default': `${SITE_URL}/` },
-    },
-  }
+    alternates: { languages: homeLanguages },
+  }))
 
-  const pages = ['/what-we-do/', '/compare/', '/privacy/', '/terms/', '/dpa/'].map((path) => ({
+  // The two pages a stranger arrives on from search.
+  const pages = ['/what-we-do/', '/compare/'].map((path) => ({
     url: `${SITE_URL}${path}`,
     lastModified: BUILT,
     changeFrequency: 'monthly' as const,
-    // `/what-we-do/` and `/compare/` are the two pages a stranger arrives on
-    // from search; the three legal documents are linked, not marketed.
-    priority: path === '/privacy/' || path === '/terms/' || path === '/dpa/' ? 0.3 : 0.8,
+    priority: 0.8,
   }))
 
   const compare = comparisons.map((item) => ({
@@ -127,5 +131,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }))
   })
 
-  return [home, ...pages, ...compare, ...landing, ...blogIndex, ...posts]
+  return [...home, ...pages, ...compare, ...landing, ...blogIndex, ...posts]
 }

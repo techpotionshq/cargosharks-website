@@ -93,6 +93,9 @@ export async function blogIndexMetadata(lang: Lang): Promise<Metadata> {
   }
 }
 
+/** Roughly where Google and Bing truncate a result title. */
+const TITLE_MAX = 60
+
 /** From `PostMeta` alone, so building a page's metadata never parses its body. */
 export function postMetadata(post: PostMeta, lang: Lang): Metadata {
   const copy = post[lang]!
@@ -106,8 +109,13 @@ export function postMetadata(post: PostMeta, lang: Lang): Metadata {
   // The generator makes covers at 1280×720.
   const images = post.cover ? [{ url: post.cover, width: 1280, height: 720 }] : og.images
 
+  // The brand goes on only while it fits. Search results cut a title at about
+  // 60 characters, so on a long post title the suffix is the part a reader
+  // never sees, and Bing flags every such page as over-long.
+  const branded = `${copy.title} | CargoSharks`
+
   return {
-    title: `${copy.title} | CargoSharks`,
+    title: branded.length <= TITLE_MAX ? branded : copy.title,
     description,
     alternates: { canonical: path, languages },
     openGraph: {
