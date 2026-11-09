@@ -332,12 +332,12 @@ export function WhatWeDoPage() {
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Button asChild size="lg">
                   <a href={DEMO_URL}>
-                    Open the live demo
+                    Try the demo
                     <ArrowRight weight="bold" className="size-4 rtl:-scale-x-100" />
                   </a>
                 </Button>
                 <Button asChild size="lg" variant="onDark">
-                  <a href="/#demo">Book a demo</a>
+                  <a href="/pricing/#quote">Get a quote</a>
                 </Button>
                 <a
                   href="/compare/"
@@ -687,10 +687,10 @@ export function WhatWeDoPage() {
             </div>
             <div className="flex shrink-0 flex-wrap gap-3">
               <Button asChild size="lg">
-                <a href={DEMO_URL}>Open the live demo</a>
+                <a href={DEMO_URL}>Try the demo</a>
               </Button>
               <Button asChild size="lg" variant="onDark">
-                <a href="/#demo">Book a demo</a>
+                <a href="/pricing/#quote">Get a quote</a>
               </Button>
             </div>
           </div>

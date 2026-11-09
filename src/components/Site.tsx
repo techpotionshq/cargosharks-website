@@ -2,7 +2,7 @@ import { Bilingual } from '@/components/Bilingual'
 import { Calculator } from '@/components/Calculator'
 import { Capabilities } from '@/components/Capabilities'
 import { EInvoicing } from '@/components/EInvoicing'
-import { Enquiry } from '@/components/Enquiry'
+import { QuoteBand } from '@/components/QuoteBand'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { SiteSchema } from '@/components/StructuredData'
@@ -22,7 +22,7 @@ import type { Lang } from '@/content/copy'
  * what is inside it (Capabilities), what it is worth in your own numbers
  * (Calculator), what that looks like as a document (Leak), the objection an
  * Arabic-speaking buyer arrives with (Bilingual), where it is set up for
- * (Markets), and the one thing to do (Enquiry).
+ * (Markets), and the one thing to do: ask for a quote (QuoteBand).
  *
  * E-invoicing sits second because it is what the market is shopping for:
  * ZATCA Phase 2 in Saudi Arabia and the UAE's mandate are why forwarders are
@@ -64,7 +64,7 @@ export function Site({ lang }: { lang: Lang }) {
         <Leak lang={lang} />
         <Bilingual lang={lang} />
         <Markets lang={lang} />
-        <Enquiry lang={lang} />
+        <QuoteBand lang={lang} />
       </main>
       <Footer lang={lang} mark={<Wordmark tone="onDark" height={26} />} />
     </>

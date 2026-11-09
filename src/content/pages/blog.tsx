@@ -10,6 +10,7 @@ import { Section } from '@/components/ui/section'
 import { DEMO_URL, type Lang } from '@/content/copy'
 import { blogIndexAlternates, blogPath, postsIn, type Post, type PostMeta } from '@/lib/blog'
 import { pageOpenGraph } from '@/lib/og'
+import { quotePath } from '@/content/pricing'
 
 /**
  * The blog index and the post page, both languages.
@@ -57,15 +58,15 @@ const T = {
     ar: 'ما لم تجدوا جوابه هنا، اسألونا مباشرة على ',
   },
   tail: {
-    en: 'See it on your own shipments.',
-    ar: 'شاهدوه على شحناتكم أنتم.',
+    en: 'See how it works, then get a quote.',
+    ar: 'شاهدوا كيف يعمل، ثم اطلبوا عرض سعر.',
   },
   tailBody: {
-    en: 'The demo call is free, and we tailor it to your lanes. The live demo is open now, with no sign-up.',
-    ar: 'الاتصال التعريفي مجاني، ونُعدّه على خطوطكم. والنسخة التجريبية مفتوحة الآن، بلا تسجيل.',
+    en: 'The demo is open now, with no sign-up. The demo call is free, and your quote is built from what you tell us about your operation.',
+    ar: 'النسخة التجريبية مفتوحة الآن، بلا تسجيل. والاتصال التعريفي مجاني، ويُبنى عرض السعر على ما تخبروننا به عن عملكم.',
   },
-  demo: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  book: { en: 'Book a demo', ar: 'احجزوا عرضاً تعريفياً' },
+  demo: { en: 'Try the demo', ar: 'جرّبوا النسخة التجريبية' },
+  book: { en: 'Get a quote', ar: 'اطلبوا عرض سعر' },
   all: { en: 'All posts', ar: 'كل المقالات' },
 }
 
@@ -185,7 +186,7 @@ export function BlogIndexContent({ posts, lang }: { posts: PostMeta[]; lang: Lan
                   </a>
                 </Button>
                 <Button asChild>
-                  <a href={`${homeOf(lang)}#demo`}>{T.book[lang]}</a>
+                  <a href={quotePath(lang)}>{T.book[lang]}</a>
                 </Button>
               </div>
             </div>
@@ -343,7 +344,7 @@ export function PostContent({ post, more = [] }: { post: Post; more?: PostMeta[]
   )
 }
 
-/** The close every blog page ends on: book a demo, or open the live one. */
+/** The close every blog page ends on: get a quote, or try the demo. */
 function Tail({ lang }: { lang: Lang }) {
   return (
     <section className="bg-void py-14 text-on-void lg:py-16">
@@ -354,7 +355,7 @@ function Tail({ lang }: { lang: Lang }) {
         </div>
         <div className="flex shrink-0 flex-wrap gap-3">
           <Button asChild size="lg">
-            <a href={`${homeOf(lang)}#demo`}>{T.book[lang]}</a>
+            <a href={quotePath(lang)}>{T.book[lang]}</a>
           </Button>
           <Button asChild size="lg" variant="onDark">
             <a href={DEMO_URL}>{T.demo[lang]}</a>

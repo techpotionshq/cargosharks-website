@@ -11,7 +11,8 @@ here first.
 - One record per job from enquiry and quote, through award, milestones, customs, documents and costs, to the customer invoice.
 - Built bilingual: Arabic and English interface and documents, not a translation layer.
 - Sea, air, road, rail and courier.
-- A live demo opens without sign-up at https://demo.cargosharks.com. Demo calls are free; setup and onboarding, then a subscription, are quoted per operation. Never call any of it a pilot or a trial.
+- A live demo opens without sign-up at https://demo.cargosharks.com; it runs on sample data, not the reader's own. Demo calls are free; setup and onboarding, then a monthly or yearly subscription, are agreed in a quote per operation, never per shipment. Never call any of it a pilot or a trial, and never say onboarding is free.
+- The call to action is "Get a quote", which links to `/pricing/#quote` (`/ar/pricing/#quote` in Arabic). "Try the demo" links to the live demo. Never "book a demo".
 
 ## What it does
 
@@ -39,6 +40,7 @@ Use only these paths for internal links, and only the `#` anchors written here. 
 - `/` and `/ar/` — home
 - `/#calculator` and `/ar/#calculator` — the free time cost calculator described above. Link it only as that monthly estimate.
 - `/what-we-do/` — full scope (English only)
+- `/pricing/` and `/ar/pricing/` — how pricing works, with no figures, and the quote form at `#quote`
 - `/compare/`, `/compare/cargowise/`, `/compare/logistaas/`, `/compare/cargoes-runner/`, `/compare/spreadsheets/` (English only)
 - `/freight-forwarding-software-kuwait/`, `/freight-forwarding-software-uae/`, `/freight-forwarding-software-saudi-arabia/`
 - `/customs-clearance-software/`, `/freight-quotation-software/`, `/freight-invoicing-software/`

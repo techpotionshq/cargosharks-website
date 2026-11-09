@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { comparisons } from '@/content/comparisons'
+import { pricingPath } from '@/content/pricing'
 import { solutionNav, solutionPath } from '@/content/solution-nav'
 import { SITE_URL } from '@/components/StructuredData'
 import { allPosts, blogIndexAlternates, blogPath } from '@/lib/blog'
@@ -77,6 +78,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }))
 
+  // Pricing, both languages, paired by `hreflang` like the market pages. A
+  // buyer's page: it carries the quote form every "Get a quote" points at.
+  const pricingLanguages = {
+    en: `${SITE_URL}${pricingPath('en')}`,
+    ar: `${SITE_URL}${pricingPath('ar')}`,
+  }
+  const pricing = (['en', 'ar'] as const).map((lang) => ({
+    url: pricingLanguages[lang],
+    lastModified: BUILT,
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+    alternates: { languages: { ...pricingLanguages, 'x-default': pricingLanguages.en } },
+  }))
+
   const compare = comparisons.map((item) => ({
     url: `${SITE_URL}/compare/${item.slug}/`,
     lastModified: BUILT,
@@ -131,5 +146,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }))
   })
 
-  return [...home, ...pages, ...compare, ...landing, ...blogIndex, ...posts]
+  return [...home, ...pages, ...pricing, ...compare, ...landing, ...blogIndex, ...posts]
 }

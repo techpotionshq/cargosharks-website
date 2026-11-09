@@ -1,7 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 /**
- * Demo requests from the site's form (`src/app/contact/route.ts`).
+ * Quote requests from the pricing page's form (`src/app/contact/route.ts`).
  *
  * It replaced a mailto link: a reader without a mail client configured, which
  * is most people on a work laptop that is not their own, clicked the button

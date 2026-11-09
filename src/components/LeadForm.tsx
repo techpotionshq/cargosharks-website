@@ -4,21 +4,26 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { ArrowRight, CalendarBlank, CheckCircle } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
-import { CALL_URL, DEMO_URL, enquiry, type Lang } from '@/content/copy'
+import { DEMO_URL, enquiry, type Lang } from '@/content/copy'
+import { callUrl } from '@/lib/booking'
 import { EmailLink } from './Email'
 
 type State = 'idle' | 'sending' | 'done' | 'missing' | 'email' | 'busy' | 'failed'
 
 /**
- * The demo request form. Posts to `/contact/`, which saves a lead and tells
- * Slack; nothing is mailed to the address typed here.
+ * The quote request form, on `/pricing/`. Posts to `/contact/`, which saves a
+ * lead and tells Slack; nothing is mailed to the address typed here.
  *
- * **Contact first, then the operation.** Name, company and email are the only
- * required fields; the questions under "About your operation" are what a quote
- * depends on (branches, users, modes, current system, e-invoicing, timeline)
- * and every one is optional, because a question that blocks the form is a
- * reason not to send it. Answering them is what lets the first call be about
- * the visitor's shipments rather than a questionnaire.
+ * **Short, and nothing a visitor would hesitate to give.** Name, company and
+ * email are the only required fields. The optional ones are the shape of the
+ * quote (country, branches, users, e-invoicing, when to go live): enough to
+ * plan the call, nothing commercially sensitive. Volume, modes and the current
+ * system were asked here too, and read to a forwarder like business data they
+ * would rather say on a call than type into a stranger's form, so the call asks
+ * them instead. A question that blocks the form is a reason not to send it.
+ *
+ * The thank-you offers the booking page with the name and email just typed
+ * already filled in (`lib/booking.ts`), so picking a time is one click.
  *
  * `elapsedMs` is how long the form was open before it was sent, measured here
  * on one clock: the route turns away anything sent faster than a person can
@@ -31,18 +36,15 @@ type State = 'idle' | 'sending' | 'done' | 'missing' | 'email' | 'busy' | 'faile
 export function LeadForm({ lang }: { lang: Lang }) {
   const [state, setState] = useState<State>('idle')
   const [startedAt] = useState(() => Date.now())
+  // Kept from the moment of sending, for the booking link on the thank-you.
+  const [person, setPerson] = useState<{ name?: string; email?: string }>({})
   const F = enquiry.fields
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    // `modes` is a group of checkboxes, so it is read as a list rather than
-    // left to `fromEntries`, which would keep only the last one ticked.
-    const data: Record<string, unknown> = {
-      ...Object.fromEntries(form),
-      modes: form.getAll('modes'),
-    }
+    const data: Record<string, unknown> = Object.fromEntries(new FormData(event.currentTarget))
     if (!data.name || !data.company || !data.email) return setState('missing')
+    setPerson({ name: String(data.name), email: String(data.email) })
     setState('sending')
     try {
       const res = await fetch('/contact/', {
@@ -76,14 +78,14 @@ export function LeadForm({ lang }: { lang: Lang }) {
         <p className="mt-2 text-body text-ink-dim">{enquiry.done.body[lang]}</p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Button asChild>
-            <a href={CALL_URL} target="_blank" rel="noopener">
+            <a href={callUrl(person)} target="_blank" rel="noopener">
               <CalendarBlank weight="bold" className="size-4" aria-hidden="true" />
               {enquiry.done.book[lang]}
             </a>
           </Button>
           <Button asChild variant="outline">
             <a href={DEMO_URL}>
-              {lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}
+              {lang === 'ar' ? 'جرّبوا النسخة التجريبية' : 'Try the demo'}
               <ArrowRight weight="bold" className="size-4 rtl:-scale-x-100" />
             </a>
           </Button>
@@ -156,32 +158,10 @@ export function LeadForm({ lang }: { lang: Lang }) {
         </legend>
         <div className="clear-both grid gap-x-5 gap-y-4 pt-4 sm:grid-cols-2">
           {select('country', F.country, enquiry.countries)}
-          {select('volume', F.volume, enquiry.volumes)}
           {select('branches', F.branches, enquiry.branchCounts)}
           {select('users', F.users, enquiry.userCounts)}
-          {select('system', F.system, enquiry.systems)}
           {select('einvoicing', F.einvoicing, enquiry.einvoicingNeeds)}
           {select('timeline', F.timeline, enquiry.timelines)}
-
-          <fieldset className="sm:col-span-2">
-            <legend className={label}>{F.modes[lang]}</legend>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {enquiry.modeOptions.map((mode) => (
-                <label
-                  key={mode.value}
-                  className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-input bg-paper-lift px-3 text-small text-ink transition-colors has-[:checked]:border-blue has-[:checked]:bg-blue/8 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue/30"
-                >
-                  <input
-                    type="checkbox"
-                    name="modes"
-                    value={mode.value}
-                    className="size-4 accent-blue"
-                  />
-                  {mode[lang]}
-                </label>
-              ))}
-            </div>
-          </fieldset>
 
           <label className={`${label} sm:col-span-2`}>
             {F.message[lang]}

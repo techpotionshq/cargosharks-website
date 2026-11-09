@@ -25,11 +25,16 @@ export async function GET() {
     '',
     '> Freight forwarding and customs brokerage software for Kuwait and the Gulf: one record from enquiry and quote through milestones, customs, documents, costs and invoice, built bilingual in Arabic and English.',
     '',
-    `A live demo opens without sign-up at ${DEMO_URL}.`,
+    `A live demo opens without sign-up at ${DEMO_URL}. Pricing is quoted per operation: ${SITE_URL}/pricing/ explains how and has the quote form.`,
     '',
     '## Product',
     line('/', 'Home', 'what the product is and who it is for'),
     line('/what-we-do/', 'What we do', 'the full scope, module by module, and what it does not do'),
+    line(
+      '/pricing/',
+      'Pricing',
+      'how a quote is built (setup and onboarding, then a monthly or yearly subscription, never per shipment) and the form to ask for one',
+    ),
     '',
     '## By market and by job',
     ...solutionNav.map((item) =>

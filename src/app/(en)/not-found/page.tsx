@@ -111,11 +111,11 @@ export default function NotFound() {
           </div>
           <div className="shell mt-10 flex flex-wrap gap-3">
             <Button asChild size="lg">
-              <a href="/#demo">Book a demo</a>
+              <a href="/pricing/#quote">Get a quote</a>
             </Button>
             <Button asChild size="lg" variant="onDark">
-              <a href="/ar/#demo" lang="ar" className="arabic">
-                احجزوا عرضاً تعريفياً
+              <a href="/ar/pricing/#quote" lang="ar" className="arabic">
+                اطلبوا عرض سعر
               </a>
             </Button>
           </div>

@@ -6,6 +6,7 @@ import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
 import { Accrue, DaysSince } from '@/components/Accrue'
 import { Button } from '@/components/ui/button'
 import { DEMO_URL, DEMURRAGE_PER_DAY, FREE_TIME_ENDED, hero, type Lang } from '@/content/copy'
+import { quotePath } from '@/content/pricing'
 
 /**
  * A photograph, a sentence, and the product straddling the join.
@@ -80,7 +81,7 @@ export function Hero({ lang, shot }: { lang: Lang; shot: string }) {
               </a>
             </Button>
             <Button asChild size="lg" variant="onDark">
-              <a href="#demo">{hero.secondary[lang]}</a>
+              <a href={quotePath(lang)}>{hero.secondary[lang]}</a>
             </Button>
           </div>
 
