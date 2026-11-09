@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { DURATION, EASE } from '@/lib/motion'
 import { ArrowRight, CaretDown, List, X } from '@phosphor-icons/react/dist/ssr'
 import { DEMO_URL, hrefFor, type Lang, languageSwitch, nav } from '@/content/copy'
+import { quotePath } from '@/content/pricing'
 
 /** A post as `/blog/latest.json` lists it. */
 type Latest = {
@@ -385,11 +386,20 @@ export function Header({
               moved everything beside them. A control in fixed chrome may change
               colour; it may not change the layout around it.
             */}
+            {/*
+              One action, and one word for it. The button was "Live demo" and
+              opened the software while every "Book a demo" on the site went to
+              a form, so "demo" meant two things. It now asks for a quote; the
+              software is "Try the demo", in the Product menu, the mobile menu,
+              the hero and every page's masthead. A second button here was
+              tried and does not fit: the bar is a pill of fixed width, so a
+              wider screen gives it no more room.
+            */}
             <a
-              href={DEMO_URL}
-              className="group hidden items-center gap-2 rounded-lg bg-blue px-4 py-2.5 text-small font-medium leading-none text-on-brand transition-opacity duration-200 hover:opacity-90 sm:flex"
+              href={quotePath(lang)}
+              className="group hidden shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-blue px-4 py-2.5 text-small font-medium leading-none text-on-brand transition-opacity duration-200 hover:opacity-90 sm:flex"
             >
-              {lang === 'ar' ? 'النسخة التجريبية' : 'Live demo'}
+              {lang === 'ar' ? 'اطلبوا عرض سعر' : 'Get a quote'}
               <ArrowRight
                 weight="bold"
                 aria-hidden="true"
@@ -675,11 +685,18 @@ export function Header({
                   </motion.div>
                 ))}
                 <a
-                  href={DEMO_URL}
+                  href={quotePath(lang)}
                   onClick={() => setOpen(false)}
                   className="mt-2 rounded-lg bg-blue px-4 py-3.5 text-center text-body font-medium text-on-brand "
                 >
-                  {lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}
+                  {lang === 'ar' ? 'اطلبوا عرض سعر' : 'Get a quote'}
+                </a>
+                <a
+                  href={DEMO_URL}
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg border border-void-line px-4 py-3.5 text-center text-body font-medium text-on-void"
+                >
+                  {lang === 'ar' ? 'جرّبوا النسخة التجريبية' : 'Try the demo'}
                 </a>
               </div>
             </motion.nav>

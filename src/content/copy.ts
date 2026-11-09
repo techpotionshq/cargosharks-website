@@ -140,10 +140,10 @@ export const nav: {
             },
           },
           {
-            href: '/#demo',
-            label: { en: 'The live demo', ar: 'النسخة التجريبية' },
+            href: DEMO_URL,
+            label: { en: 'Try the demo', ar: 'جرّبوا النسخة التجريبية' },
             blurb: {
-              en: 'The real software on seeded data, no sign-up',
+              en: 'The real software on sample data, no sign-up',
               ar: 'البرنامج نفسه على بيانات مُعدّة، بلا تسجيل',
             },
           },
@@ -450,11 +450,14 @@ export const nav: {
     ],
   },
   {
-    // A plain link, so the bar is not four dropdowns in a row — and because
-    // the demo is the one thing on this site with nothing to explain.
-    id: 'demo',
-    href: '/#demo',
-    label: { en: 'Demo', ar: 'النسخة التجريبية' },
+    // A plain link, so the bar is not four dropdowns in a row. It was "Demo"
+    // and went to the home page's form, while the header button beside it,
+    // also "demo", opened the software: two things under one word. The form
+    // now lives on the pricing page, and the software is "Try the demo".
+    id: 'pricing',
+    href: '/pricing/',
+    hrefAr: '/ar/pricing/',
+    label: { en: 'Pricing', ar: 'الأسعار' },
   },
 ]
 
@@ -488,8 +491,10 @@ export const hero = {
     en: 'Quote, book, clear and invoice every shipment on one file, in Arabic and English, with ZATCA and UAE e-invoicing built in. Made in Kuwait for forwarders across the GCC.',
     ar: 'سعّروا كل شحنة واحجزوها وخلّصوها وفوتروها على سجل واحد، بالعربية والإنجليزية، مع الفوترة الإلكترونية لزاتكا والإمارات مدمجة فيه. صُنع في الكويت لشركات الشحن في دول الخليج.',
   },
-  primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  secondary: { en: 'Book a demo call', ar: 'احجزوا اتصالاً تعريفياً' },
+  /** The software itself, open to anyone. */
+  primary: { en: 'Try the demo', ar: 'جرّبوا النسخة التجريبية' },
+  /** The quote form on `/pricing/`. */
+  secondary: { en: 'Get a quote', ar: 'اطلبوا عرض سعر' },
   /**
    * Under the buttons, as plain text: what a Gulf buyer checks for first. Not
    * pills — a row of badges under a hero is the template this page left.
@@ -1040,58 +1045,26 @@ export const leak = {
 }
 
 /**
- * The demo request form (`components/Enquiry.tsx`), which closes the home page.
+ * The quote request form (`components/LeadForm.tsx`), on `/pricing/`.
  *
- * There is no trial. A visitor can open the live demo on their own, and the
- * meetings before a decision cost nothing; setup, onboarding and the
- * subscription are quoted per operation. The questions are the ones the first
- * call would otherwise spend twenty minutes on, so the quote can be shaped
- * before anyone meets. Only name, company and email are required: every other
- * question is a reason not to send the form, so none of them blocks it.
+ * There is no trial and no pilot. A visitor can open the demo on their own,
+ * and the meetings before a decision cost nothing; setup, onboarding and the
+ * subscription are agreed in the quote. Only name, company and email are
+ * required. The page around the form is `content/pricing.ts`.
+ *
+ * `systems` and `modeOptions` are no longer asked on the form (see the comment
+ * on `LeadForm`), but stay here because `/contact/` still accepts them: a page
+ * cached before the change can send them, and a valid answer is kept.
  */
 export const enquiry = {
-  title: {
-    en: 'Book a demo, and tell us about your operation.',
-    ar: 'احجزوا عرضاً تعريفياً، وأخبرونا عن عملكم.',
-  },
-  body: {
-    en: 'A person reads every request and replies within one working day, in Arabic or English. The answers below shape the demo and the quote, so the first call is about your shipments, not a questionnaire.',
-    ar: 'يقرأ شخصٌ كل طلب ويرد خلال يوم عمل واحد، بالعربية أو الإنجليزية. الإجابات أدناه تحدد محتوى العرض والتسعيرة، فيكون الاتصال الأول عن شحناتكم لا عن استبيان.',
-  },
-  steps: [
-    {
-      title: { en: 'Demo call', ar: 'اتصال تعريفي' },
-      body: {
-        en: 'Free. Your lanes and your documents, on the real software.',
-        ar: 'مجاني. خطوطكم ومستنداتكم، على البرنامج نفسه.',
-      },
-    },
-    {
-      title: { en: 'Setup and onboarding', ar: 'الإعداد والتأهيل' },
-      body: {
-        en: 'Your rate cards, customers, templates and e-invoicing set up, and your team trained.',
-        ar: 'إعداد بطاقات أسعاركم وعملائكم وقوالبكم والفوترة الإلكترونية، وتدريب فريقكم.',
-      },
-    },
-    {
-      title: { en: 'Live', ar: 'التشغيل' },
-      body: {
-        en: 'A subscription quoted for your branches and users. No per-shipment fees.',
-        ar: 'اشتراك يُسعَّر حسب فروعكم ومستخدميكم. بلا رسوم على كل شحنة.',
-      },
-    },
-  ],
   fields: {
     name: { en: 'Your name', ar: 'الاسم' },
     company: { en: 'Company', ar: 'الشركة' },
     email: { en: 'Work email', ar: 'البريد الإلكتروني للعمل' },
     phone: { en: 'Phone or WhatsApp', ar: 'الهاتف أو واتساب' },
     country: { en: 'Main country', ar: 'الدولة الرئيسية' },
-    volume: { en: 'Shipments a month', ar: 'الشحنات شهرياً' },
     branches: { en: 'Branches', ar: 'عدد الفروع' },
     users: { en: 'People who would use it', ar: 'عدد المستخدمين' },
-    modes: { en: 'What you move', ar: 'وسائل الشحن لديكم' },
-    system: { en: 'What you use today', ar: 'ما تستخدمونه اليوم' },
     einvoicing: { en: 'E-invoicing you need', ar: 'الفوترة الإلكترونية المطلوبة' },
     timeline: { en: 'When you want to be live', ar: 'متى تريدون البدء' },
     message: { en: 'Anything else we should know', ar: 'أي شيء آخر يجب أن نعرفه' },
@@ -1147,19 +1120,8 @@ export const enquiry = {
     { value: 'Qatar', en: 'Qatar', ar: 'قطر' },
     { value: 'Other', en: 'Elsewhere', ar: 'دولة أخرى' },
   ],
-  volumes: [
-    { value: 'Under 50', en: 'Under 50', ar: 'أقل من 50' },
-    { value: '50-200', en: '50 to 200', ar: 'من 50 إلى 200' },
-    { value: '200-1,000', en: '200 to 1,000', ar: 'من 200 إلى 1,000' },
-    { value: 'Over 1,000', en: 'Over 1,000', ar: 'أكثر من 1,000' },
-  ],
-  submit: { en: 'Request a demo', ar: 'اطلبوا العرض التعريفي' },
+  submit: { en: 'Get a quote', ar: 'اطلبوا عرض سعر' },
   sending: { en: 'Sending…', ar: 'جارٍ الإرسال…' },
-  /** Beside the form, for a reader who would rather look than talk first. */
-  selfServe: {
-    en: 'Rather look first? The live demo is open, with no sign-up.',
-    ar: 'تفضّلون الاطلاع أولاً؟ النسخة التجريبية مفتوحة، بلا تسجيل.',
-  },
   done: {
     title: { en: 'Thank you. We have it.', ar: 'شكراً لكم، وصلنا طلبكم.' },
     body: {
@@ -1193,7 +1155,8 @@ export const enquiry = {
 }
 
 /**
- * The intro-call booking page, offered once a demo request has been sent. A
+ * The intro-call booking page, offered once a quote request has been sent
+ * (`lib/booking.ts` fills in the name and email). A
  * link rather than an embed: an embedded scheduler is a third-party script on
  * every page view for the one visitor in a hundred who books.
  */
@@ -1227,10 +1190,10 @@ export const footer = {
       links: [
         { href: '/what-we-do/', label: { en: 'What we do', ar: 'ماذا نفعل' } },
         { href: '/compare/', label: { en: 'How we compare', ar: 'كيف نقارن' } },
-        // The one link with an Arabic twin: the same `hrefAr` shape as `nav`.
+        // The links with an Arabic twin: the same `hrefAr` shape as `nav`.
         { href: '/blog/', hrefAr: '/ar/blog/', label: { en: 'Blog', ar: 'المدونة' } },
-        { href: DEMO_URL, label: { en: 'Live demo', ar: 'النسخة التجريبية' } },
-        { href: '/#demo', hrefAr: '/ar/#demo', label: { en: 'Book a demo', ar: 'احجزوا عرضاً' } },
+        { href: '/pricing/', hrefAr: '/ar/pricing/', label: { en: 'Pricing', ar: 'الأسعار' } },
+        { href: DEMO_URL, label: { en: 'Try the demo', ar: 'جرّبوا النسخة التجريبية' } },
       ],
     },
     {

@@ -6,7 +6,7 @@ import { enquiry } from '@/content/copy'
 import type { Lead } from '@/payload-types'
 
 /**
- * `POST /contact/`: a demo request from the site's form, saved as a lead and
+ * `POST /contact/`: a quote request from the pricing page's form, saved as a lead and
  * announced in Slack.
  *
  * The qualifying answers (branches, users, modes, current system, e-invoicing,
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
   const admin = `${process.env.SITE_URL ?? 'https://cargosharks.com'}/admin/collections/leads/${saved.id}`
   void slack(
     [
-      `:incoming_envelope: *New demo request* from *${lead.company}*`,
+      `:incoming_envelope: *New quote request* from *${lead.company}*`,
       `${lead.name} · ${lead.email}${verdict.personal ? ' _(personal email)_' : ''}${lead.phone ? ` · ${lead.phone}` : ''}`,
       [
         lead.country,

@@ -147,6 +147,8 @@ export function knownPaths(postSlugs = []) {
     '/ar/',
     '/what-we-do/',
     '/compare/',
+    '/pricing/',
+    '/ar/pricing/',
     '/blog/',
     '/ar/blog/',
     '/privacy/',
@@ -166,6 +168,9 @@ export function knownPaths(postSlugs = []) {
 export const KNOWN_ANCHORS = new Map([
   ['/', new Set(['calculator'])],
   ['/ar/', new Set(['calculator'])],
+  // The quote form, which every call to action in a post points at.
+  ['/pricing/', new Set(['quote'])],
+  ['/ar/pricing/', new Set(['quote'])],
 ])
 
 const INTERNAL_LINK = /\]\((\/[^)\s#]*)(?:#([^)\s]*))?\)/g

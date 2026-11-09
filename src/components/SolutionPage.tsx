@@ -39,6 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { quotePath } from '@/content/pricing'
 
 /**
  * A market landing page on the rebuilt system: the Kuwait page first, and the
@@ -67,8 +68,8 @@ import {
  * same shape the old template reads; a page without them still renders.
  */
 const T = {
-  demo: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
-  book: { en: 'Book a demo call', ar: 'احجزوا اتصالاً تعريفياً' },
+  demo: { en: 'Try the demo', ar: 'جرّبوا النسخة التجريبية' },
+  book: { en: 'Get a quote', ar: 'اطلبوا عرض سعر' },
   onScreen: {
     en: 'From the running demo',
     ar: 'من النسخة التجريبية العاملة',
@@ -86,13 +87,15 @@ const T = {
     en: '. Dates set by the Ministry can move; read the Ministry’s own page before you plan against them.',
     ar: '. المواعيد التي تحددها الوزارة قد تتغير، فاقرؤوا صفحة الوزارة نفسها قبل أن تخططوا عليها.',
   },
+  // The demo runs on sample data, not the visitor's: it shows how the
+  // software works, and the quote is built from their requirements.
   tailHeading: {
-    en: 'See it on your own lanes.',
-    ar: 'شاهدوه على خطوطكم أنتم.',
+    en: 'See how it works, then get a quote.',
+    ar: 'شاهدوا كيف يعمل، ثم اطلبوا عرض سعر.',
   },
   tailBody: {
-    en: 'The demo is the real software on seeded data, open with no sign-up. The demo call is free, and we tailor it to your shipments.',
-    ar: 'النسخة التجريبية هي البرنامج نفسه على بيانات مُعدّة، ومفتوحة بلا تسجيل. والاتصال التعريفي مجاني، ونُعدّه على شحناتكم.',
+    en: 'The demo is the real software on sample data, open with no sign-up. The demo call is free, and your quote is built from what you tell us about your operation.',
+    ar: 'النسخة التجريبية هي البرنامج نفسه على بيانات نموذجية، ومفتوحة بلا تسجيل. والاتصال التعريفي مجاني، ويُبنى عرض السعر على ما تخبروننا به عن عملكم.',
   },
 } satisfies Record<string, Bi>
 
@@ -144,7 +147,7 @@ export function SolutionPage({
                   </a>
                 </Button>
                 <Button asChild size="lg" variant="onDark">
-                  <a href={`${home}#demo`}>{T.book[lang]}</a>
+                  <a href={quotePath(lang)}>{T.book[lang]}</a>
                 </Button>
               </div>
             </div>
@@ -354,7 +357,7 @@ function Tail({ lang, home }: { lang: Lang; home: string }): ReactNode {
         </div>
         <div className="flex shrink-0 flex-wrap gap-3">
           <Button asChild size="lg">
-            <a href={`${home}#demo`}>{T.book[lang]}</a>
+            <a href={quotePath(lang)}>{T.book[lang]}</a>
           </Button>
           <Button asChild size="lg" variant="onDark">
             <a href={DEMO_URL}>{T.demo[lang]}</a>

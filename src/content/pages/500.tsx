@@ -48,7 +48,7 @@ export function ServerErrorContent() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild size="lg">
-                <a href="/#demo">Book a demo</a>
+                <a href="/pricing/#quote">Get a quote</a>
               </Button>
               <Button asChild size="lg" variant="onDark">
                 <a href="/">The home page</a>
