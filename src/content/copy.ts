@@ -53,7 +53,7 @@ export const DEMO_URL = 'https://demo.cargosharks.com'
  * the browser.
  */
 export const CONTACT_DOMAIN = 'cargosharks.com'
-export type Mailbox = 'hello' | 'privacy' | 'security'
+export type Mailbox = 'info'
 
 /**
  * The header's navigation, as two groups and a link.

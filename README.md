@@ -306,8 +306,10 @@ issues.
    _trigger_ is a coinage the deck invented and `ar.json` does not fix,
    «الترسية» for _award_ is Gulf tender vocabulary, and «ماذا نفعل» and
    «كيف نقارن» in the navigation are new here.
-4. **`hello@cargosharks.com` and the domain** are placeholders until the domain
-   is held. So is `demo.cargosharks.com`. The three demo addresses are
+4. **`info@cargosharks.com` is the one live mailbox**, and every address on the
+   site is it — contact, privacy, security and `security.txt`. A new mailbox
+   goes into `Mailbox` in `content/copy.ts` only once it receives mail. The
+   three demo addresses are
    `.example`, which RFC 2606 reserves and nobody can register — deliberately,
    because a credential printed on a public page should not resolve to a mailbox
    anyone could be persuaded to send something to.

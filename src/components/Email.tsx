@@ -29,7 +29,7 @@ function useAssembled() {
   return assembled
 }
 
-export function EmailAddress({ box = 'hello' }: { box?: Mailbox }) {
+export function EmailAddress({ box = 'info' }: { box?: Mailbox }) {
   const assembled = useAssembled()
   // An address is a left-to-right run, even inside an Arabic sentence.
   return (
@@ -48,7 +48,7 @@ export function EmailAddress({ box = 'hello' }: { box?: Mailbox }) {
 }
 
 export function EmailLink({
-  box = 'hello',
+  box = 'info',
   subject,
   className,
   children,

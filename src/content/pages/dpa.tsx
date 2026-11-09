@@ -852,8 +852,8 @@ export function DpaContent() {
                   <EmailLink /> reaches a person.
                 </p>
                 <p>
-                  Data-protection notices under this addendum go to <EmailLink box="privacy" />.
-                  Breach notifications and security reports go to <EmailLink box="security" />.
+                  Data-protection notices under this addendum go to <EmailLink />.
+                  Breach notifications and security reports go to <EmailLink />.
                 </p>
               </section>
 

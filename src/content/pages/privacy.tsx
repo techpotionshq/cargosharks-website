@@ -956,8 +956,8 @@ export function PrivacyContent() {
                   Write to <EmailLink />. A named person replies, not a ticket queue.
                 </p>
                 <p>
-                  Write to <EmailLink box="privacy" /> with any question about this notice or to
-                  exercise a right. To report a vulnerability, write to <EmailLink box="security" />{' '}
+                  Write to <EmailLink /> with any question about this notice or to
+                  exercise a right. To report a vulnerability, write to <EmailLink />{' '}
                   &mdash; the terms are at{' '}
                   <a href="/.well-known/security.txt">/.well-known/security.txt</a>.
                 </p>

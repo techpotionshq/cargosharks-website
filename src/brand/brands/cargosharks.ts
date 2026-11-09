@@ -66,7 +66,7 @@ export const cargosharksBrand = defineBrand({
     portalUrl: 'https://portal.cargosharks.com',
     /** Moment 1 is demonstrated here, and the domain is half of why it lands. */
     trackingUrl: 'https://track.cargosharks.com',
-    supportEmail: 'hello@cargosharks.com',
+    supportEmail: 'info@cargosharks.com',
     supportPhone: '+965 2200 0000',
     addressEn: 'Kuwait City, Kuwait',
     addressAr: 'مدينة الكويت، الكويت',
