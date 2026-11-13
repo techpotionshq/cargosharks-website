@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { brandCss, faviconDataUri, resolveBrand } from '@/brand'
 import { fontStylesheet } from '@/lib/fonts'
+import { Analytics } from '@/components/Analytics'
 import type { Lang } from '@/content/copy'
 import '@/app/globals.css'
 
@@ -38,7 +39,10 @@ export function Document({ lang, children }: { lang: Lang; children: ReactNode }
             somebody else's navy would undo the whole point of the token. */}
         <meta name="theme-color" content={brand.palette.primary[950]} />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   )
 }

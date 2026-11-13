@@ -8,8 +8,8 @@
  * image never builds, which takes cargosharks.com off the air. `apps/web`
  * already loads its faces this way for the same reason (a build that needs
  * the network to succeed fails in a room without one), and the privacy policy
- * in `content/pages/privacy.tsx` already names Google Fonts as the one third
- * party this site contacts, so the page now does what the policy says.
+ * in `content/pages/privacy.tsx` already names Google Fonts among the third
+ * parties this site contacts, so the page now does what the policy says.
  *
  * Manrope because the supplied wordmark *is* Manrope ExtraBold converted to
  * outlines — the page and the mark are the same typeface rather than a near

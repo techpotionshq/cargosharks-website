@@ -195,16 +195,36 @@ export function PrivacyContent() {
                 </p>
                 <ul className="bullets">
                   <li>
-                    <strong>It sets no cookies for visitors.</strong> Not a session cookie, not a
-                    preference cookie, not a consent cookie. The only cookie it ever sets is the
-                    sign-in cookie of our own staff when they edit the blog.
+                    <strong>It measures how the site is used, with two tools.</strong>{' '}
+                    <strong>Google Analytics</strong>, loaded through Google Tag Manager, counts
+                    visits: which pages were opened, where the visitor came from, roughly where
+                    they are (country and city, worked out from the IP address), and the device and
+                    browser. <strong>Microsoft Clarity</strong> records how pages are used &mdash;
+                    clicks, scrolling and mouse movement &mdash; and replays them as heatmaps and
+                    session recordings. When you send the quote form, Google Analytics is told that
+                    a request was sent, with the country, branch and user counts, e-invoicing need
+                    and timeline you chose &mdash; never your name, company, email or phone.
                   </li>
                   <li>
-                    <strong>It runs no analytics.</strong> There is no Google Analytics, no
-                    Plausible, no Matomo, no Meta pixel, no LinkedIn tag and no heatmap script. Its
-                    scripts, served from this site under <code>/_next/static/</code>, run the menus,
-                    the scroll effects, the free time calculator and the quote form. They send
-                    nothing to any other host, and they store nothing in the browser.
+                    <strong>What you type is not recorded.</strong> Clarity masks the values typed
+                    into fields, and the quote form is masked as a whole, so its contents never
+                    reach Microsoft. They reach us only when you send the form (section&nbsp;04).
+                  </li>
+                  <li>
+                    <strong>The cookies those tools set.</strong> Google Analytics sets{' '}
+                    <code>_ga</code> and <code>_ga_&lt;id&gt;</code>, which last up to two years and
+                    tell one returning browser from another. Clarity sets <code>_clck</code>, which
+                    lasts a year and does the same, and <code>_clsk</code>, which lasts a day and
+                    joins page views into one visit. None is used for advertising today: neither
+                    tool is linked to an advertising account, and if we link one to measure an ad
+                    campaign, this section will say so first. The only other cookie this site sets
+                    is the sign-in cookie of our own staff when they edit the blog.
+                  </li>
+                  <li>
+                    <strong>Everything else stays here.</strong> The site&rsquo;s own scripts,
+                    served under <code>/_next/static/</code>, run the menus, the scroll effects,
+                    the free time calculator and the quote form, and send nothing anywhere. There
+                    is no Meta pixel, no LinkedIn tag and no other advertising script.
                   </li>
                   <li>
                     <strong>One form, the quote request.</strong> Nothing you do on this site is
@@ -212,14 +232,32 @@ export function PrivacyContent() {
                     what the form collects.
                   </li>
                 </ul>
-                <h3>The one third party</h3>
+                <h3>The third parties</h3>
                 <p>
-                  The page loads its typefaces &mdash; Manrope, IBM Plex Mono and IBM Plex Sans
-                  Arabic &mdash; from <strong>Google Fonts</strong> (
-                  <code>fonts.googleapis.com</code> and <code>fonts.gstatic.com</code>). That
-                  request carries your IP address and your browser&rsquo;s user-agent string to
-                  Google, on every page load, and it happens before you interact with anything. It
-                  is the only external host this site contacts.
+                  Three, and each receives your IP address and your browser&rsquo;s user-agent
+                  string on every page load:
+                </p>
+                <ul className="bullets">
+                  <li>
+                    <strong>Google Fonts</strong> (<code>fonts.googleapis.com</code> and{' '}
+                    <code>fonts.gstatic.com</code>), for the typefaces &mdash; Manrope, IBM Plex
+                    Mono and IBM Plex Sans Arabic. This happens before you interact with anything.
+                  </li>
+                  <li>
+                    <strong>Google Tag Manager and Google Analytics</strong> (
+                    <code>googletagmanager.com</code> and <code>google-analytics.com</code>), for
+                    the visit counts described above. Google keeps the event data for fourteen
+                    months.
+                  </li>
+                  <li>
+                    <strong>Microsoft Clarity</strong> (<code>clarity.ms</code>), for the heatmaps
+                    and recordings. Microsoft keeps recordings for thirty days and the aggregated
+                    heatmaps for up to thirteen months.
+                  </li>
+                </ul>
+                <p>
+                  Google and Microsoft process this data on servers outside the Gulf, mostly in
+                  the United States. Both act on our behalf under their own published terms.
                 </p>
                 <div className="doc__aside">
                   <b>Worth saying plainly:</b> the three typefaces this site uses are loaded from

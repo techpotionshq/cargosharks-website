@@ -1,12 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ArrowRight, CalendarBlank, CheckCircle } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { DEMO_URL, enquiry, type Lang } from '@/content/copy'
 import { callUrl } from '@/lib/booking'
+import { track } from '@/lib/track'
 import { EmailLink } from './Email'
+
+/** A select left on "Choose…" posts an empty string; GA4 reads that as a value. */
+const optionalAnswer = (value: unknown) => (value ? String(value) : 'not_given')
 
 type State = 'idle' | 'sending' | 'done' | 'missing' | 'email' | 'busy' | 'failed'
 
@@ -43,7 +47,10 @@ export function LeadForm({ lang }: { lang: Lang }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data: Record<string, unknown> = Object.fromEntries(new FormData(event.currentTarget))
-    if (!data.name || !data.company || !data.email) return setState('missing')
+    if (!data.name || !data.company || !data.email) {
+      track('form_error', { form_error: 'missing' })
+      return setState('missing')
+    }
     setPerson({ name: String(data.name), email: String(data.email) })
     setState('sending')
     try {
@@ -60,12 +67,39 @@ export function LeadForm({ lang }: { lang: Lang }) {
       if (res.status === 400) {
         // The route says which: a field left empty, or an address it refused.
         const { error } = (await res.json().catch(() => ({}))) as { error?: string }
-        return setState(error === 'email' ? 'email' : 'missing')
+        const refused = error === 'email' ? 'email' : 'missing'
+        track('form_error', { form_error: refused })
+        return setState(refused)
       }
-      setState(res.ok ? 'done' : res.status === 429 ? 'busy' : 'failed')
+      const next = res.ok ? 'done' : res.status === 429 ? 'busy' : 'failed'
+      if (next === 'done')
+        // The conversion, and only after the server has saved the lead: an ad
+        // platform optimising on a click of the button would learn to buy
+        // visitors who press it with the form half empty. The qualifying
+        // answers ride along so leads can be split by market and size; who
+        // sent it never does.
+        track('generate_lead', {
+          lead_country: optionalAnswer(data.country),
+          lead_branches: optionalAnswer(data.branches),
+          lead_users: optionalAnswer(data.users),
+          lead_einvoicing: optionalAnswer(data.einvoicing),
+          lead_timeline: optionalAnswer(data.timeline),
+        })
+      else track('form_error', { form_error: next })
+      setState(next)
     } catch {
+      track('form_error', { form_error: 'network' })
       setState('failed')
     }
+  }
+
+  // Once per page view, on the first field the visitor touches: the gap between
+  // this and `generate_lead` is how many people start the form and give up.
+  const started = useRef(false)
+  function onStart() {
+    if (started.current) return
+    started.current = true
+    track('form_start')
   }
 
   if (state === 'done')
@@ -121,7 +155,13 @@ export function LeadForm({ lang }: { lang: Lang }) {
   )
 
   return (
+    // `data-clarity-mask`: Clarity's default masking already hides typed values,
+    // but this form holds names, work emails and phone numbers, and the privacy
+    // policy promises they never reach Microsoft. Masking the whole subtree
+    // keeps that true even if someone loosens the project's setting later.
     <form
+      data-clarity-mask="true"
+      onFocus={onStart}
       onSubmit={submit}
       noValidate
       className="relative rounded-xl border border-line bg-paper-lift p-6 shadow-sm sm:p-8"
