@@ -30,11 +30,45 @@ export function CtaClicks() {
         : link.closest('footer')
           ? 'footer'
           : (link.closest('section[id]')?.id ?? 'page')
-      track('cta_click', {
+      const params = {
         cta,
         cta_location: location,
         cta_text: (link.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 100),
-      })
+      }
+
+      // A click that unloads the page loses its event: GA4 queues the hit and
+      // the navigation tears the queue down before it is sent. Measured on the
+      // live site, the header "Get a quote" on the home page never arrived,
+      // and "Try the demo" leaves the domain altogether, the CTA that matters
+      // most. So a click that navigates in this tab waits for GTM to say the
+      // tag fired, at most 700 ms, then goes. Clicks that open a new tab, use
+      // a modifier key, jump within the page, or open a mail or phone app do
+      // not unload anything and are left alone.
+      const url = new URL(link.href)
+      const samePageJump =
+        url.origin === window.location.origin &&
+        url.pathname === window.location.pathname &&
+        url.hash !== ''
+      const unloads =
+        !event.defaultPrevented &&
+        event.button === 0 &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        link.target !== '_blank' &&
+        /^https?:$/.test(url.protocol) &&
+        !samePageJump
+      if (!unloads) return track('cta_click', params)
+
+      event.preventDefault()
+      let gone = false
+      const go = () => {
+        if (gone) return
+        gone = true
+        window.location.assign(link.href)
+      }
+      track('cta_click', params, { callback: go, timeoutMs: 700 })
     }
     document.addEventListener('click', onClick, { capture: true })
     return () => document.removeEventListener('click', onClick, { capture: true })

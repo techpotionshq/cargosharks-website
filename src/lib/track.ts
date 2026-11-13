@@ -56,7 +56,16 @@ declare global {
   }
 }
 
-export function track(event: SiteEvent, params: Params = {}) {
+/**
+ * `then`, when given, runs once GTM has fired the tags for this event, or
+ * after `timeoutMs` if it never does (blocked, slow, or not loaded): the
+ * caller must never wait on a tracker an ad blocker removed.
+ */
+export function track(
+  event: SiteEvent,
+  params: Params = {},
+  then?: { callback: () => void; timeoutMs: number },
+) {
   if (typeof window === 'undefined') return
   // Created here if GTM has not loaded yet (or was blocked): GTM replays
   // whatever is already on the array when it arrives, and when it never does,
@@ -76,7 +85,11 @@ export function track(event: SiteEvent, params: Params = {}) {
     event,
     page_lang: document.documentElement.lang,
     ...params,
+    ...(then && { eventCallback: then.callback, eventTimeout: then.timeoutMs }),
   })
+  // GTM's own `eventTimeout` only counts once GTM is running; this one covers
+  // the page where it never loaded.
+  if (then) window.setTimeout(then.callback, then.timeoutMs)
   // The same name as a Clarity custom event, so recordings can be filtered to
   // the sessions that sent a lead or clicked through to the demo.
   window.clarity?.('event', event)
