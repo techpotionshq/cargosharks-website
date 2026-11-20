@@ -121,7 +121,8 @@ export async function factCheck(copy, { model, system }) {
 
     const evidence = []
     for (const [i, claim] of claims.slice(0, MAX_CLAIMS).entries()) {
-      const results = await searxng(claim.query, 5)
+      // The claims are English; unset, the language defaulted to German.
+      const results = await searxng(claim.query, 5, 'en')
       evidence.push(
         `CLAIM ${i + 1}: ${claim.quote}\n` +
           (results.length
@@ -135,7 +136,7 @@ export async function factCheck(copy, { model, system }) {
     const { verdicts = [] } = await complete({
       model,
       schema: VERDICT_SCHEMA,
-      system: `You fact-check a freight trade publication. Judge each claim only on the search results given and these settled facts:\n${GULF_FACTS}\n\n"supported" needs a result or fact that states it. A result from a vendor blog is weaker than one from an authority, a Big Four firm or a law firm; when sources disagree on a date, the claim is unverified. A claim that something is not yet announced is contradicted by any credible result that announces it.\nA replacement is article prose for the reader: correct the claim from the results, or drop or qualify the unsupported specific. Never mention search results, sources, evidence or checking in it. Keep the article's voice, no em dashes.`,
+      system: `You fact-check a freight trade publication. Judge each claim only on the search results given and these settled facts:\n${GULF_FACTS}\n\n"supported" needs a result or fact that states it. A result from a vendor blog is weaker than one from an authority, a Big Four firm or a law firm; when sources disagree on a date, the claim is unverified. A claim that something is not yet announced is contradicted by any credible result that announces it.\nA replacement is article prose for the reader: correct the claim from the results, or drop or qualify the unsupported specific. Never mention search results, sources, evidence or checking in it. Write it in the language of the claim it replaces, whatever language the results are in. Keep the article's voice, no em dashes.`,
       user: evidence.join('\n\n'),
     })
 

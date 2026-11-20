@@ -18,7 +18,7 @@
  * Needs `OPENROUTER_API_KEY`. Optional: `OPENROUTER_IDEATE_MODEL`, `SEARXNG_URL`.
  */
 
-import { complete, formatSources, searxng } from './lib.mjs'
+import { complete, formatSources, searxng, wrongScript } from './lib.mjs'
 
 const MODEL = process.env.OPENROUTER_IDEATE_MODEL || 'deepseek/deepseek-v4.1-flash'
 
@@ -92,7 +92,8 @@ async function gatherSignals() {
   const [enSuggest, arSuggest, ranking] = await Promise.all([
     Promise.all(en.map((q) => autocomplete(q, 'en'))),
     Promise.all(ar.map((q) => autocomplete(q, 'ar'))),
-    Promise.all(pick(en, 3).map((q) => searxng(q, 4))),
+    // English seeds, so English results: unset, the instance answered in German.
+    Promise.all(pick(en, 3).map((q) => searxng(q, 4, 'en'))),
   ])
   return {
     searches: [...new Set([...enSuggest.flat(), ...arSuggest.flat()])],
@@ -196,6 +197,10 @@ Prefer evergreen questions over news. Regulation topics only where an official s
   const seen = new Set(taken.map(normal))
   const fresh = topics
     .filter((t) => t?.id && t.title && t.targetQuery)
+    // The English edition must open with the targetQuery word for word, so a
+    // query in Arabic or any other language would pull the whole English post
+    // into it. The schema says English; nothing held the model to it.
+    .filter((t) => !wrongScript('en', t.title) && !wrongScript('en', t.targetQuery))
     // The id becomes the topic's key, so it is held to kebab-case.
     .map((t) => ({
       ...t,

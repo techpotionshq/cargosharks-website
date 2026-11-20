@@ -71,5 +71,12 @@ node scripts/cron.mjs
 
 ## Things to know
 
+- **A draft in the wrong language never reaches the admin.** Each edition is
+  checked by script (Latin for English, Arabic for Arabic, nothing else in
+  either) as it is written and again before it is saved. A wrong one is
+  written once more; wrong twice, the run fails, Slack says
+  `not in English after a second attempt` (or Arabic) and the topic stays
+  `ready` for the next day. It happened once, on 20 November 2026: an English
+  edition came back in Bengali.
 - Cross-posting (dev.to, LinkedIn) is deliberately not wired up. If it is
   added later, posts need a canonical URL set to the cargosharks.com page.
