@@ -112,18 +112,125 @@ export async function ensureFaqs(lang, copy, ask, attempts = 2) {
   return copy
 }
 
-/** SearXNG results, or nothing. Never throws: grounding is a bonus, not a dependency. */
-export async function searxng(query, limit = 6) {
+/*
+  The language guard. The draft of 20 November 2026 came back with its English
+  edition entirely in Bengali (body, headings, FAQ, description and search
+  phrase) from an English topic and English and German search results. Nothing
+  asked for Bengali: the model drifted, and nothing after it looked.
+
+  Counting letters by script is enough to see it. Measured on the 18 posts
+  published by then: English editions are at least 97% Latin, Arabic ones at
+  least 65% Arabic (names, codes and units stay in Latin there), and neither
+  has a letter from any other script. Link targets, URLs and code are left out
+  first, since they are Latin in either edition.
+*/
+
+const prose = (text) =>
+  String(text ?? '')
+    .replace(/\]\([^)]*\)/g, ']')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+
+const SCRIPT = { en: /\p{Script=Latin}/gu, ar: /\p{Script=Arabic}/gu }
+// A letter in any script but Latin and Arabic. Common and Inherited are left
+// out: the tatweel in بـ and لـ is a Common letter, and good Arabic uses it.
+const FOREIGN = /[^\p{Script=Latin}\p{Script=Arabic}\p{Script=Common}\p{Script=Inherited}\P{L}]/gu
+// Letters Urdu uses and Arabic never does (ٹ ڈ ڑ ں ے ۓ). Arabic script alone
+// would let an edition written in Urdu through.
+const URDU = /[ٹڈڑںےۓ]/gu
+/** The least share of an edition's letters in its own script, with room below what was measured. */
+const MIN_SHARE = { en: 0.85, ar: 0.4 }
+const LANGUAGE = { en: 'English', ar: 'Arabic' }
+
+const count = (text, pattern) => text.match(pattern)?.length ?? 0
+const percent = (share) => `${Math.round(share * 100)}%`
+
+/** Why `text` does not read as `lang` ('en' or 'ar'), or undefined when it does. */
+export function wrongScript(lang, text) {
+  const words = prose(text)
+  const own = count(words, SCRIPT[lang])
+  const foreign = count(words, FOREIGN)
+  const letters = own + foreign + count(words, SCRIPT[lang === 'en' ? 'ar' : 'en'])
+  if (!letters) return undefined
+  if (foreign > Math.max(2, letters * 0.01)) {
+    const example = words.match(/[\p{L}\p{M}]+/gu)?.find((w) => count(w, FOREIGN))
+    return `${percent(foreign / letters)} of its letters are in another script, e.g. "${example}"`
+  }
+  if (own / letters < MIN_SHARE[lang])
+    return `only ${percent(own / letters)} of its letters are ${LANGUAGE[lang]}`
+  const urdu = lang === 'ar' ? count(words, URDU) : 0
+  if (urdu > Math.max(2, own * 0.005))
+    return `it has ${urdu} letters only Urdu uses (ے ں ٹ), so it reads as Urdu`
+  return undefined
+}
+
+/**
+ * What in an edition is not in its language, field by field: the parts a
+ * reader sees. `focusKeyword` is left to `polish` in generate.mjs, which can
+ * fix it in seconds; one published English keyword carries its Arabic
+ * translation in brackets, which a reader never sees.
+ */
+export function languageProblems(lang, copy) {
+  const fields = {
+    title: copy.title,
+    excerpt: copy.excerpt,
+    metaDescription: copy.metaDescription,
+    markdown: copy.markdown,
+    faqs: usableFaqs(copy)
+      .map((f) => `${f.question}\n${f.answer}`)
+      .join('\n'),
+  }
+  return Object.entries(fields).flatMap(([field, text]) => {
+    const why = wrongScript(lang, text)
+    return why ? [`${field} is not ${LANGUAGE[lang]}: ${why}`] : []
+  })
+}
+
+/**
+ * `copy` in its language, or an error.
+ *
+ * Written in the wrong one, it is written once more by `write(problems)`, with
+ * the problems to put in front of the model; still wrong, the run fails. The
+ * route then tells Slack and leaves the topic `ready`, so the next day's run
+ * drafts it again, rather than leaving a draft nobody can read.
+ */
+export async function ensureLanguage(lang, copy, write) {
+  const problems = languageProblems(lang, copy)
+  if (!problems.length) return copy
+  console.warn(`${lang}: not in ${LANGUAGE[lang]}, writing it again: ${problems.join('; ')}`)
+  const again = await write(problems)
+  const still = languageProblems(lang, again)
+  if (still.length)
+    throw new Error(`${lang}: not in ${LANGUAGE[lang]} after a second attempt: ${still.join('; ')}`)
+  return again
+}
+
+/** What a second attempt is told about the first. Empty for a first attempt. */
+export const retryNote = (lang, problems = []) =>
+  problems.length
+    ? `\n\nYOUR PREVIOUS ATTEMPT WAS NOT IN ${LANGUAGE[lang].toUpperCase()}:\n- ${problems.join('\n- ')}\nWrite every field in ${LANGUAGE[lang]}.`
+    : ''
+
+/**
+ * SearXNG results, or nothing. Never throws: grounding is a bonus, not a dependency.
+ *
+ * `language` matters: left out, the instance answered "freight quotation
+ * Dachser" with German pages, which went into the English draft's prompt.
+ */
+export async function searxng(query, limit = 6, language) {
   const base = process.env.SEARXNG_URL?.replace(/\/$/, '')
   if (!base) return []
   try {
-    const res = await fetch(
-      `${base}/search?${new URLSearchParams({ q: query, format: 'json', categories: 'general' })}`,
-      {
-        headers: { accept: 'application/json' },
-        signal: AbortSignal.timeout(20_000),
-      },
-    )
+    const params = new URLSearchParams({
+      q: query,
+      format: 'json',
+      categories: 'general',
+      ...(language ? { language } : {}),
+    })
+    const res = await fetch(`${base}/search?${params}`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(20_000),
+    })
     if (!res.ok) return []
     return ((await res.json()).results ?? []).slice(0, limit)
   } catch {

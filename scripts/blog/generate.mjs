@@ -10,7 +10,9 @@
  *      never the primary material.
  *   2. The English article through OpenRouter with a strict JSON schema, then
  *      the Arabic one written from it, for Arabic readers rather than
- *      translated line by line.
+ *      translated line by line. Each is checked for its language
+ *      (`ensureLanguage`) and written once more if it drifted, and the
+ *      finished draft is checked again before it is returned.
  *   3. The English claims fact-checked against SearXNG and GULF_FACTS
  *      (`factcheck.mjs`) before the Arabic is written from it.
  *   4. Both FAQs checked (`ensureFaqs`), dashes and "the article says"
@@ -33,10 +35,14 @@ import {
   arabicTwins,
   checkLinks,
   ensureFaqs,
+  ensureLanguage,
+  languageProblems,
   MIN_FAQS,
+  retryNote,
   scrub,
   unlinkMissing,
   usableFaqs,
+  wrongScript,
 } from './lib.mjs'
 
 // From the app's root, which the server build traces this file into
@@ -320,6 +326,11 @@ function searchProblems(lang, c) {
   if (!keyword) problems.push('focusKeyword is empty')
   else if (lang === 'ar' && !ARABIC.test(keyword))
     problems.push('focusKeyword must be the Arabic search phrase, in Arabic')
+  // The rule below then holds the title to the keyword, so a keyword in the
+  // wrong language drags the title with it: "উপসাগরীয় কাস্টমস উদ্ধৃতি:
+  // Dachser Missing Gulf Costs".
+  else if (lang === 'en' && wrongScript('en', keyword))
+    problems.push('focusKeyword must be the English search phrase, in English only')
   // Every word of the keyword, in order, with room for the small words that
   // make it a sentence: "chargeable weight in air freight" carries the
   // keyword "chargeable weight air freight". Demanding the exact phrase gave
@@ -328,6 +339,14 @@ function searchProblems(lang, c) {
     problems.push(
       `the title must carry the words of the focusKeyword "${keyword}" in order, near the start, reading as natural ${lang === 'ar' ? 'Arabic' : 'English'}`,
     )
+  for (const [field, text] of [
+    ['title', title],
+    ['metaDescription', meta],
+  ]) {
+    const why = wrongScript(lang, text)
+    if (why)
+      problems.push(`the ${field} must be in ${lang === 'ar' ? 'Arabic' : 'English'}: ${why}`)
+  }
   if (title.length > TITLE_MAX)
     problems.push(`the title is ${title.length} characters; at most ${TITLE_MAX}`)
   if (meta.length < META_MIN || meta.length > META_MAX)
@@ -419,15 +438,27 @@ export function pickTopic(ready, known = new Set()) {
  */
 export async function draftPost({ topic, known, earlier, taken, usedPhotos = new Set() }) {
   const VOICE = voice(earlier)
+  // Said outright. The English call used to leave its language to the
+  // language of its instructions, and the draft of 20 November came back in
+  // Bengali; the Arabic call, which names its language, never drifted.
+  const EN_SYSTEM = `${VOICE}
+LANGUAGE: English. Every field you return is in English: title, excerpt, metaDescription, focusKeyword, markdown, faqs, tags and photoQuery. Web results in the brief may be in other languages; they say what the topic is, never what language to write in. The Arabic edition is written separately, later.`
   console.log(`blog: drafting "${topic.title}" (${topic.archetype})`)
-  const found = await searxng([topic.targetQuery, ...(topic.keywords ?? [])].join(' '))
+
+  // Each edition gets the keywords in its own language. Arabic keywords in the
+  // English brief and the English search only pulled in Arabic and, with no
+  // language set, German results.
+  const keywords = [...new Set(topic.keywords ?? [])]
+  const enKeywords = keywords.filter((k) => !ARABIC.test(k))
+  const arKeywords = keywords.filter((k) => ARABIC.test(k))
+  const found = await searxng([...new Set([topic.targetQuery, ...enKeywords])].join(' '), 6, 'en')
 
   const brief = [
     `Working title: ${topic.title}`,
     `Target query: ${topic.targetQuery}`,
     topic.audience && `Audience: ${topic.audience}`,
     topic.angle && `Angle: ${topic.angle}`,
-    topic.keywords?.length && `Secondary keywords: ${topic.keywords.join(', ')}`,
+    enKeywords.length && `Secondary keywords: ${enKeywords.join(', ')}`,
     topic.internalLinks?.length &&
       `Link these pages where they fit naturally: ${topic.internalLinks.join(', ')}`,
     topic.expertNote?.trim() &&
@@ -437,11 +468,7 @@ export async function draftPost({ topic, known, earlier, taken, usedPhotos = new
     .filter(Boolean)
     .join('\n')
 
-  let en = await complete({
-    model: MODEL,
-    schema: EN_SCHEMA,
-    user: brief,
-    system: `${VOICE}
+  const EN_ARTICLE = `${EN_SYSTEM}
 
 ARCHETYPE: ${ARCHETYPE[topic.archetype] ?? ARCHETYPE.guide}
 
@@ -450,11 +477,18 @@ SEO rules:
 - ## headings phrased the way people search. Lead every section with the answer.
 - 900-1500 words. Tables and lists where they help a reader scan.
 - At least two internal links to the site's own pages listed in PRODUCT FACTS, where the reader would want them. Posts with none leave the landing pages without the links that help them rank.${
-      WANTS_ARTIFACT.test(topic.targetQuery)
-        ? `\n- "${topic.targetQuery}" asks for the thing itself: include it, as a Markdown table a reader can copy, in the first third of the article.`
-        : ''
-    }`,
-  })
+    WANTS_ARTIFACT.test(topic.targetQuery)
+      ? `\n- "${topic.targetQuery}" asks for the thing itself: include it, as a Markdown table a reader can copy, in the first third of the article.`
+      : ''
+  }`
+  const writeEn = (problems) =>
+    complete({
+      model: MODEL,
+      schema: EN_SCHEMA,
+      user: brief + retryNote('en', problems),
+      system: EN_ARTICLE,
+    })
+  let en = await ensureLanguage('en', await writeEn(), writeEn)
 
   /*
   Every draft carries an FAQ in both languages, and nothing upstream enforces
@@ -476,9 +510,9 @@ SEO rules:
       user: `THE ARTICLE:\n\nTitle: ${copy.title}\n\n${copy.markdown}\n\nWrite its FAQ in the article's language: ${MIN_FAQS}-4 real questions a reader would search, each answered directly in 1-3 sentences using what the article says. Answer as the publication; never write "the article says" or refer to the article at all. Return them in "faqs".`,
     }).then((reply) => reply.faqs)
 
-  en = await ensureFaqs('en', en, askForFaqs(VOICE))
+  en = await ensureFaqs('en', en, askForFaqs(EN_SYSTEM))
   // Before the Arabic is written, so a corrected claim reaches both editions.
-  const checked = await factCheck(en, { model: MODEL, system: VOICE })
+  const checked = await factCheck(en, { model: MODEL, system: EN_SYSTEM })
   en = checked.copy
 
   const AR_SYSTEM = `${VOICE}
@@ -491,12 +525,18 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
   const enFaq = usableFaqs(en)
     .map((f) => `- ${f.question}\n  ${f.answer}`)
     .join('\n')
-  let ar = await complete({
-    model: MODEL,
-    schema: AR_SCHEMA,
-    user: `Target query (English): ${topic.targetQuery}\n\nTHE ENGLISH ARTICLE:\n\nTitle: ${en.title}\n\n${en.markdown}\n\nFAQ:\n${enFaq}`,
-    system: AR_SYSTEM,
-  })
+  const writeAr = (problems) =>
+    complete({
+      model: MODEL,
+      schema: AR_SCHEMA,
+      user:
+        `Target query (English): ${topic.targetQuery}` +
+        (arKeywords.length ? `\nArabic search phrases: ${arKeywords.join('، ')}` : '') +
+        `\n\nTHE ENGLISH ARTICLE:\n\nTitle: ${en.title}\n\n${en.markdown}\n\nFAQ:\n${enFaq}` +
+        retryNote('ar', problems),
+      system: AR_SYSTEM,
+    })
+  let ar = await ensureLanguage('ar', await writeAr(), writeAr)
   ar = await ensureFaqs('ar', ar, askForFaqs(AR_SYSTEM))
 
   let slug = slugify(en.slug || en.title)
@@ -509,7 +549,7 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
     focusKeyword: String(c.focusKeyword).trim(),
     faqs: usableFaqs(c).map((f) => ({ question: scrub(f.question), answer: scrub(f.answer) })),
   })
-  en = await polish('en', en, topic, VOICE)
+  en = await polish('en', en, topic, EN_SYSTEM)
   ar = await polish('ar', ar, topic, AR_SYSTEM)
   const enLinks = unlinkMissing(scrub(clean(en.markdown)), known)
   const arLinks = unlinkMissing(arabicTwins(scrub(clean(ar.markdown)), known), known)
@@ -521,13 +561,25 @@ The Arabic search phrase goes in focusKeyword; the title is at most 60 character
   checkLinks(enBody, 'en', known)
   checkLinks(arBody, 'ar', known)
 
+  const enCopy = pick(en)
+  const arCopy = pick(ar)
+  // Once more on exactly what is saved: the FAQ top-up, the fact-check's
+  // rewrites and the title polish all come after the checks above, and each
+  // is a model call that could drift too.
+  const wrong = [
+    ...languageProblems('en', { ...enCopy, markdown: enBody }),
+    ...languageProblems('ar', { ...arCopy, markdown: arBody }),
+  ]
+  if (wrong.length)
+    throw new Error(`the finished draft is in the wrong language: ${wrong.join('; ')}`)
+
   const coverImage = await cover(en.photoQuery, usedPhotos)
 
   return {
     slug,
     tags: (en.tags ?? []).map(String).slice(0, 4),
-    en: { ...pick(en), body: enBody },
-    ar: { ...pick(ar), body: arBody },
+    en: { ...enCopy, body: enBody },
+    ar: { ...arCopy, body: arBody },
     cover: coverImage,
     unlinked,
     flagged: checked.flagged,
